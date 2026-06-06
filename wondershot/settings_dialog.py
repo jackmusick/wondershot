@@ -224,8 +224,30 @@ class SettingsDialog(QDialog):
         azf.addRow("Account key:", self.azure_key)
         v.addWidget(az)
 
-        warn = QLabel("Credentials are stored unencrypted in Wondershot's "
-                      "config file — use a scoped key.")
+        od = QGroupBox("OneDrive / SharePoint (Microsoft account)")
+        odf = QFormLayout(od)
+        self.graph_client = QLineEdit(s.graph_client_id)
+        odf.addRow("Client ID:", self.graph_client)
+        from .msgraph import connected_account
+        account = connected_account()
+        self.graph_status = QLabel(
+            f"Connected as <b>{account}</b>" if account else "Not connected")
+        odf.addRow("Status:", self.graph_status)
+        self.graph_btn = QPushButton("Disconnect" if account else "Connect…")
+        self.graph_btn.clicked.connect(self._graph_connect)
+        odf.addRow("", self.graph_btn)
+        dest_row = QHBoxLayout()
+        self.graph_dest = QLabel(s.graph_drive_label or "My OneDrive")
+        dest_btn = QPushButton("Change…")
+        dest_btn.clicked.connect(self._graph_pick_destination)
+        dest_row.addWidget(self.graph_dest, 1)
+        dest_row.addWidget(dest_btn)
+        odf.addRow("Destination:", dest_row)
+        v.addWidget(od)
+
+        warn = QLabel("S3/Azure credentials are stored unencrypted in "
+                      "Wondershot's config file — use a scoped key. "
+                      "OneDrive uses sign-in tokens instead.")
         warn.setWordWrap(True)
         warn.setStyleSheet("color: palette(mid);")
         v.addWidget(warn)
