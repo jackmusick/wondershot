@@ -426,7 +426,7 @@ class EditorWindow(QMainWindow):
         self.share_btn.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
         self.share_btn.clicked.connect(self._share_default)
         self._share_menu = QMenu(self.share_btn)
-        tb.addWidget(self.share_btn)
+        self.share_action = tb.addWidget(self.share_btn)
         self._update_share_button()
 
         # zoom shortcuts (no toolbar buttons needed)

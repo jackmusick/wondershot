@@ -452,12 +452,6 @@ class VideoPane(QWidget):
         controls.addWidget(self.blur_btn)
         controls.addWidget(self.apply_btn)
         controls.addWidget(self.gif_btn)
-        self.share_btn = QPushButton("Share", self)
-        self.share_btn.setIcon(QIcon.fromTheme("document-send"))
-        self.share_btn.clicked.connect(
-            lambda: self.share_requested.emit(self.path or ""))
-        controls.addWidget(self.share_btn)
-        self.update_share_visible()
 
         self.range_bar = RangeBar(self)
         self.range_bar.hide()
@@ -507,12 +501,6 @@ class VideoPane(QWidget):
         self.player.setSource(QUrl())
         self.path = None
         self._clear_redactions()
-
-    def update_share_visible(self) -> None:
-        from .share import configured_providers
-        self.share_btn.setToolTip(
-            "Copy a share link" if configured_providers(self.settings)
-            else "Set up sharing in Settings → Sharing")
 
     def _refresh_audio_device(self) -> None:
         self.audio.setDevice(QMediaDevices.defaultAudioOutput())

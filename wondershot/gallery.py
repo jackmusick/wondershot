@@ -348,6 +348,7 @@ class GalleryWindow(QMainWindow):
         self.editor = EditorWindow(image=_placeholder_image(),
                                    settings=self.settings)
         self.editor.setWindowFlags(Qt.Widget)
+        self.editor.share_action.setVisible(False)  # gallery toolbar owns Share
         self.editor.saved.connect(self.refresh_path)
         self.editor.undo_stack.cleanChanged.connect(
             lambda _c: self._update_title())
@@ -360,7 +361,6 @@ class GalleryWindow(QMainWindow):
             self.video_pane.status.connect(
                 lambda msg, ms: self.editor.statusBar().showMessage(msg, ms))
             self.video_pane.file_ready.connect(self._file_ready)
-            self.video_pane.share_requested.connect(self._share_default_path)
         except ImportError:
             self.video_pane = None
 
@@ -660,6 +660,45 @@ class GalleryWindow(QMainWindow):
 
         tb.addAction(self._tb_act("Settings", "configure", self._open_settings))
 
+        from PySide6.QtWidgets import QMenu as _QMenu, QSizePolicy, QToolButton
+        spacer = QWidget(self)
+        spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        tb.addWidget(spacer)
+        self.share_btn = QToolButton(self)
+        self.share_btn.setText("Share")
+        self.share_btn.setIcon(QIcon.fromTheme("document-send"))
+        self.share_btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.share_btn.clicked.connect(
+            lambda: self._share_default_path(self._share_target()))
+        self._share_menu = _QMenu(self.share_btn)
+        tb.addWidget(self.share_btn)
+        self._update_share_toolbar()
+
+    def _share_target(self) -> str:
+        paths = self._selected_paths()
+        return paths[0] if paths else (self._current_path or "")
+
+    def _update_share_toolbar(self) -> None:
+        from PySide6.QtWidgets import QToolButton
+        from .share import configured_providers
+        providers = configured_providers(self.settings)
+        self.share_btn.setToolTip(
+            "Copy a share link for the selected item" if providers
+            else "Set up sharing in Settings → Sharing")
+        self._share_menu.clear()
+        if len(providers) > 1:
+            labels = {"s3": "Share via S3", "azure": "Share via Azure",
+                      "onedrive": "Share via OneDrive"}
+            for p in providers:
+                self._share_menu.addAction(
+                    labels[p],
+                    lambda p=p: self.editor.share_path(
+                        self._share_target(), p))
+            self.share_btn.setMenu(self._share_menu)
+            self.share_btn.setPopupMode(QToolButton.MenuButtonPopup)
+        else:
+            self.share_btn.setMenu(None)
+
     # -- actions -----------------------------------------------------------------
 
     def _open_capture_window(self) -> None:
@@ -881,9 +920,7 @@ class GalleryWindow(QMainWindow):
         if dlg.exec() == SettingsDialog.Accepted:
             if dlg.apply():
                 self.set_library(self.settings.library_dir)
-            self.editor._update_share_button()
-            if self.video_pane is not None:
-                self.video_pane.update_share_visible()
+            self._update_share_toolbar()
             self.settings_applied.emit()
 
     def _toggle_pin(self) -> None:
