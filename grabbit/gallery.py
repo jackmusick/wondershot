@@ -388,8 +388,16 @@ class GalleryWindow(QMainWindow):
         self.strip.customContextMenuRequested.connect(self._context_menu)
         self.strip.setItemDelegate(_ThumbDelegate(
             self.strip, on_delete=lambda p: self._trash_paths([p],
-                                                              confirm=False)))
+                                                              confirm=True)))
         self.strip.setMouseTracking(True)  # hover state for the (x)
+        # Ctrl+Z over the strip restores the last delete (the canvas keeps
+        # its own Ctrl+Z for annotations).
+        self._trash_undo: list[list[tuple[str, str]]] = []
+        undo_del = QAction("Undo delete", self.strip)
+        undo_del.setShortcut(QKeySequence.Undo)
+        undo_del.setShortcutContext(Qt.WidgetWithChildrenShortcut)
+        undo_del.triggered.connect(self._undo_delete)
+        self.strip.addAction(undo_del)
         # Distinct shelf look: clearly darker background than the canvas,
         # thumbnails sit as raised cards with hover/selection chrome.
         self.strip.setStyleSheet("""
@@ -709,7 +717,17 @@ class GalleryWindow(QMainWindow):
     def _delete_selected(self) -> None:
         self._trash_paths(self._selected_paths(), confirm=True)
 
+    @staticmethod
+    def _staging_dir() -> str:
+        from PySide6.QtCore import QStandardPaths
+        d = os.path.join(QStandardPaths.writableLocation(
+            QStandardPaths.GenericDataLocation), "grabbit", "trash")
+        os.makedirs(d, exist_ok=True)
+        return d
+
     def _trash_paths(self, paths: list[str], confirm: bool) -> None:
+        """Stage deletes so Ctrl+Z can restore them; staged files reach
+        the real system trash on quit / when the undo stack is deep."""
         if not paths:
             return
         if confirm:
@@ -719,9 +737,27 @@ class GalleryWindow(QMainWindow):
                 self, "grabbit", f"Move to trash?\n\n{names}{more}"
             ) != QMessageBox.Yes:
                 return
-        from PySide6.QtCore import QFile
+        import shutil
+        import time
+        batch = []
+        stage = self._staging_dir()
         for p in paths:
-            QFile.moveToTrash(p)
+            staged = os.path.join(
+                stage, f"{time.monotonic_ns()}-{os.path.basename(p)}")
+            try:
+                shutil.move(p, staged)
+            except OSError:
+                continue
+            batch.append((staged, p))
+        if batch:
+            self._trash_undo.append(batch)
+            while len(self._trash_undo) > 20:  # keep undo shallow-ish
+                self._flush_batch(self._trash_undo.pop(0))
+            n = len(batch)
+            what = (os.path.basename(batch[0][1]) if n == 1
+                    else f"{n} files")
+            self.editor.statusBar().showMessage(
+                f"Moved {what} to trash — Ctrl+Z to undo", 6000)
         if self.editor.path in paths:
             self.editor.undo_stack.clear()  # don't prompt to save a trashed file
             self.editor.path = None
@@ -730,6 +766,35 @@ class GalleryWindow(QMainWindow):
         if self._current_path in paths:
             self._current_path = None
         self.rescan()
+
+    def _undo_delete(self) -> None:
+        import shutil
+        if not self._trash_undo:
+            return
+        restored = []
+        for staged, original in self._trash_undo.pop():
+            if os.path.exists(staged):
+                try:
+                    shutil.move(staged, original)
+                    restored.append(original)
+                except OSError:
+                    pass
+        self.rescan()
+        if restored:
+            self.select_path(restored[0])
+            self.editor.statusBar().showMessage(
+                f"Restored {os.path.basename(restored[0])}", 4000)
+
+    @staticmethod
+    def _flush_batch(batch: list[tuple[str, str]]) -> None:
+        from PySide6.QtCore import QFile
+        for staged, _original in batch:
+            if os.path.exists(staged):
+                QFile.moveToTrash(staged)
+
+    def flush_trash(self) -> None:
+        while self._trash_undo:
+            self._flush_batch(self._trash_undo.pop())
 
     def _rename_selected(self) -> None:
         paths = self._selected_paths()
@@ -851,6 +916,7 @@ class GalleryWindow(QMainWindow):
         self.setWindowTitle(f"{name}{dirty} — grabbit")
 
     def really_quit(self) -> None:
+        self.flush_trash()
         self._really_quit = True
         self.close()
 
