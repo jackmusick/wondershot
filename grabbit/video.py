@@ -187,10 +187,7 @@ class RedactOverlay(QWidget):
         # happen paused) we paint the current frame OURSELVES and decorate
         # on top. While playing we paint nothing and playback stays on the
         # fast path.
-        from PySide6.QtMultimedia import QMediaPlayer as _MP
-        paused = self.pane.player.playbackState() != _MP.PlayingState
-        decorating = self.active or bool(self.pane.redactions)
-        if not (paused and decorating):
+        if not self.pane.frozen_mode():
             return
         frame_img = self.pane.last_frame_image()
         if frame_img is None:
@@ -198,6 +195,7 @@ class RedactOverlay(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         p.setRenderHint(QPainter.SmoothPixmapTransform)
+        p.fillRect(self.rect(), QColor(26, 26, 29))
         disp = self.display_rect()
         p.drawImage(disp, frame_img)
         t = self.pane.player.position() / 1000.0
@@ -511,8 +509,7 @@ class VideoPane(QWidget):
     def _frame_changed(self, frame) -> None:
         if frame.isValid():
             self._last_frame = frame
-            if (self.player.playbackState() != QMediaPlayer.PlayingState
-                    and (self.overlay.active or self.redactions)):
+            if self.frozen_mode():
                 self.overlay.update()
 
     def last_frame_image(self):
@@ -522,11 +519,23 @@ class VideoPane(QWidget):
                 return img
         return None
 
+    def frozen_mode(self) -> bool:
+        """Editing blurs on a paused frame: the live video surface is a
+        native Wayland subsurface that sits above ALL widget painting, so
+        while decorating we hide it and paint the frame ourselves."""
+        return (self.player.playbackState() != QMediaPlayer.PlayingState
+                and (self.overlay.active or bool(self.redactions))
+                and self._last_frame is not None)
+
+    def _sync_video_surface(self) -> None:
+        self.stack.video.setVisible(not self.frozen_mode())
+        self.overlay.update()
+
     def _state_changed(self, state) -> None:
         playing = state == QMediaPlayer.PlayingState
         self.play_btn.setIcon(QIcon.fromTheme(
             "media-playback-pause" if playing else "media-playback-start"))
-        self.overlay.update()
+        self._sync_video_surface()
 
     def _position_changed(self, pos: int) -> None:
         if not self.slider.isSliderDown():
@@ -573,6 +582,7 @@ class VideoPane(QWidget):
         else:
             self.hint.hide()
         self.overlay.set_active(on)
+        self._sync_video_surface()
 
     def _region_drawn(self, video_rect: QRect) -> None:
         start = self.player.position() / 1000.0
@@ -598,7 +608,7 @@ class VideoPane(QWidget):
         self.refresh_overlays()
 
     def refresh_overlays(self) -> None:
-        self.overlay.update()
+        self._sync_video_surface()
         self.range_bar.setVisible(bool(self.redactions))
         self.range_bar.update()
 
