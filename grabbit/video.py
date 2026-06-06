@@ -111,6 +111,14 @@ class VideoCanvas(QGraphicsView):
         self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.setRenderHint(QPainter.Antialiasing)
         self.setFrameShape(QGraphicsView.NoFrame)
+        # GPU compositing: with the default raster viewport every video
+        # frame is converted/painted on the CPU — 60fps screencasts lag.
+        try:
+            from PySide6.QtOpenGLWidgets import QOpenGLWidget
+            self.setViewport(QOpenGLWidget())
+        except ImportError:
+            pass
+        self.setViewportUpdateMode(QGraphicsView.FullViewportUpdate)
 
     def set_blur_mode(self, on: bool) -> None:
         self.blur_mode = on
