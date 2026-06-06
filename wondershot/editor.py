@@ -223,6 +223,7 @@ class CanvasView(QGraphicsView):
 
 class EditorWindow(QMainWindow):
     saved = Signal(str)  # emitted with file path after a successful save
+    share_status = Signal(str)  # share outcome, for toast surfaces
 
     def __init__(self, path: str | None = None, image: QImage | None = None,
                  settings=None, parent=None):
@@ -309,7 +310,7 @@ class EditorWindow(QMainWindow):
         if self.undo_stack.isClean():
             return True
         ret = QMessageBox.question(
-            self, "grabbit", "Save changes to this image?",
+            self, "Wondershot", "Save changes to this image?",
             QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel,
             QMessageBox.Save)
         if ret == QMessageBox.Save:
@@ -319,9 +320,25 @@ class EditorWindow(QMainWindow):
 
     def set_base_image(self, image: QImage) -> None:
         self.base_image = image
-        self.base_item.setPixmap(QPixmap.fromImage(image))
+        self.base_item.setPixmap(QPixmap.fromImage(self.apply_effects(image)))
         self.scene.setSceneRect(QRectF(0, 0, image.width(), image.height()))
         self._update_status()
+
+    def apply_effects(self, img: QImage) -> QImage:
+        """Output effects (rounded corners, bottom fade) — persisted
+        defaults, applied to the preview and at flatten time."""
+        s = self.settings
+        if not s:
+            return img
+        if getattr(s, "effect_rounded", False):
+            img = imageops.rounded_corners(img, s.effect_corner_radius)
+        if getattr(s, "effect_fade", False):
+            img = imageops.bottom_fade(img, s.effect_fade_height)
+        return img
+
+    def _refresh_effect_preview(self) -> None:
+        self.base_item.setPixmap(
+            QPixmap.fromImage(self.apply_effects(self.base_image)))
 
     def _fit_if_large(self) -> None:
         screen = QGuiApplication.primaryScreen()
@@ -436,7 +453,8 @@ class EditorWindow(QMainWindow):
         self.share_btn.setVisible(bool(providers))
         self._share_menu.clear()
         if len(providers) > 1:
-            labels = {"s3": "Share via S3", "azure": "Share via Azure"}
+            labels = {"s3": "Share via S3", "azure": "Share via Azure",
+                      "onedrive": "Share via OneDrive"}
             for p in providers:
                 self._share_menu.addAction(
                     labels[p], lambda p=p: self.share_path(self.path, p))
@@ -474,10 +492,12 @@ class EditorWindow(QMainWindow):
     def _share_done(self, url: str, error: str) -> None:
         self.share_btn.setEnabled(True)
         if error:
-            self.statusBar().showMessage(f"Share failed: {error}", 10000)
-            return
-        QGuiApplication.clipboard().setText(url)
-        self.statusBar().showMessage("Copied URL to clipboard", 5000)
+            msg = f"Share failed: {error}"
+        else:
+            QGuiApplication.clipboard().setText(url)
+            msg = "Copied URL to clipboard"
+        self.statusBar().showMessage(msg, 10000 if error else 5000)
+        self.share_status.emit(msg)
 
     def _build_statusbar(self) -> None:
         self._status = QLabel(self)
@@ -495,7 +515,7 @@ class EditorWindow(QMainWindow):
     def _update_title(self) -> None:
         name = os.path.basename(self.path) if self.path else "untitled"
         dirty = "" if self.undo_stack.isClean() else " •"
-        self.setWindowTitle(f"{name}{dirty} — grabbit")
+        self.setWindowTitle(f"{name}{dirty} — Wondershot")
 
     # -- properties panel (Snagit-style right sidebar) -----------------------
 
@@ -526,6 +546,39 @@ class EditorWindow(QMainWindow):
         self.font_spin.setValue(self.font_size)
         self.font_spin.valueChanged.connect(self._font_changed)
         form.addRow("Text size", self.font_spin)
+
+        from PySide6.QtWidgets import QCheckBox
+        effects_title = QLabel("<b>Effects</b>", w)
+        form.addRow(effects_title)
+
+        def effect_toggle(label, attr):
+            box = QCheckBox(label, w)
+            box.setChecked(bool(self.settings
+                                and getattr(self.settings, attr, False)))
+            box.toggled.connect(lambda on: self._effect_changed(attr, on))
+            form.addRow(box)
+            return box
+
+        self.rounded_check = effect_toggle("Rounded corners",
+                                           "effect_rounded")
+        self.radius_spin = QSpinBox(w)
+        self.radius_spin.setRange(2, 64)
+        self.radius_spin.setValue(
+            getattr(self.settings, "effect_corner_radius", 16) or 16
+            if self.settings else 16)
+        self.radius_spin.valueChanged.connect(
+            lambda v: self._effect_changed("effect_corner_radius", v))
+        form.addRow("Radius", self.radius_spin)
+
+        self.fade_check = effect_toggle("Bottom fade", "effect_fade")
+        self.fade_spin = QSpinBox(w)
+        self.fade_spin.setRange(8, 512)
+        self.fade_spin.setValue(
+            getattr(self.settings, "effect_fade_height", 96) or 96
+            if self.settings else 96)
+        self.fade_spin.valueChanged.connect(
+            lambda v: self._effect_changed("effect_fade_height", v))
+        form.addRow("Fade height", self.fade_spin)
 
         hint = QLabel("Applies to the selection\nand to new objects", w)
         hint.setStyleSheet("color: palette(mid);")
@@ -607,6 +660,11 @@ class EditorWindow(QMainWindow):
         p.end()
         self.color_btn.setIcon(QIcon(pm))
         self.color_btn.setIconSize(pm.size())
+
+    def _effect_changed(self, attr: str, value) -> None:
+        if self.settings:
+            setattr(self.settings, attr, value)
+        self._refresh_effect_preview()
 
     def _width_changed(self, w: int) -> None:
         self.stroke_width = w
@@ -927,7 +985,7 @@ class EditorWindow(QMainWindow):
         self.scene.render(p, QRectF(0, 0, size.width(), size.height()),
                           self.scene.sceneRect())
         p.end()
-        return img
+        return self.apply_effects(img)
 
     def _apply_pixelate(self, rect: QRect) -> None:
         img = self.base_image
@@ -976,7 +1034,7 @@ class EditorWindow(QMainWindow):
             self.saved.emit(self.path)
             self.statusBar().showMessage("Saved", 2000)
         else:
-            QMessageBox.warning(self, "grabbit", f"Could not save {self.path}")
+            QMessageBox.warning(self, "Wondershot", f"Could not save {self.path}")
 
     def save_as(self) -> None:
         start_dir = (self.settings.library_dir if self.settings

@@ -20,8 +20,8 @@ from PySide6.QtWidgets import QMenu, QWidget
 
 SIZES = [160, 220, 300, 400]
 
-RULE_ID = "grabbitbubble"
-WINDOW_TITLE = "grabbit camera"
+RULE_ID = "wondershotbubble"
+WINDOW_TITLE = "wondershot camera"
 
 
 def ensure_position_rule() -> None:
@@ -58,7 +58,7 @@ def ensure_position_rule() -> None:
              "--group", "General", "--key", "rules"],
             capture_output=True, text=True, timeout=5).stdout.strip()
         rules = [r for r in out.split(",") if r]
-        kwrite("Description", "grabbit camera bubble")
+        kwrite("Description", "Wondershot camera bubble")
         kwrite("title", WINDOW_TITLE)
         kwrite("titlematch", "1")  # exact
         kwrite("position", f"{x},{y}")

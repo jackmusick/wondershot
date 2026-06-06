@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "grabbit"
+name = "wondershot"
 version = "0.1.0"
 description = "Snagit-style screenshot tool for Linux/Wayland: capture, gallery with drag-out, markup editor"
 readme = "README.md"
@@ -14,10 +14,11 @@ dependencies = ["PySide6>=6.6"]
 keywords = ["screenshot", "wayland", "kde", "snagit", "annotation"]
 
 [project.scripts]
-grabbit = "grabbit.cli:main"
+wondershot = "wondershot.cli:main"
+grabbit = "wondershot.cli:main"  # legacy alias (existing hotkeys)
 
 [tool.setuptools.packages.find]
-include = ["grabbit*"]
+include = ["wondershot*"]
 
 [tool.setuptools.package-data]
-grabbit = ["data/*"]
+wondershot = ["data/*"]

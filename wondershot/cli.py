@@ -27,7 +27,7 @@ def build_command(args) -> dict:
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
-        prog="grabbit",
+        prog="wondershot",
         description="Snagit-style screenshot tool: capture, gallery, markup.")
     parser.add_argument("-c", "--capture", action="store_true",
                         help="capture a region")
@@ -44,7 +44,7 @@ def main(argv=None) -> int:
     parser.add_argument("--selftest", metavar="DIR",
                         help="render UI screenshots into DIR and exit (dev tool)")
     parser.add_argument("--version", action="version",
-                        version=f"grabbit {__version__}")
+                        version=f"wondershot {__version__}")
     args = parser.parse_args(argv)
 
     if args.install_desktop:
@@ -65,9 +65,9 @@ def main(argv=None) -> int:
     from PySide6.QtWidgets import QApplication
 
     qapp = QApplication(sys.argv[:1])
-    qapp.setApplicationName("grabbit")
-    qapp.setOrganizationName("grabbit")
-    qapp.setDesktopFileName("grabbit")
+    qapp.setApplicationName("wondershot")
+    qapp.setOrganizationName("wondershot")
+    qapp.setDesktopFileName("wondershot")
     qapp.setQuitOnLastWindowClosed(False)
 
     app = GrabbitApp(qapp)
@@ -84,7 +84,7 @@ def install_desktop() -> int:
     """Install launcher + icon into the user's XDG data dirs."""
     from importlib import resources
 
-    exec_path = shutil.which("grabbit") or os.path.abspath(sys.argv[0])
+    exec_path = shutil.which("wondershot") or os.path.abspath(sys.argv[0])
     data_home = os.environ.get("XDG_DATA_HOME",
                                os.path.expanduser("~/.local/share"))
     apps = os.path.join(data_home, "applications")
@@ -92,19 +92,19 @@ def install_desktop() -> int:
     os.makedirs(apps, exist_ok=True)
     os.makedirs(icons, exist_ok=True)
 
-    desktop = resources.files("grabbit").joinpath("data/grabbit.desktop").read_text()
-    desktop = desktop.replace("Exec=grabbit", f"Exec={exec_path}")
-    dest = os.path.join(apps, "grabbit.desktop")
+    desktop = resources.files("wondershot").joinpath("data/wondershot.desktop").read_text()
+    desktop = desktop.replace("Exec=wondershot", f"Exec={exec_path}")
+    dest = os.path.join(apps, "wondershot.desktop")
     with open(dest, "w") as f:
         f.write(desktop)
 
-    svg = resources.files("grabbit").joinpath("data/grabbit.svg").read_bytes()
-    with open(os.path.join(icons, "grabbit.svg"), "wb") as f:
+    svg = resources.files("wondershot").joinpath("data/wondershot.svg").read_bytes()
+    with open(os.path.join(icons, "wondershot.svg"), "wb") as f:
         f.write(svg)
 
     print(f"installed {dest}")
-    print(f"installed {os.path.join(icons, 'grabbit.svg')}")
-    print("Tip: bind a global shortcut to:  grabbit --capture")
+    print(f"installed {os.path.join(icons, 'wondershot.svg')}")
+    print("Tip: bind a global shortcut to:  wondershot --capture")
     return 0
 
 

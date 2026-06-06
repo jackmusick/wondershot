@@ -25,7 +25,7 @@ class FakeSettings:
 
 
 def make_recorder(tmp_path):
-    from grabbit.record import ScreenRecorder
+    from wondershot.record import ScreenRecorder
     return ScreenRecorder(FakeSettings(str(tmp_path)))
 
 

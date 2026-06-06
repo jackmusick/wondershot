@@ -1,10 +1,10 @@
 [Desktop Entry]
 Type=Application
-Name=Grabbit
+Name=Wondershot
 GenericName=Screenshot Tool
 Comment=Capture, gallery with drag-out, markup editor
-Exec=grabbit
-Icon=grabbit
+Exec=wondershot
+Icon=wondershot
 Terminal=false
 Categories=Utility;Graphics;Photography;
 StartupNotify=false
@@ -13,10 +13,10 @@ Actions=capture;fullscreen;
 
 [Desktop Action capture]
 Name=Capture region
-Exec=grabbit --capture
-Icon=grabbit
+Exec=wondershot --capture
+Icon=wondershot
 
 [Desktop Action fullscreen]
 Name=Capture full screen
-Exec=grabbit --fullscreen
-Icon=grabbit
+Exec=wondershot --fullscreen
+Icon=wondershot

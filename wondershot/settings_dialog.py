@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import shutil
 
-from PySide6.QtCore import QProcess, Qt
+from PySide6.QtCore import QObject, QProcess, QRunnable, Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -24,11 +24,46 @@ from PySide6.QtWidgets import (
 )
 
 
+class _AuthSignal(QObject):
+    code_ready = Signal(str, str)  # user_code, verification_uri
+    done = Signal(str, str)        # account, error ('' on success)
+
+
+class _DeviceAuthJob(QRunnable):
+    """Device-code flow: emits the code, polls until signed in."""
+
+    def __init__(self, client_id: str):
+        super().__init__()
+        self.client_id = client_id
+        self.emitter = _AuthSignal()
+
+    def run(self) -> None:
+        import time
+        from . import msgraph
+        try:
+            dc = msgraph.request_device_code(self.client_id)
+            self.emitter.code_ready.emit(dc["user_code"],
+                                         dc["verification_uri"])
+            deadline = time.time() + int(dc.get("expires_in", 900))
+            while time.time() < deadline:
+                time.sleep(int(dc.get("interval", 5)))
+                tokens = msgraph.poll_token(self.client_id,
+                                            dc["device_code"])
+                if tokens is not None:
+                    account = msgraph.whoami(tokens["access_token"])
+                    msgraph.save_tokens(tokens, self.client_id, account)
+                    self.emitter.done.emit(account, "")
+                    return
+            self.emitter.done.emit("", "sign-in timed out")
+        except Exception as e:  # noqa: BLE001 — show in the dialog
+            self.emitter.done.emit("", str(e))
+
+
 class SettingsDialog(QDialog):
     def __init__(self, settings, parent=None):
         super().__init__(parent)
         self.settings = settings
-        self.setWindowTitle("grabbit settings")
+        self.setWindowTitle("Wondershot settings")
         self.setMinimumWidth(520)
 
         layout = QVBoxLayout(self)
@@ -74,7 +109,7 @@ class SettingsDialog(QDialog):
         self.copy_check.setChecked(settings.copy_after_capture)
         form.addRow("", self.copy_check)
 
-        self.show_check = QCheckBox("Show grabbit window after capture")
+        self.show_check = QCheckBox("Show Wondershot window after capture")
         self.show_check.setChecked(settings.show_gallery_after_capture)
         form.addRow("", self.show_check)
 
@@ -115,7 +150,7 @@ class SettingsDialog(QDialog):
         hint = QLabel(
             "Bind a key (e.g. <b>Meta+Shift+S</b>) to the command below in "
             "your desktop's shortcut settings. It reaches the running "
-            "grabbit instantly.")
+            "Wondershot instantly.")
         hint.setWordWrap(True)
         hk_layout.addWidget(hint)
         cmd = QLineEdit("grabbit --capture")
@@ -147,6 +182,7 @@ class SettingsDialog(QDialog):
         self.share_default.addItem("First configured", "")
         self.share_default.addItem("S3-compatible", "s3")
         self.share_default.addItem("Azure Blob", "azure")
+        self.share_default.addItem("OneDrive / SharePoint", "onedrive")
         i = self.share_default.findData(s.share_provider)
         self.share_default.setCurrentIndex(max(0, i))
         form.addRow("Default provider:", self.share_default)
@@ -188,13 +224,48 @@ class SettingsDialog(QDialog):
         azf.addRow("Account key:", self.azure_key)
         v.addWidget(az)
 
-        warn = QLabel("Credentials are stored unencrypted in grabbit's "
+        warn = QLabel("Credentials are stored unencrypted in Wondershot's "
                       "config file — use a scoped key.")
         warn.setWordWrap(True)
         warn.setStyleSheet("color: palette(mid);")
         v.addWidget(warn)
         v.addStretch(1)
         return w
+
+    # -- OneDrive device-code flow ---------------------------------------
+
+    def _graph_connect(self) -> None:
+        from . import msgraph
+        if msgraph.connected_account():
+            msgraph.disconnect()
+            self.graph_status.setText("Not connected")
+            self.graph_btn.setText("Connect…")
+            return
+        from PySide6.QtCore import QThreadPool
+        self.graph_btn.setEnabled(False)
+        self.graph_status.setText("Starting sign-in…")
+        job = _DeviceAuthJob(self.graph_client.text().strip())
+        job.emitter.code_ready.connect(self._graph_show_code)
+        job.emitter.done.connect(self._graph_done)
+        self._auth_job = job  # keep emitter alive
+        QThreadPool.globalInstance().start(job)
+
+    def _graph_show_code(self, user_code: str, uri: str) -> None:
+        from PySide6.QtGui import QDesktopServices, QGuiApplication
+        from PySide6.QtCore import QUrl
+        QGuiApplication.clipboard().setText(user_code)
+        self.graph_status.setText(
+            f"Enter code <b>{user_code}</b> (copied) at {uri}")
+        QDesktopServices.openUrl(QUrl(uri))
+
+    def _graph_done(self, account: str, error: str) -> None:
+        self.graph_btn.setEnabled(True)
+        if error:
+            self.graph_status.setText(f"<i>{error}</i>")
+            self.graph_btn.setText("Connect…")
+        else:
+            self.graph_status.setText(f"Connected as <b>{account}</b>")
+            self.graph_btn.setText("Disconnect")
 
     def _browse(self) -> None:
         d = QFileDialog.getExistingDirectory(
@@ -232,6 +303,7 @@ class SettingsDialog(QDialog):
         self.settings.copy_after_capture = self.copy_check.isChecked()
         self.settings.show_gallery_after_capture = self.show_check.isChecked()
         self.settings.share_provider = self.share_default.currentData()
+        self.settings.graph_client_id = self.graph_client.text().strip()
         self.settings.share_expiry_days = self.share_expiry.value()
         for field in ("s3_endpoint", "s3_region", "s3_bucket",
                       "s3_access_key", "s3_secret_key",

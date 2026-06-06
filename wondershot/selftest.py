@@ -36,8 +36,8 @@ def run_selftest(out_dir: str) -> int:
     from PySide6.QtWidgets import QApplication
 
     qapp = QApplication(sys.argv[:1])
-    qapp.setApplicationName("grabbit")
-    qapp.setOrganizationName("grabbit")
+    qapp.setApplicationName("wondershot")
+    qapp.setOrganizationName("wondershot")
 
     from .capture import CaptureManager
     from .editor import EditorWindow, Tool
@@ -62,7 +62,7 @@ def run_selftest(out_dir: str) -> int:
     ed.scene.addItem(step1)
     ed.scene.addItem(step2)
     text = TextItem(QPointF(420, 430), QColor("white"))
-    text.setPlainText("Annotated with grabbit")
+    text.setPlainText("Annotated with Wondershot")
     ed.scene.addItem(text)
     ed._apply_pixelate(QRect(620, 320, 180, 120))
 
@@ -83,7 +83,7 @@ def run_selftest(out_dir: str) -> int:
     # --- gallery populated with sample shots ------------------------------
     import tempfile
 
-    libdir = tempfile.mkdtemp(prefix="grabbit-selftest-")
+    libdir = tempfile.mkdtemp(prefix="wondershot-selftest-")
     for i in range(5):
         variant = _sample_image(720 + i * 60, 420 + i * 30)
         variant.save(os.path.join(libdir, f"Screenshot_2026060{i + 1}_12000{i}.png"))

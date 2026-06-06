@@ -1,4 +1,4 @@
-"""App settings backed by QSettings (~/.config/grabbit/grabbit.conf)."""
+"""App settings backed by QSettings (~/.config/wondershot/wondershot.conf)."""
 
 from __future__ import annotations
 
@@ -14,7 +14,18 @@ def _default_library() -> str:
 
 class Settings:
     def __init__(self):
-        self._s = QSettings("grabbit", "grabbit")
+        self._s = QSettings("wondershot", "wondershot")
+        self._migrate_grabbit()
+
+    def _migrate_grabbit(self) -> None:
+        """One-time copy of the pre-rename config (grabbit → wondershot)."""
+        if self._s.allKeys():
+            return
+        old = QSettings("grabbit", "grabbit")
+        for key in old.allKeys():
+            self._s.setValue(key, old.value(key))
+        if old.allKeys():
+            self._s.sync()
 
     @property
     def library_dir(self) -> str:
@@ -103,6 +114,40 @@ class Settings:
     def capture_delay(self, value: int) -> None:
         self._s.setValue("capture_delay", int(value))
 
+    # -- output effects (applied at save/flatten; persisted defaults) -------
+
+    @property
+    def effect_rounded(self) -> bool:
+        return self._s.value("effect_rounded", "false") in (True, "true")
+
+    @effect_rounded.setter
+    def effect_rounded(self, value: bool) -> None:
+        self._s.setValue("effect_rounded", "true" if value else "false")
+
+    @property
+    def effect_corner_radius(self) -> int:
+        return int(self._s.value("effect_corner_radius", 16))
+
+    @effect_corner_radius.setter
+    def effect_corner_radius(self, value: int) -> None:
+        self._s.setValue("effect_corner_radius", int(value))
+
+    @property
+    def effect_fade(self) -> bool:
+        return self._s.value("effect_fade", "false") in (True, "true")
+
+    @effect_fade.setter
+    def effect_fade(self, value: bool) -> None:
+        self._s.setValue("effect_fade", "true" if value else "false")
+
+    @property
+    def effect_fade_height(self) -> int:
+        return int(self._s.value("effect_fade_height", 96))
+
+    @effect_fade_height.setter
+    def effect_fade_height(self, value: int) -> None:
+        self._s.setValue("effect_fade_height", int(value))
+
     # -- sharing (S3-compatible / Azure Blob) -------------------------------
     # NOTE: credentials are stored in plaintext QSettings; the dialog
     # warns about this.
@@ -120,6 +165,15 @@ class Settings:
     @share_provider.setter
     def share_provider(self, value: str) -> None:
         self._s.setValue("share_provider", value)
+
+    @property
+    def graph_client_id(self) -> str:
+        from .msgraph import DEFAULT_CLIENT_ID
+        return self._s.value("graph_client_id", DEFAULT_CLIENT_ID)
+
+    @graph_client_id.setter
+    def graph_client_id(self, value: str) -> None:
+        self._s.setValue("graph_client_id", value)
 
     @property
     def share_expiry_days(self) -> int:

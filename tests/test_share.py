@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from grabbit.share import (
+from wondershot.share import (
     azure_sas_url,
     configured_providers,
     presign_s3_url,
@@ -34,16 +34,16 @@ def test_s3_object_url_path_style():
 
 def test_azure_sas_url_shape():
     url = azure_sas_url(
-        "myaccount", "shots", "grabbit/x.png",
+        "myaccount", "shots", "wondershot/x.png",
         account_key="0123456789abcdef0123456789abcdef",  # base64-decodable
         now=datetime(2026, 1, 1, tzinfo=timezone.utc))
     assert url.startswith(
-        "https://myaccount.blob.core.windows.net/shots/grabbit/x.png?")
+        "https://myaccount.blob.core.windows.net/shots/wondershot/x.png?")
     for param in ("sv=", "se=2026-01-08", "sr=b", "sp=r", "sig="):
         assert param in url
     # deterministic given fixed inputs
     again = azure_sas_url(
-        "myaccount", "shots", "grabbit/x.png",
+        "myaccount", "shots", "wondershot/x.png",
         account_key="0123456789abcdef0123456789abcdef",
         now=datetime(2026, 1, 1, tzinfo=timezone.utc))
     assert url == again

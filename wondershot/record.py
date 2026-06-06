@@ -280,7 +280,7 @@ class ScreenRecorder(QObject):
         os.set_inheritable(fd, True)
         log_dir = os.path.join(
             os.environ.get("XDG_CACHE_HOME",
-                           os.path.expanduser("~/.cache")), "grabbit")
+                           os.path.expanduser("~/.cache")), "wondershot")
         os.makedirs(log_dir, exist_ok=True)
         self.log_path = os.path.join(log_dir, "recorder.log")
         try:

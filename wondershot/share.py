@@ -122,12 +122,19 @@ def azure_configured(settings) -> bool:
                ("azure_account", "azure_container", "azure_key"))
 
 
+def onedrive_configured(settings) -> bool:
+    from . import msgraph
+    return bool(msgraph.connected_account())
+
+
 def configured_providers(settings) -> list[str]:
     out = []
     if s3_configured(settings):
         out.append("s3")
     if azure_configured(settings):
         out.append("azure")
+    if onedrive_configured(settings):
+        out.append("onedrive")
     return out
 
 
@@ -148,7 +155,7 @@ def _put(url: str, path: str, headers: dict) -> None:
 def share_file(settings, path: str, provider: str) -> str:
     """Upload `path` and return a time-limited share URL."""
     name = os.path.basename(path)
-    key = f"grabbit/{name}"
+    key = f"wondershot/{name}"
     days = max(1, min(7, int(settings.share_expiry_days)))
     if provider == "s3":
         url = s3_object_url(settings.s3_endpoint, settings.s3_bucket, key)
@@ -166,6 +173,9 @@ def share_file(settings, path: str, provider: str) -> str:
         return azure_sas_url(settings.azure_account,
                              settings.azure_container, key,
                              settings.azure_key, expires_days=days)
+    if provider == "onedrive":
+        from . import msgraph
+        return msgraph.share(path)
     raise ValueError(f"unknown share provider: {provider}")
 
 

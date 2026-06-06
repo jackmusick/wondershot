@@ -4,7 +4,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QRect
 
-from grabbit.video import Redaction, build_blur_filter
+from wondershot.video import Redaction, build_blur_filter
 
 
 def test_single_redaction_graph():

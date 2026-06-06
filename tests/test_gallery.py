@@ -1,6 +1,6 @@
 import datetime as dt
 
-from grabbit.gallery import _timestamp_labels
+from wondershot.gallery import _timestamp_labels
 
 
 def _mtime(y, mo, d, h, mi):

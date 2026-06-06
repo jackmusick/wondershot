@@ -360,6 +360,7 @@ class GalleryWindow(QMainWindow):
             self.video_pane.status.connect(
                 lambda msg, ms: self.editor.statusBar().showMessage(msg, ms))
             self.video_pane.file_ready.connect(self._file_ready)
+            self.video_pane.share_requested.connect(self._share_default_path)
         except ImportError:
             self.video_pane = None
 
@@ -684,7 +685,7 @@ class GalleryWindow(QMainWindow):
                 for i in self.strip.selectionModel().selectedIndexes()]
 
     def open_editor(self, path: str) -> None:
-        """Standalone editor window (used by `grabbit -e` and Open in window)."""
+        """Standalone editor window (used by `wondershot -e` and Open in window)."""
         win = EditorWindow(path, settings=self.settings)
         win.saved.connect(self.refresh_path)
         win.destroyed.connect(lambda *_: self._windows.remove(win)
@@ -721,7 +722,7 @@ class GalleryWindow(QMainWindow):
     def _staging_dir() -> str:
         from PySide6.QtCore import QStandardPaths
         d = os.path.join(QStandardPaths.writableLocation(
-            QStandardPaths.GenericDataLocation), "grabbit", "trash")
+            QStandardPaths.GenericDataLocation), "wondershot", "trash")
         os.makedirs(d, exist_ok=True)
         return d
 
@@ -734,7 +735,7 @@ class GalleryWindow(QMainWindow):
             names = "\n".join(os.path.basename(p) for p in paths[:8])
             more = f"\n… and {len(paths) - 8} more" if len(paths) > 8 else ""
             if QMessageBox.question(
-                self, "grabbit", f"Move to trash?\n\n{names}{more}"
+                self, "Wondershot", f"Move to trash?\n\n{names}{more}"
             ) != QMessageBox.Yes:
                 return
         import shutil
@@ -811,7 +812,7 @@ class GalleryWindow(QMainWindow):
             if self.editor.path == old:
                 self.editor.path = new
         except OSError as e:
-            QMessageBox.warning(self, "grabbit", str(e))
+            QMessageBox.warning(self, "Wondershot", str(e))
         self.rescan()
 
     def _copy_selected(self) -> None:
@@ -857,14 +858,18 @@ class GalleryWindow(QMainWindow):
 
     def _share_selected(self) -> None:
         """Upload via the default provider; works for videos too."""
-        from .share import configured_providers
         paths = self._selected_paths()
+        if paths:
+            self._share_default_path(paths[0])
+
+    def _share_default_path(self, path: str) -> None:
+        from .share import configured_providers
         providers = configured_providers(self.settings)
-        if not paths or not providers:
+        if not path or not providers:
             return
         default = self.settings.share_provider
         provider = default if default in providers else providers[0]
-        self.editor.share_path(paths[0], provider)
+        self.editor.share_path(path, provider)
 
     def _open_settings(self) -> None:
         from .settings_dialog import SettingsDialog
@@ -873,6 +878,8 @@ class GalleryWindow(QMainWindow):
             if dlg.apply():
                 self.set_library(self.settings.library_dir)
             self.editor._update_share_button()
+            if self.video_pane is not None:
+                self.video_pane.update_share_visible()
             self.settings_applied.emit()
 
     def _toggle_pin(self) -> None:
@@ -913,7 +920,7 @@ class GalleryWindow(QMainWindow):
         name = (os.path.basename(self._current_path)
                 if self._current_path else "gallery")
         dirty = "" if self.editor.undo_stack.isClean() else " •"
-        self.setWindowTitle(f"{name}{dirty} — grabbit")
+        self.setWindowTitle(f"{name}{dirty} — Wondershot")
 
     def really_quit(self) -> None:
         self.flush_trash()

@@ -16,14 +16,14 @@ def qapp():
 
 
 def make_editor(qapp, w=400, h=300, color="white"):
-    from grabbit.editor import EditorWindow
+    from wondershot.editor import EditorWindow
     img = QImage(w, h, QImage.Format_ARGB32_Premultiplied)
     img.fill(QColor(color))
     return EditorWindow(image=img)
 
 
 def test_flatten_includes_annotations(qapp):
-    from grabbit.items import RectItem
+    from wondershot.items import RectItem
     from PySide6.QtCore import QRectF
     ed = make_editor(qapp)
     ed.scene.addItem(RectItem(QRectF(50, 50, 100, 80), QColor("red"), 4))
@@ -46,7 +46,7 @@ def test_crop_undo_restores(qapp):
 
 def test_cutout_via_drags(qapp):
     ed = make_editor(qapp, 400, 300)
-    from grabbit.editor import Tool
+    from wondershot.editor import Tool
     ed.set_tool(Tool.CUTOUT_V)
     # vertical band removed -> narrower
     ed.begin_draw(QPointF(100, 150))
@@ -64,7 +64,7 @@ def test_cutout_via_drags(qapp):
 
 
 def test_pixelate_item_resizes_like_shapes(qapp):
-    from grabbit.items import PixelateItem
+    from wondershot.items import PixelateItem
     ed = make_editor(qapp)
     ed._apply_pixelate(QRect(50, 50, 100, 80))
     item = [i for i in ed.scene.items() if isinstance(i, PixelateItem)][0]
@@ -76,8 +76,8 @@ def test_pixelate_item_resizes_like_shapes(qapp):
 
 
 def test_text_box_drag_sets_width(qapp):
-    from grabbit.editor import Tool
-    from grabbit.items import TextItem
+    from wondershot.editor import Tool
+    from wondershot.items import TextItem
     ed = make_editor(qapp)
     ed.set_tool(Tool.TEXT)
     ed.begin_draw(QPointF(40, 40))
@@ -93,7 +93,7 @@ def test_text_box_drag_sets_width(qapp):
 
 
 def test_step_counter_with_undo(qapp):
-    from grabbit.editor import Tool
+    from wondershot.editor import Tool
     ed = make_editor(qapp)
     ed.set_tool(Tool.STEP)
     ed.begin_draw(QPointF(50, 50))
@@ -104,8 +104,8 @@ def test_step_counter_with_undo(qapp):
 
 
 def test_arrow_drag_creates_undoable_item(qapp):
-    from grabbit.editor import Tool
-    from grabbit.items import is_annotation
+    from wondershot.editor import Tool
+    from wondershot.items import is_annotation
     ed = make_editor(qapp)
     ed.set_tool(Tool.ARROW)
     ed.begin_draw(QPointF(20, 20))
@@ -119,8 +119,8 @@ def test_arrow_drag_creates_undoable_item(qapp):
 
 
 def test_pixelate_adds_patch_item(qapp):
-    from grabbit.editor import Tool
-    from grabbit.items import PixelateItem
+    from wondershot.editor import Tool
+    from wondershot.items import PixelateItem
     ed = make_editor(qapp)
     ed._apply_pixelate(QRect(50, 50, 100, 80))
     patches = [i for i in ed.scene.items() if isinstance(i, PixelateItem)]
@@ -128,7 +128,7 @@ def test_pixelate_adds_patch_item(qapp):
 
 
 def test_resize_handles_lifecycle(qapp):
-    from grabbit.items import RectItem, HandleItem
+    from wondershot.items import RectItem, HandleItem
     from PySide6.QtCore import QRectF, QPointF
     ed = make_editor(qapp)
     rect = RectItem(QRectF(50, 50, 100, 80), QColor("red"), 4)
@@ -148,7 +148,7 @@ def test_resize_handles_lifecycle(qapp):
 
 
 def test_arrow_endpoint_resize(qapp):
-    from grabbit.items import ArrowItem
+    from wondershot.items import ArrowItem
     from PySide6.QtCore import QPointF
     ed = make_editor(qapp)
     arrow = ArrowItem(QPointF(10, 10), QPointF(100, 100), QColor("red"), 6)
@@ -162,7 +162,7 @@ def test_arrow_endpoint_resize(qapp):
 
 
 def test_text_font_resize(qapp):
-    from grabbit.items import TextItem
+    from wondershot.items import TextItem
     from PySide6.QtCore import QPointF
     ed = make_editor(qapp)
     t = TextItem(QPointF(20, 20), QColor("white"), 18)
@@ -174,7 +174,7 @@ def test_text_font_resize(qapp):
 
 
 def test_rotation_drag_and_undo(qapp):
-    from grabbit.items import RectItem
+    from wondershot.items import RectItem
     from PySide6.QtCore import QRectF, QPointF, Qt
     from PySide6.QtTest import QTest
     ed = make_editor(qapp)
@@ -219,7 +219,7 @@ class _FakeEditorSettings:
 
 
 def test_editor_reads_tool_defaults_from_settings(qapp):
-    from grabbit.editor import EditorWindow
+    from wondershot.editor import EditorWindow
     img = QImage(100, 100, QImage.Format_ARGB32_Premultiplied)
     img.fill(QColor("white"))
     ed = EditorWindow(image=img, settings=_FakeEditorSettings())
@@ -229,7 +229,7 @@ def test_editor_reads_tool_defaults_from_settings(qapp):
 
 
 def test_editor_persists_tool_defaults(qapp):
-    from grabbit.editor import EditorWindow
+    from wondershot.editor import EditorWindow
     img = QImage(100, 100, QImage.Format_ARGB32_Premultiplied)
     img.fill(QColor("white"))
     s = _FakeEditorSettings()
@@ -241,7 +241,7 @@ def test_editor_persists_tool_defaults(qapp):
 
 
 def test_panel_rows_follow_selection(qapp):
-    from grabbit.items import ArrowItem, TextItem
+    from wondershot.items import ArrowItem, TextItem
     from PySide6.QtCore import QPointF
     ed = make_editor(qapp)
     ed.show()
@@ -255,3 +255,19 @@ def test_panel_rows_follow_selection(qapp):
     ed._select_only(text)
     assert ed.font_spin.isVisibleTo(ed)
     assert not ed.width_spin.isVisibleTo(ed)
+
+
+def test_flatten_applies_effects(qapp):
+    ed = make_editor(qapp)
+
+    class _Fx:
+        effect_rounded = True
+        effect_corner_radius = 24
+        effect_fade = True
+        effect_fade_height = 60
+
+    ed.settings = _Fx()
+    flat = ed.flattened()
+    assert flat.pixelColor(0, 0).alpha() == 0, "rounded corner transparent"
+    assert flat.pixelColor(200, 299).alpha() < 20, "bottom faded"
+    assert flat.pixelColor(200, 150).alpha() == 255, "center intact"

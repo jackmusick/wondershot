@@ -28,7 +28,7 @@ class CaptureWindow(QWidget):
     def __init__(self, settings, parent=None):
         super().__init__(parent)
         self.settings = settings
-        self.setWindowTitle("grabbit capture")
+        self.setWindowTitle("Wondershot capture")
         self.setWindowFlag(Qt.WindowStaysOnTopHint, True)
 
         root = QHBoxLayout(self)
@@ -66,7 +66,7 @@ class CaptureWindow(QWidget):
         form.addRow("Delay", self.delay_spin)
         left.addLayout(form)
 
-        hint = QLabel("Hotkey: bind <code>grabbit --capture</code> in "
+        hint = QLabel("Hotkey: bind <code>wondershot --capture</code> in "
                       "System Settings")
         hint.setStyleSheet("color: palette(mid); font-size: 8pt;")
         left.addWidget(hint)

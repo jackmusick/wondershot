@@ -1,4 +1,4 @@
-# Roadmap
+# Roadmap — Wondershot (formerly grabbit)
 
 _Last updated: 2026-06-06_
 
@@ -52,6 +52,19 @@ _Last updated: 2026-06-06_
       pipewiresrc no-PTS mux abort) and stop always resolves — the
       watchdog now reports pipeline death instead of "Stopping" forever
 - [ ] Date/time overlay on carousel cards; elapsed time on stop buttons
+
+**Wondershot rename (2026-06-06)**
+- Package/CLI/config renamed; settings auto-migrate from grabbit;
+  `grabbit` CLI alias kept so existing KDE hotkeys still fire
+- OneDrive/SharePoint share provider (Graph device-code flow, stdlib):
+  Connect button in Settings → Sharing; upload + createLink
+  (anonymous → organization fallback). NEEDS app registration toggle:
+  'Allow public client flows' = Yes (AADSTS70002 otherwise)
+- Effects: rounded corners + bottom fade (properties panel, persisted
+  defaults, live preview, applied at flatten)
+- Share button on the video pane (editor toolbar is hidden there);
+  share outcomes also toast via tray
+- Deletes stage for Ctrl+Z undo, flush to system trash on quit
 
 **Sharing & capture UX (new)**
 - Share button (editor toolbar, top-right): uploads to S3-compatible or

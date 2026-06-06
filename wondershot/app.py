@@ -19,7 +19,7 @@ from .settings import Settings
 
 
 def server_name() -> str:
-    return f"grabbit-{os.getuid()}"
+    return f"wondershot-{os.getuid()}"
 
 
 def send_to_running(command: dict) -> bool:
@@ -36,7 +36,7 @@ def send_to_running(command: dict) -> bool:
 
 def make_app_icon() -> QIcon:
     """Rabbit silhouette, drawn so we don't need an icon theme installed."""
-    icon = QIcon.fromTheme("grabbit")
+    icon = QIcon.fromTheme("wondershot")
     if not icon.isNull():
         return icon
     pm = QPixmap(64, 64)
@@ -86,6 +86,9 @@ class GrabbitApp(QObject):
         self.icon = make_app_icon()
         qapp.setWindowIcon(self.icon)
         self.tray = self._build_tray()
+        # the editor's status bar is hidden while a video plays — toast too
+        self.gallery.editor.share_status.connect(
+            lambda m: self.tray.showMessage("Wondershot", m, self.icon, 3000))
         self.recorder.tick.connect(
             lambda t: self.record_action.setText(
                 f"Stop recording ({t})" if t else "Stop recording"))
@@ -132,7 +135,7 @@ class GrabbitApp(QObject):
         menu.addAction(a)
         tray.setContextMenu(menu)
         tray.activated.connect(self._tray_activated)
-        tray.setToolTip("grabbit — screenshots")
+        tray.setToolTip("Wondershot — screenshots")
         tray.show()
         return tray
 
@@ -168,13 +171,13 @@ class GrabbitApp(QObject):
         if self.settings.show_gallery_after_capture or self._gallery_was_visible:
             self.show_gallery()
         note = " · copied to clipboard" if self.settings.copy_after_capture else ""
-        self.tray.showMessage("grabbit", os.path.basename(path) + note,
+        self.tray.showMessage("Wondershot", os.path.basename(path) + note,
                               self.icon, 2500)
 
     def _on_capture_failed(self, message: str) -> None:
         if self._gallery_was_visible:
             self.show_gallery()
-        self.tray.showMessage("grabbit — capture failed", message, self.icon, 4000)
+        self.tray.showMessage("Wondershot — capture failed", message, self.icon, 4000)
 
     def show_gallery(self) -> None:
         self.gallery.show()
@@ -196,7 +199,7 @@ class GrabbitApp(QObject):
         self.record_action.setText("Stop recording")
         self.gallery.set_recording(True)
         mic = "with mic" if self.settings.mic_enabled else "no mic"
-        self.tray.showMessage("grabbit — recording",
+        self.tray.showMessage("Wondershot — recording",
                               f"Recording ({mic}). Stop from the tray or "
                               "the Record button.", self.icon, 3500)
 
@@ -207,14 +210,14 @@ class GrabbitApp(QObject):
         self.gallery.rescan()
         self.gallery.select_path(path)
         self.show_gallery()
-        self.tray.showMessage("grabbit", f"Recording saved: "
+        self.tray.showMessage("Wondershot", f"Recording saved: "
                               f"{os.path.basename(path)}", self.icon, 3000)
 
     def _on_recording_failed(self, message: str) -> None:
         self.record_action.setText("Record screen…")
         self.record_action.setEnabled(True)
         self.gallery.set_recording(False)
-        self.tray.showMessage("grabbit — recording failed", message,
+        self.tray.showMessage("Wondershot — recording failed", message,
                               self.icon, 5000)
 
     def _on_settings_applied(self) -> None:

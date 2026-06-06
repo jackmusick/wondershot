@@ -78,3 +78,33 @@ def cut_out(image: QImage, start: int, end: int, horizontal: bool) -> QImage:
         p.drawImage(start, 0, right)
         p.end()
         return out
+
+
+def rounded_corners(image: QImage, radius: int) -> QImage:
+    """Clip the image to a rounded rect (corners go transparent)."""
+    from PySide6.QtGui import QPainterPath
+    out = QImage(image.size(), QImage.Format_ARGB32_Premultiplied)
+    out.fill(Qt.transparent)
+    p = QPainter(out)
+    p.setRenderHint(QPainter.Antialiasing)
+    path = QPainterPath()
+    path.addRoundedRect(0, 0, image.width(), image.height(), radius, radius)
+    p.setClipPath(path)
+    p.drawImage(0, 0, image)
+    p.end()
+    return out
+
+
+def bottom_fade(image: QImage, height: int) -> QImage:
+    """Fade the bottom `height` pixels to transparent."""
+    from PySide6.QtGui import QLinearGradient, QColor, QBrush
+    out = image.convertToFormat(QImage.Format_ARGB32_Premultiplied)
+    h = min(max(1, height), out.height())
+    p = QPainter(out)
+    p.setCompositionMode(QPainter.CompositionMode_DestinationIn)
+    grad = QLinearGradient(0, out.height() - h, 0, out.height())
+    grad.setColorAt(0.0, QColor(0, 0, 0, 255))
+    grad.setColorAt(1.0, QColor(0, 0, 0, 0))
+    p.fillRect(QRect(0, out.height() - h, out.width(), h), QBrush(grad))
+    p.end()
+    return out

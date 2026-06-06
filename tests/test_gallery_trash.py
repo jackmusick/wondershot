@@ -34,7 +34,7 @@ class _Capture:
 
 
 def make_gallery(qapp, tmp_path):
-    from grabbit.gallery import GalleryWindow
+    from wondershot.gallery import GalleryWindow
     return GalleryWindow(_Settings(str(tmp_path)), _Capture())
 
 

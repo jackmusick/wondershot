@@ -2,7 +2,7 @@ import pytest
 from PySide6.QtCore import QRect
 from PySide6.QtGui import QColor, QImage
 
-from grabbit import imageops
+from wondershot import imageops
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -104,3 +104,24 @@ def test_cut_out_empty_band():
     img = solid(50, 50, "red")
     out = imageops.cut_out(img, 30, 30, horizontal=False)
     assert out.size() == img.size()
+
+
+def test_rounded_corners_clears_corner_pixels():
+    from wondershot.imageops import rounded_corners
+    img = QImage(100, 80, QImage.Format_ARGB32_Premultiplied)
+    img.fill(QColor("red"))
+    out = rounded_corners(img, 20)
+    assert out.pixelColor(0, 0).alpha() == 0, "corner must be transparent"
+    assert out.pixelColor(50, 40).alpha() == 255, "center must be opaque"
+    assert out.pixelColor(50, 0).alpha() == 255, "edge midpoint stays opaque"
+
+
+def test_bottom_fade_gradient():
+    from wondershot.imageops import bottom_fade
+    img = QImage(60, 100, QImage.Format_ARGB32_Premultiplied)
+    img.fill(QColor("blue"))
+    out = bottom_fade(img, 40)
+    assert out.pixelColor(30, 10).alpha() == 255, "top untouched"
+    assert out.pixelColor(30, 99).alpha() < 20, "bottom row ~transparent"
+    mid = out.pixelColor(30, 80).alpha()
+    assert 50 < mid < 220, f"midway through fade should be partial: {mid}"
