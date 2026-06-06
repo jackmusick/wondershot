@@ -62,7 +62,8 @@ class Tool(enum.Enum):
     STEP = "step"
     PIXELATE = "pixelate"
     CROP = "crop"
-    CUTOUT = "cutout"
+    CUTOUT_V = "cutout_v"  # removes a vertical band, joins left+right
+    CUTOUT_H = "cutout_h"  # removes a horizontal band, joins top+bottom
 
 
 _EDIT_KEYS = {
@@ -340,7 +341,8 @@ class EditorWindow(QMainWindow):
             (Tool.STEP, "Step", "format-list-ordered", "N"),
             (Tool.PIXELATE, "Pixelate", "view-private", "X"),
             (Tool.CROP, "Crop", "transform-crop", "C"),
-            (Tool.CUTOUT, "Cut out", "edit-cut", "U"),
+            (Tool.CUTOUT_V, "Cut |", "edit-cut", "U"),
+            (Tool.CUTOUT_H, "Cut —", "edit-cut", "Shift+U"),
         ]
         self._tool_actions = {}
         for tool, text, icon, key in tools:
@@ -517,10 +519,11 @@ class EditorWindow(QMainWindow):
         self.tool = tool
         self._tool_actions[tool].setChecked(True)
         hints = {
-            Tool.SELECT: "Drag to move · Del to delete",
+            Tool.SELECT: "Drag to move · grips to resize · Del to delete",
             Tool.CROP: "Drag a rectangle to crop (Ctrl+Z undoes)",
-            Tool.CUTOUT: "Drag across: horizontal drag removes a vertical band, vertical drag removes a horizontal band",
-            Tool.TEXT: "Click to place text",
+            Tool.CUTOUT_V: "Drag across the vertical band to remove; left and right halves join",
+            Tool.CUTOUT_H: "Drag across the horizontal band to remove; top and bottom join",
+            Tool.TEXT: "Click for a label, or drag a box for wrapped text",
             Tool.STEP: "Click to stamp the next number",
             Tool.PIXELATE: "Drag a rectangle to pixelate",
         }
@@ -560,18 +563,14 @@ class EditorWindow(QMainWindow):
             self._draw_item = HighlightItem(QRectF(pos, pos), QColor("#ffe000"))
         elif t == Tool.PEN:
             self._draw_item = FreehandItem(pos, self.color, self.stroke_width)
-        elif t == Tool.TEXT:
-            self.drawing = False
-            item = TextItem(pos, self.color, self.font_size)
-            self.undo_stack.push(AddItemCommand(self, item, "add text"))
-            item.start_editing()
-            return
         elif t == Tool.STEP:
             self.drawing = False
             item = StepItem(pos, self.step_counter, self.color)
             self.undo_stack.push(AddItemCommand(self, item, "add step"))
+            self._select_only(item)
             return
-        elif t in (Tool.PIXELATE, Tool.CROP, Tool.CUTOUT):
+        elif t in (Tool.TEXT, Tool.PIXELATE, Tool.CROP,
+                   Tool.CUTOUT_V, Tool.CUTOUT_H):
             self._overlay = QGraphicsRectItem()
             pen = QPen(QColor(0, 150, 255), 1, Qt.DashLine)
             pen.setCosmetic(True)
@@ -609,11 +608,16 @@ class EditorWindow(QMainWindow):
                 self.scene.removeItem(item)
                 return
             self.undo_stack.push(AddItemCommand(self, item))
-        elif t in (Tool.PIXELATE, Tool.CROP, Tool.CUTOUT):
+            self._select_only(item)
+        elif t in (Tool.TEXT, Tool.PIXELATE, Tool.CROP,
+                   Tool.CUTOUT_V, Tool.CUTOUT_H):
             overlay, self._overlay = self._overlay, None
             if overlay is not None:
                 self.scene.removeItem(overlay)
             rect = self._band_rect(pos).toRect()
+            if t == Tool.TEXT:
+                self._place_text(pos, rect)
+                return
             if rect.width() < 4 or rect.height() < 4:
                 return
             if t == Tool.PIXELATE:
@@ -621,19 +625,31 @@ class EditorWindow(QMainWindow):
             elif t == Tool.CROP:
                 self._apply_crop(rect)
             else:
-                self._apply_cutout(pos)
+                self._apply_cutout(t, rect)
+
+    def _select_only(self, item) -> None:
+        self.scene.clearSelection()
+        item.setSelected(True)
+
+    def _place_text(self, pos: QPointF, rect) -> None:
+        """Click = auto-sizing label; drag = box with wrapped text."""
+        boxed = rect.width() >= 24 and rect.height() >= 16
+        anchor = QPointF(rect.topLeft()) if boxed else self._draw_origin
+        item = TextItem(anchor, self.color, self.font_size)
+        if boxed:
+            item.setTextWidth(rect.width())
+        self.undo_stack.push(AddItemCommand(self, item, "add text"))
+        self._select_only(item)
+        item.start_editing()
 
     def _band_rect(self, pos: QPointF) -> QRectF:
-        """Selection rect; for CUTOUT it spans the full image across the band."""
+        """Selection rect; cut-out tools span the full image across the band."""
         r = QRectF(self._draw_origin, pos).normalized()
-        if self.tool == Tool.CUTOUT:
-            dx = abs(pos.x() - self._draw_origin.x())
-            dy = abs(pos.y() - self._draw_origin.y())
-            sr = self.scene.sceneRect()
-            if dx >= dy:  # vertical band, full height
-                r = QRectF(r.left(), sr.top(), r.width(), sr.height())
-            else:  # horizontal band, full width
-                r = QRectF(sr.left(), r.top(), sr.width(), r.height())
+        sr = self.scene.sceneRect()
+        if self.tool == Tool.CUTOUT_V:  # vertical band, full height
+            r = QRectF(r.left(), sr.top(), r.width(), sr.height())
+        elif self.tool == Tool.CUTOUT_H:  # horizontal band, full width
+            r = QRectF(sr.left(), r.top(), sr.width(), r.height())
         return r
 
     # -- resize handles ----------------------------------------------------
@@ -643,12 +659,14 @@ class EditorWindow(QMainWindow):
         if isinstance(t, (ArrowItem, LineItem)):
             p1, p2 = t.endpoints()
             return {"p1": p1, "p2": p2}
-        if isinstance(t, (RectItem, EllipseItem, HighlightItem)):
+        if isinstance(t, (RectItem, EllipseItem, HighlightItem, PixelateItem)):
             r = t.rect()
             return {"tl": r.topLeft(), "tr": r.topRight(),
                     "bl": r.bottomLeft(), "br": r.bottomRight()}
         if isinstance(t, TextItem):
-            return {"font": t.boundingRect().bottomRight()}
+            br = t.boundingRect()
+            return {"font": br.bottomRight(),
+                    "width": QPointF(br.right(), br.center().y())}
         if isinstance(t, StepItem):
             return {"radius": QPointF(t.radius, 0)}
         return {}
@@ -700,6 +718,8 @@ class EditorWindow(QMainWindow):
                 f = t.font()
                 f.setPointSize(size)
                 t.setFont(f)
+            elif role == "width" and isinstance(t, TextItem):
+                t.setTextWidth(max(40.0, pos.x()))
             elif role == "radius" and isinstance(t, StepItem):
                 import math
                 t.set_radius(math.hypot(pos.x(), pos.y()))
@@ -723,28 +743,29 @@ class EditorWindow(QMainWindow):
         return img
 
     def _apply_pixelate(self, rect: QRect) -> None:
-        snapshot = self.flattened()
-        patch = imageops.pixelated_patch(snapshot, rect)
-        if patch.isNull():
+        img = self.base_image
+        clamped = rect.intersected(QRect(0, 0, img.width(), img.height()))
+        if clamped.width() < 4 or clamped.height() < 4:
             return
-        clamped = rect.intersected(QRect(0, 0, snapshot.width(), snapshot.height()))
-        item = PixelateItem(QPixmap.fromImage(patch), QPointF(clamped.topLeft()))
+        item = PixelateItem(lambda: self.base_image, QRectF(clamped))
         self.undo_stack.push(AddItemCommand(self, item, "pixelate"))
+        self._select_only(item)
 
     def _apply_crop(self, rect: QRect) -> None:
         new_image = imageops.crop(self.flattened(), rect)
         self.undo_stack.push(FlattenCommand(self, new_image, "crop"))
 
-    def _apply_cutout(self, pos: QPointF) -> None:
-        dx = abs(pos.x() - self._draw_origin.x())
-        dy = abs(pos.y() - self._draw_origin.y())
+    def _apply_cutout(self, tool: Tool, r: QRect) -> None:
         flat = self.flattened()
-        if dx >= dy:
-            start, end = sorted((int(self._draw_origin.x()), int(pos.x())))
-            new_image = imageops.cut_out(flat, start, end, horizontal=False)
+        if r.isEmpty():
+            return
+        # note: QRect.right()/bottom() are x+w-1, not the true edge
+        if tool == Tool.CUTOUT_V:
+            new_image = imageops.cut_out(flat, r.x(), r.x() + r.width(),
+                                         horizontal=False)
         else:
-            start, end = sorted((int(self._draw_origin.y()), int(pos.y())))
-            new_image = imageops.cut_out(flat, start, end, horizontal=True)
+            new_image = imageops.cut_out(flat, r.y(), r.y() + r.height(),
+                                         horizontal=True)
         self.undo_stack.push(FlattenCommand(self, new_image, "cut out"))
 
     # -- edit actions ---------------------------------------------------------

@@ -330,18 +330,59 @@ def apply_style(item, color: QColor | None = None, width: int | None = None,
         item.setPen(pen)
 
 
-class PixelateItem(QGraphicsPixmapItem):
-    """Pixelated patch pinned over the image. Selectable (deletable) but not movable."""
+class PixelateItem(QGraphicsItem):
+    """Live pixelation of whatever part of the base image sits under it.
 
-    def __init__(self, pixmap, pos: QPointF):
-        super().__init__(pixmap)
+    Behaves exactly like the shape items: movable, corner-resizable,
+    deletable. The patch regenerates from the base image whenever the
+    item moves or resizes.
+    """
+
+    def __init__(self, base_provider, rect: QRectF, block: int = 14):
+        super().__init__()
         _mark(self)
-        self.setFlag(QGraphicsItem.ItemIsMovable, False)
-        self.setPos(pos)
+        self._base_provider = base_provider  # callable -> QImage
+        self._rect = QRectF(rect)
+        self._block = block
+        self._patch = None
+        self.setFlag(QGraphicsItem.ItemSendsGeometryChanges, True)
+        self._regen()
+
+    def rect(self) -> QRectF:
+        return QRectF(self._rect)
+
+    def setRect(self, r: QRectF) -> None:  # noqa: N802 (mirror QGraphicsRectItem)
+        self.prepareGeometryChange()
+        self._rect = QRectF(r)
+        self._regen()
+        self.update()
+
+    def _regen(self) -> None:
+        from . import imageops
+        base = self._base_provider()
+        if base is None or base.isNull():
+            self._patch = None
+            return
+        scene_rect = self.mapRectToScene(self._rect.normalized()).toRect()
+        patch = imageops.pixelated_patch(base, scene_rect, self._block)
+        self._patch = None if patch.isNull() else patch
+
+    def itemChange(self, change, value):  # noqa: N802
+        if change == QGraphicsItem.ItemPositionHasChanged:
+            self._regen()
+            self.update()
+        return super().itemChange(change, value)
+
+    def boundingRect(self) -> QRectF:  # noqa: N802
+        return self._rect.normalized().adjusted(-2, -2, 2, 2)
 
     def paint(self, painter, option, widget=None):
-        super().paint(painter, option, widget)
+        r = self._rect.normalized()
+        if self._patch is not None:
+            painter.drawImage(r, self._patch)
+        else:
+            painter.fillRect(r, QColor(127, 127, 127, 160))
         if self.isSelected():
             painter.setPen(QPen(QColor(0, 120, 255, 200), 1, Qt.DashLine))
             painter.setBrush(Qt.NoBrush)
-            painter.drawRect(self.boundingRect())
+            painter.drawRect(r)

@@ -686,7 +686,12 @@ class GalleryWindow(QMainWindow):
 
     def keyPressEvent(self, ev):  # noqa: N802
         if ev.key() == Qt.Key_Escape:
-            self.hide()
+            # Esc cancels things; it never hides the window.
+            if (self.video_pane is not None
+                    and self.video_pane.blur_btn.isChecked()):
+                self.video_pane.blur_btn.setChecked(False)
+            else:
+                self.editor.scene.clearSelection()
         else:
             super().keyPressEvent(ev)
 

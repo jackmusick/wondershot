@@ -47,13 +47,49 @@ def test_crop_undo_restores(qapp):
 def test_cutout_via_drags(qapp):
     ed = make_editor(qapp, 400, 300)
     from grabbit.editor import Tool
-    ed.set_tool(Tool.CUTOUT)
-    # horizontal drag -> vertical band removed -> narrower
+    ed.set_tool(Tool.CUTOUT_V)
+    # vertical band removed -> narrower
     ed.begin_draw(QPointF(100, 150))
     ed.update_draw(QPointF(200, 160))
     ed.end_draw(QPointF(200, 160))
     assert ed.base_image.width() == 300
     assert ed.base_image.height() == 300
+
+    ed2 = make_editor(qapp, 400, 300)
+    ed2.set_tool(Tool.CUTOUT_H)
+    ed2.begin_draw(QPointF(100, 100))
+    ed2.end_draw(QPointF(150, 180))
+    assert ed2.base_image.height() == 220
+    assert ed2.base_image.width() == 400
+
+
+def test_pixelate_item_resizes_like_shapes(qapp):
+    from grabbit.items import PixelateItem
+    ed = make_editor(qapp)
+    ed._apply_pixelate(QRect(50, 50, 100, 80))
+    item = [i for i in ed.scene.items() if isinstance(i, PixelateItem)][0]
+    assert item.isSelected()          # newly drawn objects come selected
+    assert len(ed._handles) == 4      # corner grips like rects
+    from PySide6.QtCore import QPointF as P
+    ed._handle_moved(item, "br", P(220, 200), {})
+    assert item.rect().bottomRight() == P(220, 200)
+
+
+def test_text_box_drag_sets_width(qapp):
+    from grabbit.editor import Tool
+    from grabbit.items import TextItem
+    ed = make_editor(qapp)
+    ed.set_tool(Tool.TEXT)
+    ed.begin_draw(QPointF(40, 40))
+    ed.update_draw(QPointF(240, 120))
+    ed.end_draw(QPointF(240, 120))
+    item = [i for i in ed.scene.items() if isinstance(i, TextItem)][0]
+    assert item.textWidth() == 200
+    # click (no drag) keeps auto-size
+    ed.begin_draw(QPointF(300, 200))
+    ed.end_draw(QPointF(301, 201))
+    items = [i for i in ed.scene.items() if isinstance(i, TextItem)]
+    assert any(t.textWidth() == -1 for t in items)
 
 
 def test_step_counter_with_undo(qapp):
