@@ -720,12 +720,24 @@ class GalleryWindow(QMainWindow):
         self.record_action.setText("Stopping…")
         self.record_action.setEnabled(False)
 
+    def _share_selected(self) -> None:
+        """Upload via the default provider; works for videos too."""
+        from .share import configured_providers
+        paths = self._selected_paths()
+        providers = configured_providers(self.settings)
+        if not paths or not providers:
+            return
+        default = self.settings.share_provider
+        provider = default if default in providers else providers[0]
+        self.editor.share_path(paths[0], provider)
+
     def _open_settings(self) -> None:
         from .settings_dialog import SettingsDialog
         dlg = SettingsDialog(self.settings, self)
         if dlg.exec() == SettingsDialog.Accepted:
             if dlg.apply():
                 self.set_library(self.settings.library_dir)
+            self.editor._update_share_button()
             self.settings_applied.emit()
 
     def _toggle_pin(self) -> None:
@@ -749,6 +761,10 @@ class GalleryWindow(QMainWindow):
                                "\n".join(self._selected_paths())))
             menu.addAction(QIcon.fromTheme("edit-rename"), "Rename…",
                            self._rename_selected)
+            from .share import configured_providers
+            if configured_providers(self.settings):
+                menu.addAction(QIcon.fromTheme("document-send"), "Share…",
+                               self._share_selected)
             menu.addSeparator()
             menu.addAction(QIcon.fromTheme("edit-delete"), "Move to trash",
                            self._delete_selected)

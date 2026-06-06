@@ -386,23 +386,31 @@ class EditorWindow(QMainWindow):
         tb.addAction(undo)
         tb.addAction(redo)
 
-        delete = self._act("Delete", "edit-delete", "Del")
-        delete.triggered.connect(self.delete_selected)
-        tb.addAction(delete)
+        # File ops left the toolbar (Snagit-style: tools only) — they
+        # live on shortcuts and in the carousel's context menu.
+        for text, icon, key, fn in [
+            ("Delete", "edit-delete", "Del", self.delete_selected),
+            ("Save", "document-save", QKeySequence.Save, self.save),
+            ("Save As", "document-save-as", QKeySequence.SaveAs,
+             self.save_as),
+            ("Copy", "edit-copy", QKeySequence.Copy, self.copy_to_clipboard),
+        ]:
+            a = self._act(text, icon, key)
+            a.triggered.connect(fn)
+            self.addAction(a)  # window-level: keeps the shortcut alive
 
-        tb.addSeparator()
-
-        save = self._act("Save", "document-save", QKeySequence.Save)
-        save.triggered.connect(self.save)
-        tb.addAction(save)
-
-        save_as = self._act("Save As", "document-save-as", QKeySequence.SaveAs)
-        save_as.triggered.connect(self.save_as)
-        tb.addAction(save_as)
-
-        copy = self._act("Copy", "edit-copy", QKeySequence.Copy)
-        copy.triggered.connect(self.copy_to_clipboard)
-        tb.addAction(copy)
+        from PySide6.QtWidgets import QMenu, QSizePolicy, QToolButton, QWidget
+        spacer = QWidget(self)
+        spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        tb.addWidget(spacer)
+        self.share_btn = QToolButton(self)
+        self.share_btn.setText("Share")
+        self.share_btn.setIcon(QIcon.fromTheme("document-send"))
+        self.share_btn.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
+        self.share_btn.clicked.connect(self._share_default)
+        self._share_menu = QMenu(self.share_btn)
+        tb.addWidget(self.share_btn)
+        self._update_share_button()
 
         # zoom shortcuts (no toolbar buttons needed)
         for text, key, fn in [
@@ -415,6 +423,61 @@ class EditorWindow(QMainWindow):
             a.setShortcut(QKeySequence(key))
             a.triggered.connect(fn)
             self.addAction(a)
+
+    # -- sharing -------------------------------------------------------------
+
+    def _share_providers(self) -> list[str]:
+        from .share import configured_providers
+        return configured_providers(self.settings) if self.settings else []
+
+    def _update_share_button(self) -> None:
+        from PySide6.QtWidgets import QToolButton
+        providers = self._share_providers()
+        self.share_btn.setVisible(bool(providers))
+        self._share_menu.clear()
+        if len(providers) > 1:
+            labels = {"s3": "Share via S3", "azure": "Share via Azure"}
+            for p in providers:
+                self._share_menu.addAction(
+                    labels[p], lambda p=p: self.share_path(self.path, p))
+            self.share_btn.setMenu(self._share_menu)
+            self.share_btn.setPopupMode(QToolButton.MenuButtonPopup)
+        else:
+            self.share_btn.setMenu(None)
+
+    def _share_default(self) -> None:
+        providers = self._share_providers()
+        if not providers:
+            return
+        default = self.settings.share_provider
+        self.share_path(self.path,
+                        default if default in providers else providers[0])
+
+    def share_path(self, path: str | None, provider: str) -> None:
+        """Upload `path` and put the share URL on the clipboard."""
+        from PySide6.QtCore import QThreadPool
+        from .share import ShareJob
+        if path == self.path and path and not self.undo_stack.isClean():
+            self.save()  # share what's on the canvas, not a stale file
+        if not path:
+            self.statusBar().showMessage("Nothing to share — save first",
+                                         4000)
+            return
+        self.settings.share_provider = provider  # clicking selects default
+        self.share_btn.setEnabled(False)
+        self.statusBar().showMessage("Uploading…")
+        job = ShareJob(self.settings, path, provider)
+        job.emitter.done.connect(self._share_done)
+        self._share_job = job  # keep the signal emitter alive
+        QThreadPool.globalInstance().start(job)
+
+    def _share_done(self, url: str, error: str) -> None:
+        self.share_btn.setEnabled(True)
+        if error:
+            self.statusBar().showMessage(f"Share failed: {error}", 10000)
+            return
+        QGuiApplication.clipboard().setText(url)
+        self.statusBar().showMessage("Copied URL to clipboard", 5000)
 
     def _build_statusbar(self) -> None:
         self._status = QLabel(self)

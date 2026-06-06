@@ -17,7 +17,10 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QSpinBox,
+    QTabWidget,
     QVBoxLayout,
+    QWidget,
 )
 
 
@@ -29,9 +32,14 @@ class SettingsDialog(QDialog):
         self.setMinimumWidth(520)
 
         layout = QVBoxLayout(self)
+        tabs = QTabWidget(self)
+        layout.addWidget(tabs)
 
+        general = QWidget()
+        gen_layout = QVBoxLayout(general)
+        tabs.addTab(general, "General")
         form = QFormLayout()
-        layout.addLayout(form)
+        gen_layout.addLayout(form)
 
         # library dir
         dir_row = QHBoxLayout()
@@ -118,13 +126,75 @@ class SettingsDialog(QDialog):
             btn = QPushButton("Open KDE Shortcuts settings")
             btn.clicked.connect(self._open_kde_shortcuts)
             hk_layout.addWidget(btn)
-        layout.addWidget(hk)
+        gen_layout.addWidget(hk)
+        gen_layout.addStretch(1)
+
+        tabs.addTab(self._build_share_tab(), "Sharing")
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+    def _build_share_tab(self) -> QWidget:
+        s = self.settings
+        w = QWidget()
+        v = QVBoxLayout(w)
+
+        form = QFormLayout()
+        self.share_default = QComboBox()
+        self.share_default.addItem("First configured", "")
+        self.share_default.addItem("S3-compatible", "s3")
+        self.share_default.addItem("Azure Blob", "azure")
+        i = self.share_default.findData(s.share_provider)
+        self.share_default.setCurrentIndex(max(0, i))
+        form.addRow("Default provider:", self.share_default)
+
+        self.share_expiry = QSpinBox()
+        self.share_expiry.setRange(1, 7)
+        self.share_expiry.setSuffix(" days")
+        self.share_expiry.setValue(s.share_expiry_days)
+        self.share_expiry.setToolTip(
+            "S3 caps presigned links at 7 days; Azure follows suit here")
+        form.addRow("Links expire after:", self.share_expiry)
+        v.addLayout(form)
+
+        s3 = QGroupBox("S3-compatible (AWS, MinIO, B2, R2, …)")
+        s3f = QFormLayout(s3)
+        self.s3_endpoint = QLineEdit(s.s3_endpoint)
+        self.s3_endpoint.setPlaceholderText("https://s3.us-east-1.amazonaws.com")
+        s3f.addRow("Endpoint:", self.s3_endpoint)
+        self.s3_region = QLineEdit(s.s3_region)
+        self.s3_region.setPlaceholderText("us-east-1")
+        s3f.addRow("Region:", self.s3_region)
+        self.s3_bucket = QLineEdit(s.s3_bucket)
+        s3f.addRow("Bucket:", self.s3_bucket)
+        self.s3_access_key = QLineEdit(s.s3_access_key)
+        s3f.addRow("Access key:", self.s3_access_key)
+        self.s3_secret_key = QLineEdit(s.s3_secret_key)
+        self.s3_secret_key.setEchoMode(QLineEdit.Password)
+        s3f.addRow("Secret key:", self.s3_secret_key)
+        v.addWidget(s3)
+
+        az = QGroupBox("Azure Blob Storage")
+        azf = QFormLayout(az)
+        self.azure_account = QLineEdit(s.azure_account)
+        azf.addRow("Account:", self.azure_account)
+        self.azure_container = QLineEdit(s.azure_container)
+        azf.addRow("Container:", self.azure_container)
+        self.azure_key = QLineEdit(s.azure_key)
+        self.azure_key.setEchoMode(QLineEdit.Password)
+        azf.addRow("Account key:", self.azure_key)
+        v.addWidget(az)
+
+        warn = QLabel("Credentials are stored unencrypted in grabbit's "
+                      "config file — use a scoped key.")
+        warn.setWordWrap(True)
+        warn.setStyleSheet("color: palette(mid);")
+        v.addWidget(warn)
+        v.addStretch(1)
+        return w
 
     def _browse(self) -> None:
         d = QFileDialog.getExistingDirectory(
@@ -161,4 +231,10 @@ class SettingsDialog(QDialog):
         self.settings.noise_suppression = self.noise_check.isChecked()
         self.settings.copy_after_capture = self.copy_check.isChecked()
         self.settings.show_gallery_after_capture = self.show_check.isChecked()
+        self.settings.share_provider = self.share_default.currentData()
+        self.settings.share_expiry_days = self.share_expiry.value()
+        for field in ("s3_endpoint", "s3_region", "s3_bucket",
+                      "s3_access_key", "s3_secret_key",
+                      "azure_account", "azure_container", "azure_key"):
+            setattr(self.settings, field, getattr(self, field).text().strip())
         return moved

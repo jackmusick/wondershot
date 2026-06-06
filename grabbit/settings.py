@@ -85,6 +85,50 @@ class Settings:
     def noise_suppression(self, value: bool) -> None:
         self._s.setValue("noise_suppression", "true" if value else "false")
 
+    # -- sharing (S3-compatible / Azure Blob) -------------------------------
+    # NOTE: credentials are stored in plaintext QSettings; the dialog
+    # warns about this.
+
+    _SHARE_KEYS = ("share_provider", "share_expiry_days",
+                   "s3_endpoint", "s3_region", "s3_bucket",
+                   "s3_access_key", "s3_secret_key",
+                   "azure_account", "azure_container", "azure_key")
+
+    @property
+    def share_provider(self) -> str:
+        """Default provider for the Share button: 's3' | 'azure' | ''."""
+        return self._s.value("share_provider", "")
+
+    @share_provider.setter
+    def share_provider(self, value: str) -> None:
+        self._s.setValue("share_provider", value)
+
+    @property
+    def share_expiry_days(self) -> int:
+        return int(self._s.value("share_expiry_days", 7))
+
+    @share_expiry_days.setter
+    def share_expiry_days(self, value: int) -> None:
+        self._s.setValue("share_expiry_days", int(value))
+
+    def _str_prop(key):  # noqa: N805 — tiny local factory
+        def fget(self):
+            return self._s.value(key, "")
+
+        def fset(self, value):
+            self._s.setValue(key, value)
+        return property(fget, fset)
+
+    s3_endpoint = _str_prop("s3_endpoint")
+    s3_region = _str_prop("s3_region")
+    s3_bucket = _str_prop("s3_bucket")
+    s3_access_key = _str_prop("s3_access_key")
+    s3_secret_key = _str_prop("s3_secret_key")
+    azure_account = _str_prop("azure_account")
+    azure_container = _str_prop("azure_container")
+    azure_key = _str_prop("azure_key")
+    del _str_prop
+
     # -- editor tool defaults (persist the last-used values) ---------------
 
     @property
