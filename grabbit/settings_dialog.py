@@ -73,16 +73,28 @@ class SettingsDialog(QDialog):
         # camera for the recording bubble
         self.camera_combo = QComboBox()
         self.camera_combo.addItem("System default", "")
+        self.mic_combo = QComboBox()
+        self.mic_combo.addItem("System default", "")
         try:
             from PySide6.QtMultimedia import QMediaDevices
             for cam in QMediaDevices.videoInputs():
                 self.camera_combo.addItem(cam.description(),
                                           cam.description())
+            for mic in QMediaDevices.audioInputs():
+                self.mic_combo.addItem(mic.description(), mic.description())
         except ImportError:
             pass
         i = self.camera_combo.findData(settings.camera_device)
         self.camera_combo.setCurrentIndex(max(0, i))
         form.addRow("Bubble camera:", self.camera_combo)
+
+        i = self.mic_combo.findData(settings.mic_device)
+        self.mic_combo.setCurrentIndex(max(0, i))
+        form.addRow("Microphone:", self.mic_combo)
+
+        self.mic_check = QCheckBox("Record microphone in screen recordings")
+        self.mic_check.setChecked(settings.mic_enabled)
+        form.addRow("", self.mic_check)
 
         # hotkey guidance
         hk = QGroupBox("Global capture hotkey")
@@ -139,6 +151,8 @@ class SettingsDialog(QDialog):
         self.settings.extra_dirs = new_extras
         self.settings.backend = self.backend_combo.currentData()
         self.settings.camera_device = self.camera_combo.currentData()
+        self.settings.mic_device = self.mic_combo.currentData()
+        self.settings.mic_enabled = self.mic_check.isChecked()
         self.settings.copy_after_capture = self.copy_check.isChecked()
         self.settings.show_gallery_after_capture = self.show_check.isChecked()
         return moved

@@ -236,10 +236,11 @@ def _video_placeholder(path: str) -> QImage:
 class GalleryWindow(QMainWindow):
     quit_requested = Signal()
 
-    def __init__(self, settings, capture, parent=None):
+    def __init__(self, settings, capture, recorder=None, parent=None):
         super().__init__(parent)
         self.settings = settings
         self.capture = capture
+        self.recorder = recorder
         self._windows: list[EditorWindow] = []
         self._thumb_pool = QThreadPool(self)
         self._thumb_emitter = _ThumbSignal()
@@ -529,8 +530,9 @@ class GalleryWindow(QMainWindow):
                                   self.capture.capture_region, "Ctrl+N"))
         tb.addAction(self._tb_act("Full screen", "computer",
                                   self.capture.capture_fullscreen))
-        tb.addAction(self._tb_act("Record", "media-record",
-                                  self.capture.record_region, "Ctrl+R"))
+        self.record_action = self._tb_act("Record", "media-record",
+                                          self._toggle_record, "Ctrl+R")
+        tb.addAction(self.record_action)
         tb.addSeparator()
         tb.addAction(self._tb_act("Open in window", "window-new",
                                   self._open_in_window))
@@ -639,6 +641,20 @@ class GalleryWindow(QMainWindow):
     def _open_folder(self) -> None:
         from PySide6.QtGui import QDesktopServices
         QDesktopServices.openUrl(QUrl.fromLocalFile(self.settings.library_dir))
+
+    def _toggle_record(self) -> None:
+        if self.recorder is None:
+            self.capture.record_region()  # spectacle fallback
+            return
+        if self.recorder.recording:
+            self.recorder.stop()
+        else:
+            self.recorder.start()
+
+    def set_recording(self, on: bool) -> None:
+        self.record_action.setText("Stop" if on else "Record")
+        self.record_action.setIcon(QIcon.fromTheme(
+            "media-playback-stop" if on else "media-record"))
 
     def _open_settings(self) -> None:
         from .settings_dialog import SettingsDialog

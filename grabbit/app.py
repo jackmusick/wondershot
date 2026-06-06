@@ -70,7 +70,14 @@ class GrabbitApp(QObject):
         self.capture.captured.connect(self._on_captured)
         self.capture.failed.connect(self._on_capture_failed)
 
-        self.gallery = GalleryWindow(self.settings, self.capture)
+        from .record import ScreenRecorder
+        self.recorder = ScreenRecorder(self.settings, self)
+        self.recorder.started.connect(self._on_recording_started)
+        self.recorder.finished.connect(self._on_recording_finished)
+        self.recorder.failed.connect(self._on_recording_failed)
+
+        self.gallery = GalleryWindow(self.settings, self.capture,
+                                     recorder=self.recorder)
         self.gallery.quit_requested.connect(qapp.quit)
         self._editors: list[EditorWindow] = []
         self._gallery_was_visible = False
@@ -100,12 +107,9 @@ class GrabbitApp(QObject):
         a.triggered.connect(lambda: self.trigger_capture("fullscreen"))
         menu.addAction(a)
         menu.addSeparator()
-        a = QAction("Record region", menu)
-        a.triggered.connect(lambda: self._start_recording("region"))
-        menu.addAction(a)
-        a = QAction("Record full screen", menu)
-        a.triggered.connect(lambda: self._start_recording("screen"))
-        menu.addAction(a)
+        self.record_action = QAction("Record screen…", menu)
+        self.record_action.triggered.connect(self.toggle_recording)
+        menu.addAction(self.record_action)
         self.bubble_action = QAction("Camera bubble", menu)
         self.bubble_action.setCheckable(True)
         self.bubble_action.toggled.connect(self.toggle_bubble)
@@ -171,15 +175,35 @@ class GrabbitApp(QObject):
 
     # -- recording / camera bubble -----------------------------------------
 
-    def _start_recording(self, mode: str) -> None:
-        fn = (self.capture.record_region if mode == "region"
-              else self.capture.record_screen)
-        if fn():
-            self.tray.showMessage(
-                "grabbit — recording",
-                "Recording starts after you confirm. Stop it with the "
-                "pulsing Spectacle tray icon; the file appears in the "
-                "gallery when done.", self.icon, 5000)
+    def toggle_recording(self) -> None:
+        if self.recorder.recording:
+            self.recorder.stop()
+            self.record_action.setText("Stopping…")
+        else:
+            self.recorder.start()
+
+    def _on_recording_started(self) -> None:
+        self.record_action.setText("Stop recording")
+        self.gallery.set_recording(True)
+        mic = "with mic" if self.settings.mic_enabled else "no mic"
+        self.tray.showMessage("grabbit — recording",
+                              f"Recording ({mic}). Stop from the tray or "
+                              "the Record button.", self.icon, 3500)
+
+    def _on_recording_finished(self, path: str) -> None:
+        self.record_action.setText("Record screen…")
+        self.gallery.set_recording(False)
+        self.gallery.rescan()
+        self.gallery.select_path(path)
+        self.show_gallery()
+        self.tray.showMessage("grabbit", f"Recording saved: "
+                              f"{os.path.basename(path)}", self.icon, 3000)
+
+    def _on_recording_failed(self, message: str) -> None:
+        self.record_action.setText("Record screen…")
+        self.gallery.set_recording(False)
+        self.tray.showMessage("grabbit — recording failed", message,
+                              self.icon, 5000)
 
     def toggle_bubble(self, on: bool) -> None:
         if on:

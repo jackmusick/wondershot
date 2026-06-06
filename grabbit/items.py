@@ -292,7 +292,22 @@ class HandleItem(QGraphicsRectItem):
 
     def mousePressEvent(self, event):  # noqa: N802
         self.press_state = self._on_pressed(self.parentItem(), self.role)
+        # Qt's movable-drag moves ALL selected items along with the
+        # grabber — the selected parent would follow the mouse and the
+        # grip (parent-relative) would never move at all. Freeze the
+        # parent for the duration of the grip drag.
+        parent = self.parentItem()
+        self._restore_movable = bool(
+            parent.flags() & QGraphicsItem.ItemIsMovable)
+        parent.setFlag(QGraphicsItem.ItemIsMovable, False)
         super().mousePressEvent(event)
+        event.accept()
+
+    def mouseReleaseEvent(self, event):  # noqa: N802
+        parent = self.parentItem()
+        if parent is not None and getattr(self, "_restore_movable", False):
+            parent.setFlag(QGraphicsItem.ItemIsMovable, True)
+        super().mouseReleaseEvent(event)
 
     def itemChange(self, change, value):  # noqa: N802
         if (change == QGraphicsItem.ItemPositionHasChanged and self._notify

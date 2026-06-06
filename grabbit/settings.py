@@ -61,6 +61,32 @@ class Settings:
         self._s.setValue("camera_device", value)
 
     @property
+    def mic_enabled(self) -> bool:
+        return self._s.value("mic_enabled", "true") in (True, "true")
+
+    @mic_enabled.setter
+    def mic_enabled(self, value: bool) -> None:
+        self._s.setValue("mic_enabled", "true" if value else "false")
+
+    @property
+    def mic_device(self) -> str:
+        """Preferred microphone description ('' = default)."""
+        return self._s.value("mic_device", "")
+
+    @mic_device.setter
+    def mic_device(self, value: str) -> None:
+        self._s.setValue("mic_device", value)
+
+    @property
+    def screencast_token(self) -> str:
+        """Portal restore token so the share picker shows only once."""
+        return self._s.value("screencast_token", "")
+
+    @screencast_token.setter
+    def screencast_token(self, value: str) -> None:
+        self._s.setValue("screencast_token", value)
+
+    @property
     def copy_after_capture(self) -> bool:
         return self._s.value("copy_after_capture", "true") in (True, "true")
 
