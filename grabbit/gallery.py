@@ -248,7 +248,7 @@ class GalleryWindow(QMainWindow):
             self.video_pane = VideoPane(self.settings)
             self.video_pane.status.connect(
                 lambda msg, ms: self.editor.statusBar().showMessage(msg, ms))
-            self.video_pane.gif_ready.connect(self._gif_ready)
+            self.video_pane.file_ready.connect(self._file_ready)
         except ImportError:
             self.video_pane = None
 
@@ -462,7 +462,7 @@ class GalleryWindow(QMainWindow):
         self._current_path = path
         self._update_title()
 
-    def _gif_ready(self, path: str) -> None:
+    def _file_ready(self, path: str) -> None:
         self.rescan()
         self.select_path(path)
 
