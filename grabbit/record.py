@@ -232,10 +232,17 @@ class ScreenRecorder(QObject):
         args += ["mp4mux", "name=mux", "!", "filesink", f"location={tmp}"]
 
         os.set_inheritable(fd, True)
+        log_dir = os.path.join(
+            os.environ.get("XDG_CACHE_HOME",
+                           os.path.expanduser("~/.cache")), "grabbit")
+        os.makedirs(log_dir, exist_ok=True)
+        self.log_path = os.path.join(log_dir, "recorder.log")
         try:
+            log = open(self.log_path, "wb")
+            log.write((" ".join(args) + "\n\n").encode())
+            log.flush()
             self._proc = subprocess.Popen(
-                args, pass_fds=[fd],
-                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+                args, pass_fds=[fd], stdout=log, stderr=log)
         except OSError as e:
             self._fail(f"could not start gstreamer: {e}")
             return
@@ -245,14 +252,22 @@ class ScreenRecorder(QObject):
         self.recording = True
         self.started.emit()
 
+    def _log_tail(self) -> str:
+        try:
+            with open(self.log_path, errors="replace") as f:
+                lines = [ln for ln in f.read().strip().splitlines()
+                         if "ERROR" in ln or "WARN" in ln] or ["unknown"]
+            return lines[-1]
+        except OSError:
+            return "unknown"
+
     def _check_alive(self) -> None:
         if self._proc is not None and self._proc.poll() is not None:
-            err = (self._proc.stderr.read().decode(errors="replace")
-                   if self._proc.stderr else "")
-            tail = err.strip().splitlines()[-1] if err.strip() else "unknown"
             self.recording = False
             self._cleanup()
-            self.failed.emit(f"recorder died: {tail[:160]}")
+            self.failed.emit(
+                f"recorder died: {self._log_tail()[:160]} "
+                f"(full log: {self.log_path})")
 
     def _poll_exit(self, timeout_ms: int) -> None:
         if self._proc is None:
@@ -275,7 +290,8 @@ class ScreenRecorder(QObject):
         else:
             if tmp and os.path.exists(tmp):
                 os.unlink(tmp)
-            self.failed.emit("recording did not finalize")
+            self.failed.emit(f"recording did not finalize "
+                             f"(log: {getattr(self, 'log_path', '?')})")
 
     def _close_session(self) -> None:
         if self._session and self._conn is not None:

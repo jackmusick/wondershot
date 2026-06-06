@@ -110,10 +110,14 @@ class GrabbitApp(QObject):
         self.record_action = QAction("Record screen…", menu)
         self.record_action.triggered.connect(self.toggle_recording)
         menu.addAction(self.record_action)
-        self.bubble_action = QAction("Camera bubble", menu)
+        self.bubble_action = QAction(QIcon.fromTheme("camera-web"),
+                                     "Bubble", menu)
         self.bubble_action.setCheckable(True)
+        self.bubble_action.setToolTip("Camera bubble (Loom-style)")
         self.bubble_action.toggled.connect(self.toggle_bubble)
         menu.addAction(self.bubble_action)
+        # same action also lives in the gallery toolbar
+        self.gallery.add_bubble_action(self.bubble_action)
         menu.addSeparator()
         a = QAction("Show gallery", menu)
         a.triggered.connect(self.show_gallery)

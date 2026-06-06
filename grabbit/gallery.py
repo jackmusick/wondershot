@@ -533,7 +533,8 @@ class GalleryWindow(QMainWindow):
         self.record_action = self._tb_act("Record", "media-record",
                                           self._toggle_record, "Ctrl+R")
         tb.addAction(self.record_action)
-        tb.addSeparator()
+        self._bubble_anchor = tb.addSeparator()
+        self.main_toolbar = tb
         tb.addAction(self._tb_act("Open in window", "window-new",
                                   self._open_in_window))
         tb.addAction(self._tb_act("Trash", "edit-delete",
@@ -641,6 +642,9 @@ class GalleryWindow(QMainWindow):
     def _open_folder(self) -> None:
         from PySide6.QtGui import QDesktopServices
         QDesktopServices.openUrl(QUrl.fromLocalFile(self.settings.library_dir))
+
+    def add_bubble_action(self, action) -> None:
+        self.main_toolbar.insertAction(self._bubble_anchor, action)
 
     def _toggle_record(self) -> None:
         if self.recorder is None:

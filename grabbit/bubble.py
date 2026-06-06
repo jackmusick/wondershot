@@ -20,6 +20,59 @@ from PySide6.QtWidgets import QMenu, QWidget
 
 SIZES = [160, 220, 300, 400]
 
+RULE_ID = "grabbitbubble"
+WINDOW_TITLE = "grabbit camera"
+
+
+def ensure_position_rule() -> None:
+    """KWin window rule placing the bubble bottom-right on open.
+
+    Wayland clients cannot position their own top-level windows; on KDE a
+    window rule (policy 3 = 'apply initially') does it for us while still
+    letting the user drag the bubble afterwards.
+    """
+    import shutil
+    import subprocess
+
+    if not shutil.which("kwriteconfig6"):
+        return
+    from PySide6.QtGui import QGuiApplication
+    screen = QGuiApplication.primaryScreen()
+    if screen is None:
+        return
+    avail = screen.availableGeometry()
+    size = 220
+    x = avail.right() - size - 24
+    y = avail.bottom() - size - 24
+
+    def kwrite(key, value):
+        subprocess.run(["kwriteconfig6", "--file", "kwinrulesrc",
+                        "--group", RULE_ID, "--key", key, value],
+                       capture_output=True, timeout=5)
+
+    try:
+        out = subprocess.run(
+            ["kreadconfig6", "--file", "kwinrulesrc",
+             "--group", "General", "--key", "rules"],
+            capture_output=True, text=True, timeout=5).stdout.strip()
+        rules = [r for r in out.split(",") if r]
+        kwrite("Description", "grabbit camera bubble")
+        kwrite("title", WINDOW_TITLE)
+        kwrite("titlematch", "1")  # exact
+        kwrite("position", f"{x},{y}")
+        kwrite("positionrule", "3")  # apply initially
+        if RULE_ID not in rules:
+            rules.append(RULE_ID)
+            subprocess.run(["kwriteconfig6", "--file", "kwinrulesrc",
+                            "--group", "General", "--key", "rules",
+                            ",".join(rules)],
+                           capture_output=True, timeout=5)
+        subprocess.run(["busctl", "--user", "call", "org.kde.KWin", "/KWin",
+                        "org.kde.KWin", "reconfigure"],
+                       capture_output=True, timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+
 
 def find_camera(preferred_description: str = ""):
     cams = QMediaDevices.videoInputs()
@@ -39,8 +92,9 @@ class CameraBubble(QWidget):
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
                             | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground, True)
-        self.setWindowTitle("grabbit camera")
+        self.setWindowTitle(WINDOW_TITLE)
         self.resize(220, 220)
+        ensure_position_rule()
 
         self._frame = None
         self.session = QMediaCaptureSession(self)
