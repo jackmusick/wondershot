@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "grabbit"
+version = "0.1.0"
+description = "Snagit-style screenshot tool for Linux/Wayland: capture, gallery with drag-out, markup editor"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Jack Musick" }]
+dependencies = ["PySide6>=6.6"]
+keywords = ["screenshot", "wayland", "kde", "snagit", "annotation"]
+
+[project.scripts]
+grabbit = "grabbit.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["grabbit*"]
+
+[tool.setuptools.package-data]
+grabbit = ["data/*"]

@@ -1,0 +1,22 @@
+[Desktop Entry]
+Type=Application
+Name=Grabbit
+GenericName=Screenshot Tool
+Comment=Capture, gallery with drag-out, markup editor
+Exec=grabbit
+Icon=grabbit
+Terminal=false
+Categories=Utility;Graphics;Photography;
+StartupNotify=false
+X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2
+Actions=capture;fullscreen;
+
+[Desktop Action capture]
+Name=Capture region
+Exec=grabbit --capture
+Icon=grabbit
+
+[Desktop Action fullscreen]
+Name=Capture full screen
+Exec=grabbit --fullscreen
+Icon=grabbit

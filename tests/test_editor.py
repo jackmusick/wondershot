@@ -1,0 +1,103 @@
+import os
+
+import pytest
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+from PySide6.QtCore import QPointF, QRect
+from PySide6.QtGui import QColor, QImage
+from PySide6.QtWidgets import QApplication
+
+
+@pytest.fixture(scope="session")
+def qapp():
+    app = QApplication.instance() or QApplication([])
+    yield app
+
+
+def make_editor(qapp, w=400, h=300, color="white"):
+    from grabbit.editor import EditorWindow
+    img = QImage(w, h, QImage.Format_ARGB32_Premultiplied)
+    img.fill(QColor(color))
+    return EditorWindow(image=img)
+
+
+def test_flatten_includes_annotations(qapp):
+    from grabbit.items import RectItem
+    from PySide6.QtCore import QRectF
+    ed = make_editor(qapp)
+    ed.scene.addItem(RectItem(QRectF(50, 50, 100, 80), QColor("red"), 4))
+    flat = ed.flattened()
+    assert flat.size() == ed.base_image.size()
+    # a pixel on the rect border should be red-ish
+    c = flat.pixelColor(50, 90)
+    assert c.red() > 150 and c.green() < 100
+
+
+def test_crop_undo_restores(qapp):
+    ed = make_editor(qapp, 400, 300)
+    ed._apply_crop(QRect(100, 100, 150, 100))
+    assert ed.base_image.width() == 150
+    assert ed.base_image.height() == 100
+    ed.undo_stack.undo()
+    assert ed.base_image.width() == 400
+    assert ed.base_image.height() == 300
+
+
+def test_cutout_via_drags(qapp):
+    ed = make_editor(qapp, 400, 300)
+    from grabbit.editor import Tool
+    ed.set_tool(Tool.CUTOUT)
+    # horizontal drag -> vertical band removed -> narrower
+    ed.begin_draw(QPointF(100, 150))
+    ed.update_draw(QPointF(200, 160))
+    ed.end_draw(QPointF(200, 160))
+    assert ed.base_image.width() == 300
+    assert ed.base_image.height() == 300
+
+
+def test_step_counter_with_undo(qapp):
+    from grabbit.editor import Tool
+    ed = make_editor(qapp)
+    ed.set_tool(Tool.STEP)
+    ed.begin_draw(QPointF(50, 50))
+    ed.begin_draw(QPointF(100, 50))
+    assert ed.step_counter == 3
+    ed.undo_stack.undo()
+    assert ed.step_counter == 2
+
+
+def test_arrow_drag_creates_undoable_item(qapp):
+    from grabbit.editor import Tool
+    from grabbit.items import is_annotation
+    ed = make_editor(qapp)
+    ed.set_tool(Tool.ARROW)
+    ed.begin_draw(QPointF(20, 20))
+    ed.update_draw(QPointF(200, 150))
+    ed.end_draw(QPointF(200, 150))
+    annotations = [i for i in ed.scene.items() if is_annotation(i)]
+    assert len(annotations) == 1
+    ed.undo_stack.undo()
+    annotations = [i for i in ed.scene.items() if is_annotation(i)]
+    assert len(annotations) == 0
+
+
+def test_pixelate_adds_patch_item(qapp):
+    from grabbit.editor import Tool
+    from grabbit.items import PixelateItem
+    ed = make_editor(qapp)
+    ed._apply_pixelate(QRect(50, 50, 100, 80))
+    patches = [i for i in ed.scene.items() if isinstance(i, PixelateItem)]
+    assert len(patches) == 1
+
+
+def test_save_emits_signal(qapp, tmp_path):
+    ed = make_editor(qapp)
+    target = str(tmp_path / "out.png")
+    ed.path = target
+    got = []
+    ed.saved.connect(got.append)
+    ed.save()
+    assert os.path.exists(target)
+    assert got == [target]
+    assert ed.undo_stack.isClean()

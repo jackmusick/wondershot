@@ -1,0 +1,106 @@
+import pytest
+from PySide6.QtCore import QRect
+from PySide6.QtGui import QColor, QImage
+
+from grabbit import imageops
+
+
+@pytest.fixture(scope="session", autouse=True)
+def qapp():
+    import os
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtGui import QGuiApplication
+    app = QGuiApplication.instance() or QGuiApplication([])
+    yield app
+
+
+def checkerboard(w=100, h=80, cell=10) -> QImage:
+    img = QImage(w, h, QImage.Format_ARGB32_Premultiplied)
+    for y in range(h):
+        for x in range(w):
+            on = ((x // cell) + (y // cell)) % 2 == 0
+            img.setPixelColor(x, y, QColor("white") if on else QColor("black"))
+    return img
+
+
+def solid(w, h, color) -> QImage:
+    img = QImage(w, h, QImage.Format_ARGB32_Premultiplied)
+    img.fill(QColor(color))
+    return img
+
+
+def test_crop_basic():
+    img = solid(100, 80, "red")
+    out = imageops.crop(img, QRect(10, 10, 30, 20))
+    assert out.width() == 30 and out.height() == 20
+    assert out.pixelColor(0, 0) == QColor("red")
+
+
+def test_crop_clamps_to_bounds():
+    img = solid(100, 80, "blue")
+    out = imageops.crop(img, QRect(90, 70, 50, 50))
+    assert out.width() == 10 and out.height() == 10
+
+
+def test_crop_empty_rect_returns_copy():
+    img = solid(50, 50, "green")
+    out = imageops.crop(img, QRect(200, 200, 10, 10))
+    assert out.size() == img.size()
+
+
+def test_pixelate_changes_region_only():
+    img = checkerboard()
+    rect = QRect(20, 20, 42, 30)
+    # block=14 misaligns with the 10px checker cells so blocks average to gray
+    out = imageops.pixelate(img, rect, block=14)
+    assert out.size() == img.size()
+    # outside the rect: unchanged
+    assert out.pixelColor(5, 5) == img.pixelColor(5, 5)
+    assert out.pixelColor(80, 70) == img.pixelColor(80, 70)
+    # inside: checkerboard averaged to gray-ish, not pure black/white
+    center = out.pixelColor(40, 35)
+    assert center != QColor("white") and center != QColor("black")
+
+
+def test_pixelated_patch_size():
+    img = checkerboard()
+    patch = imageops.pixelated_patch(img, QRect(10, 10, 30, 20))
+    assert patch.width() == 30 and patch.height() == 20
+
+
+def test_cut_out_horizontal_band():
+    # rows 20..40 removed -> height shrinks by 20
+    img = QImage(60, 100, QImage.Format_ARGB32_Premultiplied)
+    img.fill(QColor("red"))
+    for y in range(20, 40):
+        for x in range(60):
+            img.setPixelColor(x, y, QColor("blue"))
+    out = imageops.cut_out(img, 20, 40, horizontal=True)
+    assert out.height() == 80 and out.width() == 60
+    # no blue rows survive
+    for y in range(out.height()):
+        assert out.pixelColor(30, y) == QColor("red")
+
+
+def test_cut_out_vertical_band():
+    img = QImage(100, 60, QImage.Format_ARGB32_Premultiplied)
+    img.fill(QColor("red"))
+    for x in range(30, 50):
+        for y in range(60):
+            img.setPixelColor(x, y, QColor("blue"))
+    out = imageops.cut_out(img, 30, 50, horizontal=False)
+    assert out.width() == 80 and out.height() == 60
+    for x in range(out.width()):
+        assert out.pixelColor(x, 30) == QColor("red")
+
+
+def test_cut_out_swapped_args():
+    img = solid(100, 100, "red")
+    out = imageops.cut_out(img, 60, 40, horizontal=True)
+    assert out.height() == 80
+
+
+def test_cut_out_empty_band():
+    img = solid(50, 50, "red")
+    out = imageops.cut_out(img, 30, 30, horizontal=False)
+    assert out.size() == img.size()
