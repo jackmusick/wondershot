@@ -53,6 +53,17 @@ _Last updated: 2026-06-06_
       watchdog now reports pipeline death instead of "Stopping" forever
 - [ ] Date/time overlay on carousel cards; elapsed time on stop buttons
 
+**Sharing & capture UX (new)**
+- Share button (editor toolbar, top-right): uploads to S3-compatible or
+  Azure Blob, copies a time-limited presigned/SAS URL; stdlib HMAC
+  signers (SigV4 verified against AWS's test vector + live MinIO);
+  caret menu picks provider + default; Share… in carousel context menu
+- Snagit-style capture window (Capture button in gallery toolbar):
+  big red Capture + full screen/record, toggles for preview/clipboard/
+  cursor/delay that persist as defaults
+- Editor toolbar is tools-only (file ops via shortcuts + context menu);
+  "Camera" replaces "Bubble" in UI strings
+
 ## Next up (in order)
 
 1. **Sidecar persistence** — annotations stay editable objects when you

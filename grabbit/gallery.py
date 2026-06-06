@@ -579,10 +579,8 @@ class GalleryWindow(QMainWindow):
         tb.setIconSize(QSize(22, 22))
         self.addToolBar(tb)
 
-        tb.addAction(self._tb_act("Capture region", "transform-crop",
-                                  self.capture.capture_region, "Ctrl+N"))
-        tb.addAction(self._tb_act("Full screen", "computer",
-                                  self.capture.capture_fullscreen))
+        tb.addAction(self._tb_act("Capture", "camera-photo",
+                                  self._open_capture_window, "Ctrl+N"))
         self.record_action = self._tb_act("Record", "media-record",
                                           self._toggle_record, "Ctrl+R")
         tb.addAction(self.record_action)
@@ -603,6 +601,24 @@ class GalleryWindow(QMainWindow):
         tb.addAction(self._tb_act("Settings", "configure", self._open_settings))
 
     # -- actions -----------------------------------------------------------------
+
+    def _open_capture_window(self) -> None:
+        if getattr(self, "_capture_window", None) is None:
+            from .capture_window import CaptureWindow
+            self._capture_window = CaptureWindow(self.settings)
+            self._capture_window.capture_requested.connect(
+                self._capture_mode)
+        self._capture_window.show()
+        self._capture_window.raise_()
+        self._capture_window.activateWindow()
+
+    def _capture_mode(self, mode: str) -> None:
+        if mode == "record":
+            self._toggle_record()
+        elif mode == "fullscreen":
+            self.capture.capture_fullscreen()
+        else:
+            self.capture.capture_region()
 
     def _selected_paths(self) -> list[str]:
         return [i.data(PATH_ROLE)

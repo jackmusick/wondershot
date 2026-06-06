@@ -85,6 +85,24 @@ class Settings:
     def noise_suppression(self, value: bool) -> None:
         self._s.setValue("noise_suppression", "true" if value else "false")
 
+    @property
+    def capture_cursor(self) -> bool:
+        """Include the pointer in screenshots (Spectacle backend only)."""
+        return self._s.value("capture_cursor", "false") in (True, "true")
+
+    @capture_cursor.setter
+    def capture_cursor(self, value: bool) -> None:
+        self._s.setValue("capture_cursor", "true" if value else "false")
+
+    @property
+    def capture_delay(self) -> int:
+        """Seconds to wait before taking the shot."""
+        return int(self._s.value("capture_delay", 0))
+
+    @capture_delay.setter
+    def capture_delay(self, value: int) -> None:
+        self._s.setValue("capture_delay", int(value))
+
     # -- sharing (S3-compatible / Azure Blob) -------------------------------
     # NOTE: credentials are stored in plaintext QSettings; the dialog
     # warns about this.

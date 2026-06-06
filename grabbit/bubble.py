@@ -174,7 +174,7 @@ class CameraBubble(QWidget):
         for s in SIZES:
             menu.addAction(f"{s}px", lambda s=s: self.resize(s, s))
         menu.addSeparator()
-        menu.addAction("Hide bubble", self.close)
+        menu.addAction("Hide camera", self.close)
         menu.exec(ev.globalPos())
 
     def closeEvent(self, ev):  # noqa: N802

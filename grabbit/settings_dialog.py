@@ -94,7 +94,7 @@ class SettingsDialog(QDialog):
             pass
         i = self.camera_combo.findData(settings.camera_device)
         self.camera_combo.setCurrentIndex(max(0, i))
-        form.addRow("Bubble camera:", self.camera_combo)
+        form.addRow("Camera:", self.camera_combo)
 
         i = self.mic_combo.findData(settings.mic_device)
         self.mic_combo.setCurrentIndex(max(0, i))

@@ -87,7 +87,12 @@ class CaptureManager(QObject):
         if backend == "spectacle":
             self._spectacle(mode)
         else:
-            self._portal(interactive=(mode != "fullscreen"))
+            # the Screenshot portal has no delay option; wait ourselves
+            delay = self.settings.capture_delay * 1000
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(
+                delay, lambda: self._portal(
+                    interactive=(mode != "fullscreen")))
 
     # -- spectacle backend ----------------------------------------------
 
@@ -99,7 +104,12 @@ class CaptureManager(QObject):
         self._proc = QProcess(self)
         self._proc.finished.connect(lambda code, _st: self._spectacle_done(code, out))
         # -b background, -n no notification popup
-        self._proc.start("spectacle", ["-b", "-n", flag, "-o", out])
+        args = ["-b", "-n", flag, "-o", out]
+        if self.settings.capture_cursor:
+            args.insert(2, "-p")  # include pointer
+        if self.settings.capture_delay:
+            args += ["-d", str(self.settings.capture_delay * 1000)]
+        self._proc.start("spectacle", args)
 
     def _spectacle_done(self, code: int, out: str) -> None:
         proc, self._proc = self._proc, None
