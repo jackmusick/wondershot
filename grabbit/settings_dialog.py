@@ -42,6 +42,17 @@ class SettingsDialog(QDialog):
         dir_row.addWidget(browse)
         form.addRow("Screenshot library:", dir_row)
 
+        # extra watched folders (screen recordings etc.)
+        extra_row = QHBoxLayout()
+        self.extra_edit = QLineEdit(";".join(settings.extra_dirs))
+        self.extra_edit.setPlaceholderText(
+            "folders separated by ; (e.g. screen recordings)")
+        add_extra = QPushButton("Add…")
+        add_extra.clicked.connect(self._add_extra)
+        extra_row.addWidget(self.extra_edit, 1)
+        extra_row.addWidget(add_extra)
+        form.addRow("Also watch:", extra_row)
+
         # backend
         self.backend_combo = QComboBox()
         self.backend_combo.addItem("Auto (Spectacle if available)", "auto")
@@ -90,6 +101,15 @@ class SettingsDialog(QDialog):
         if d:
             self.dir_edit.setText(d)
 
+    def _add_extra(self) -> None:
+        d = QFileDialog.getExistingDirectory(
+            self, "Add watched folder", self.dir_edit.text())
+        if d:
+            current = [x for x in self.extra_edit.text().split(";") if x]
+            if d not in current:
+                current.append(d)
+            self.extra_edit.setText(";".join(current))
+
     def _open_kde_shortcuts(self) -> None:
         if shutil.which("systemsettings"):
             QProcess.startDetached("systemsettings", ["kcm_keys"])
@@ -97,9 +117,12 @@ class SettingsDialog(QDialog):
             QProcess.startDetached("kcmshell6", ["kcm_keys"])
 
     def apply(self) -> bool:
-        """Write values into settings. Returns True if the library moved."""
-        moved = self.dir_edit.text() != self.settings.library_dir
+        """Write values into settings. Returns True if watched dirs changed."""
+        new_extras = [d for d in self.extra_edit.text().split(";") if d]
+        moved = (self.dir_edit.text() != self.settings.library_dir
+                 or new_extras != self.settings.extra_dirs)
         self.settings.library_dir = self.dir_edit.text()
+        self.settings.extra_dirs = new_extras
         self.settings.backend = self.backend_combo.currentData()
         self.settings.copy_after_capture = self.copy_check.isChecked()
         self.settings.show_gallery_after_capture = self.show_check.isChecked()

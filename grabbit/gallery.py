@@ -333,23 +333,33 @@ class GalleryWindow(QMainWindow):
 
     # -- library --------------------------------------------------------------
 
+    def _watch_dirs(self) -> list[str]:
+        dirs = [self.settings.library_dir]
+        for d in self.settings.extra_dirs:
+            if d not in dirs and os.path.isdir(d):
+                dirs.append(d)
+        return dirs
+
     def set_library(self, directory: str) -> None:
         os.makedirs(directory, exist_ok=True)
         for d in self.watcher.directories():
             self.watcher.removePath(d)
-        self.watcher.addPath(directory)
+        for d in self._watch_dirs():
+            self.watcher.addPath(d)
         self.rescan()
 
     def _list_library(self) -> list[str]:
-        directory = self.settings.library_dir
-        try:
-            entries = [
-                os.path.join(directory, n)
-                for n in os.listdir(directory)
-                if os.path.splitext(n)[1].lower() in (IMAGE_EXTS | VIDEO_EXTS)
-            ]
-        except OSError:
-            return []
+        entries = []
+        for directory in self._watch_dirs():
+            try:
+                entries.extend(
+                    os.path.join(directory, n)
+                    for n in os.listdir(directory)
+                    if os.path.splitext(n)[1].lower()
+                    in (IMAGE_EXTS | VIDEO_EXTS)
+                )
+            except OSError:
+                continue
         entries.sort(key=lambda p: os.path.getmtime(p), reverse=True)
         return entries
 

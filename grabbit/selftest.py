@@ -93,6 +93,7 @@ def run_selftest(out_dir: str) -> int:
 
     class FakeSettings:
         library_dir = libdir
+        extra_dirs = []
         backend = "auto"
         copy_after_capture = False
         show_gallery_after_capture = True

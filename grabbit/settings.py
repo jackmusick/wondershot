@@ -27,6 +27,22 @@ class Settings:
         self._s.setValue("library_dir", value)
 
     @property
+    def extra_dirs(self) -> list[str]:
+        """Additional folders shown in the gallery (e.g. screen recordings)."""
+        raw = self._s.value("extra_dirs", "")
+        if not raw:
+            # sensible default: pick up screen recordings if the dirs exist
+            videos = QStandardPaths.writableLocation(
+                QStandardPaths.MoviesLocation)
+            candidates = [videos, os.path.join(videos or "", "Screencasts")]
+            return [d for d in candidates if d and os.path.isdir(d)]
+        return [d for d in raw.split(";") if d]
+
+    @extra_dirs.setter
+    def extra_dirs(self, dirs: list[str]) -> None:
+        self._s.setValue("extra_dirs", ";".join(dirs))
+
+    @property
     def backend(self) -> str:
         """'auto' | 'spectacle' | 'portal'"""
         return self._s.value("backend", "auto")
