@@ -100,6 +100,17 @@ class GrabbitApp(QObject):
         a.triggered.connect(lambda: self.trigger_capture("fullscreen"))
         menu.addAction(a)
         menu.addSeparator()
+        a = QAction("Record region", menu)
+        a.triggered.connect(lambda: self._start_recording("region"))
+        menu.addAction(a)
+        a = QAction("Record full screen", menu)
+        a.triggered.connect(lambda: self._start_recording("screen"))
+        menu.addAction(a)
+        self.bubble_action = QAction("Camera bubble", menu)
+        self.bubble_action.setCheckable(True)
+        self.bubble_action.toggled.connect(self.toggle_bubble)
+        menu.addAction(self.bubble_action)
+        menu.addSeparator()
         a = QAction("Show gallery", menu)
         a.triggered.connect(self.show_gallery)
         menu.addAction(a)
@@ -157,6 +168,30 @@ class GrabbitApp(QObject):
         self.gallery.show()
         self.gallery.raise_()
         self.gallery.activateWindow()
+
+    # -- recording / camera bubble -----------------------------------------
+
+    def _start_recording(self, mode: str) -> None:
+        fn = (self.capture.record_region if mode == "region"
+              else self.capture.record_screen)
+        if fn():
+            self.tray.showMessage(
+                "grabbit — recording",
+                "Recording starts after you confirm. Stop it with the "
+                "pulsing Spectacle tray icon; the file appears in the "
+                "gallery when done.", self.icon, 5000)
+
+    def toggle_bubble(self, on: bool) -> None:
+        if on:
+            from .bubble import CameraBubble
+            self.bubble = CameraBubble(self.settings)
+            self.bubble.setAttribute(Qt.WA_DeleteOnClose, True)
+            self.bubble.destroyed.connect(
+                lambda *_: self.bubble_action.setChecked(False))
+            self.bubble.show()
+        elif getattr(self, "bubble", None) is not None:
+            self.bubble.close()
+            self.bubble = None
 
     # -- commands from second instances --------------------------------------
 

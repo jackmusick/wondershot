@@ -56,6 +56,28 @@ class CaptureManager(QObject):
     def capture_window(self) -> None:
         self._capture("window")
 
+    # -- recording (v1: Spectacle's portal/PipeWire engine) --------------
+
+    def record_region(self) -> bool:
+        return self._record("region")
+
+    def record_screen(self) -> bool:
+        return self._record("screen")
+
+    def _record(self, mode: str) -> bool:
+        if not shutil.which("spectacle"):
+            self.failed.emit("screen recording currently needs spectacle")
+            return False
+        out = unique_path(self.settings.library_dir,
+                          timestamp_name("Recording").replace(".png", ".webm"))
+        # Recording runs long and owns its own stop UI (Spectacle tray
+        # button) — fully detach it.
+        ok = QProcess.startDetached(
+            "spectacle", ["-b", "-n", "-R", mode, "-o", out])
+        if not ok:
+            self.failed.emit("could not start spectacle recording")
+        return ok
+
     # -- backend dispatch ----------------------------------------------
 
     def _capture(self, mode: str) -> None:

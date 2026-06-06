@@ -134,7 +134,7 @@ def test_resize_handles_lifecycle(qapp):
     rect = RectItem(QRectF(50, 50, 100, 80), QColor("red"), 4)
     ed.scene.addItem(rect)
     rect.setSelected(True)
-    assert len(ed._handles) == 4
+    assert len(ed._handles) == 5  # 4 corners + rotate
     # drag the bottom-right grip outward
     ed._handle_moved(rect, "br", QPointF(200, 200), {})
     assert rect.rect().bottomRight() == QPointF(200, 200)
@@ -167,6 +167,21 @@ def test_text_font_resize(qapp):
     h0 = t.boundingRect().height()
     ed._handle_moved(t, "font", QPointF(0, h0 * 2), {"font0": 18.0, "h0": h0})
     assert t.font().pointSize() == 36
+
+
+def test_rotation_handle(qapp):
+    from grabbit.items import RectItem
+    from PySide6.QtCore import QRectF, QPointF
+    ed = make_editor(qapp)
+    rect = RectItem(QRectF(100, 100, 100, 60), QColor("red"), 4)
+    ed.scene.addItem(rect)
+    rect.setSelected(True)
+    roles = {h.role for h in ed._handles}
+    assert "rotate" in roles
+    # drag the rotate grip to the right of center -> ~90 degrees
+    c = rect.rect().center()
+    ed._handle_moved(rect, "rotate", QPointF(c.x() + 50, c.y()), {})
+    assert abs(rect.rotation() - 90) < 1
 
 
 def test_save_emits_signal(qapp, tmp_path):

@@ -70,6 +70,20 @@ class SettingsDialog(QDialog):
         self.show_check.setChecked(settings.show_gallery_after_capture)
         form.addRow("", self.show_check)
 
+        # camera for the recording bubble
+        self.camera_combo = QComboBox()
+        self.camera_combo.addItem("System default", "")
+        try:
+            from PySide6.QtMultimedia import QMediaDevices
+            for cam in QMediaDevices.videoInputs():
+                self.camera_combo.addItem(cam.description(),
+                                          cam.description())
+        except ImportError:
+            pass
+        i = self.camera_combo.findData(settings.camera_device)
+        self.camera_combo.setCurrentIndex(max(0, i))
+        form.addRow("Bubble camera:", self.camera_combo)
+
         # hotkey guidance
         hk = QGroupBox("Global capture hotkey")
         hk_layout = QVBoxLayout(hk)
@@ -124,6 +138,7 @@ class SettingsDialog(QDialog):
         self.settings.library_dir = self.dir_edit.text()
         self.settings.extra_dirs = new_extras
         self.settings.backend = self.backend_combo.currentData()
+        self.settings.camera_device = self.camera_combo.currentData()
         self.settings.copy_after_capture = self.copy_check.isChecked()
         self.settings.show_gallery_after_capture = self.show_check.isChecked()
         return moved

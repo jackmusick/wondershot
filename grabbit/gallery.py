@@ -515,6 +515,8 @@ class GalleryWindow(QMainWindow):
                                   self.capture.capture_region, "Ctrl+N"))
         tb.addAction(self._tb_act("Full screen", "computer",
                                   self.capture.capture_fullscreen))
+        tb.addAction(self._tb_act("Record", "media-record",
+                                  self.capture.record_region, "Ctrl+R"))
         tb.addSeparator()
         tb.addAction(self._tb_act("Open in window", "window-new",
                                   self._open_in_window))

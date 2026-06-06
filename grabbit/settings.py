@@ -52,6 +52,15 @@ class Settings:
         self._s.setValue("backend", value)
 
     @property
+    def camera_device(self) -> str:
+        """Preferred camera description for the bubble ('' = default)."""
+        return self._s.value("camera_device", "")
+
+    @camera_device.setter
+    def camera_device(self, value: str) -> None:
+        self._s.setValue("camera_device", value)
+
+    @property
     def copy_after_capture(self) -> bool:
         return self._s.value("copy_after_capture", "true") in (True, "true")
 

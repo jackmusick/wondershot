@@ -654,19 +654,29 @@ class EditorWindow(QMainWindow):
 
     # -- resize handles ----------------------------------------------------
 
+    ROTATE_OFFSET = 28  # grip distance above the object's top edge
+
     def _handle_positions(self, t) -> dict[str, QPointF]:
         """Role → position (in the item's coordinates) for its grips."""
         if isinstance(t, (ArrowItem, LineItem)):
             p1, p2 = t.endpoints()
             return {"p1": p1, "p2": p2}
-        if isinstance(t, (RectItem, EllipseItem, HighlightItem, PixelateItem)):
+        if isinstance(t, (RectItem, EllipseItem, HighlightItem)):
+            r = t.rect()
+            return {"tl": r.topLeft(), "tr": r.topRight(),
+                    "bl": r.bottomLeft(), "br": r.bottomRight(),
+                    "rotate": QPointF(r.center().x(),
+                                      r.top() - self.ROTATE_OFFSET)}
+        if isinstance(t, PixelateItem):
             r = t.rect()
             return {"tl": r.topLeft(), "tr": r.topRight(),
                     "bl": r.bottomLeft(), "br": r.bottomRight()}
         if isinstance(t, TextItem):
             br = t.boundingRect()
             return {"font": br.bottomRight(),
-                    "width": QPointF(br.right(), br.center().y())}
+                    "width": QPointF(br.right(), br.center().y()),
+                    "rotate": QPointF(br.center().x(),
+                                      br.top() - self.ROTATE_OFFSET)}
         if isinstance(t, StepItem):
             return {"radius": QPointF(t.radius, 0)}
         return {}
@@ -720,6 +730,16 @@ class EditorWindow(QMainWindow):
                 t.setFont(f)
             elif role == "width" and isinstance(t, TextItem):
                 t.setTextWidth(max(40.0, pos.x()))
+            elif role == "rotate":
+                import math
+                c = (t.rect().center() if hasattr(t, "rect")
+                     else t.boundingRect().center())
+                t.setTransformOriginPoint(c)
+                # Handle pos arrives in the item's local (pre-rotation)
+                # frame, so its angle from straight-up IS the delta.
+                ang = math.degrees(math.atan2(pos.x() - c.x(),
+                                              c.y() - pos.y()))
+                t.setRotation((t.rotation() + ang) % 360)
             elif role == "radius" and isinstance(t, StepItem):
                 import math
                 t.set_radius(math.hypot(pos.x(), pos.y()))
