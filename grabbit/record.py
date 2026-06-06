@@ -242,9 +242,14 @@ class ScreenRecorder(QObject):
             dsp = []
             if (self.settings.noise_suppression
                     and _have_gst_element("webrtcdsp")):
+                # measured on this hardware: NS very-high without AGC has a
+                # 22dB lower ambient floor than raw, 8dB lower than NS+AGC
+                # (AGC re-amplifies room noise between words)
                 dsp = ["!", "audio/x-raw,rate=48000,channels=1",
                        "!", "webrtcdsp", "echo-cancel=false",
-                       "noise-suppression=true", "gain-control=true",
+                       "noise-suppression=true",
+                       "noise-suppression-level=very-high",
+                       "gain-control=false",
                        "high-pass-filter=true"]
             args += [
                 "pulsesrc", *dev_arg, "do-timestamp=true",
