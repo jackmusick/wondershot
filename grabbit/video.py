@@ -1,9 +1,10 @@
 """In-app video playback with range-blur redaction and GIF conversion.
 
-The video renders inside a QGraphicsScene (QGraphicsVideoItem), so blur
-regions are ordinary graphics items drawn in true video-pixel coordinates —
-exactly like annotations in the image editor, and immune to the native-
-surface overlay problems QVideoWidget has on Wayland.
+Playback uses QVideoWidget (the GPU-accelerated path — QGraphicsVideoItem
+lagged on 60fps screencasts, and an QOpenGLWidget viewport rendered blank on
+Wayland). Blur regions are painted by a transparent sibling widget stacked
+above the video, with explicit widget↔video coordinate mapping through the
+aspect-fit rectangle.
 """
 
 from __future__ import annotations
@@ -13,16 +14,12 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 
-from PySide6.QtCore import QPointF, QProcess, QRect, QRectF, Qt, QUrl, Signal
-from PySide6.QtGui import QBrush, QColor, QIcon, QPainter, QPen
+from PySide6.QtCore import QPoint, QPointF, QProcess, QRect, QRectF, Qt, QUrl, Signal
+from PySide6.QtGui import QColor, QIcon, QPainter, QPen
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
-from PySide6.QtMultimediaWidgets import QGraphicsVideoItem
+from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
     QDoubleSpinBox,
-    QGraphicsRectItem,
-    QGraphicsScene,
-    QGraphicsSimpleTextItem,
-    QGraphicsView,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -94,80 +91,144 @@ def pick_encoder() -> str:
     return _encoder_cache
 
 
-class VideoCanvas(QGraphicsView):
-    """Graphics view hosting the video item; draws blur boxes in blur mode."""
+PALETTE = ["#e05555", "#e0a030", "#46a3e0", "#9a59d0", "#43b97f"]
+
+
+class RedactOverlay(QWidget):
+    """Transparent sibling stacked above the video widget: draws the drag
+    band and the frosted blur regions, and maps widget↔video coordinates."""
 
     region_drawn = Signal(QRect)  # video pixel coords
 
-    def __init__(self, pane: "VideoPane"):
-        self.scene_ = QGraphicsScene()
-        super().__init__(self.scene_)
+    def __init__(self, parent: QWidget, pane: "VideoPane"):
+        super().__init__(parent)
         self.pane = pane
-        self.blur_mode = False
-        self._origin: QPointF | None = None
-        self._band: QGraphicsRectItem | None = None
-        self.setBackgroundBrush(QColor(26, 26, 29))
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.setRenderHint(QPainter.Antialiasing)
-        self.setFrameShape(QGraphicsView.NoFrame)
-        # GPU compositing: with the default raster viewport every video
-        # frame is converted/painted on the CPU — 60fps screencasts lag.
-        try:
-            from PySide6.QtOpenGLWidgets import QOpenGLWidget
-            self.setViewport(QOpenGLWidget())
-        except ImportError:
-            pass
-        self.setViewportUpdateMode(QGraphicsView.FullViewportUpdate)
+        self.active = False
+        self._origin: QPoint | None = None
+        self._band: QRect | None = None
+        self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self.setAttribute(Qt.WA_NoSystemBackground, True)
+        self.setAttribute(Qt.WA_TranslucentBackground, True)
 
-    def set_blur_mode(self, on: bool) -> None:
-        self.blur_mode = on
+    def set_active(self, on: bool) -> None:
+        self.active = on
+        self.setAttribute(Qt.WA_TransparentForMouseEvents, not on)
         self.setCursor(Qt.CrossCursor if on else Qt.ArrowCursor)
+        self._origin = self._band = None
+        self.update()
 
-    def fit(self) -> None:
-        rect = self.scene_.sceneRect()
-        if not rect.isEmpty():
-            self.fitInView(rect, Qt.KeepAspectRatio)
+    # -- coordinate mapping ---------------------------------------------------
+
+    def _video_size(self):
+        sink = self.pane.player.videoSink()
+        if sink is None:
+            return None
+        size = sink.videoSize()
+        return size if size.isValid() and not size.isEmpty() else None
+
+    def display_rect(self) -> QRectF:
+        """Where the (aspect-fit) video actually sits inside this widget."""
+        vs = self._video_size()
+        if vs is None:
+            return QRectF(self.rect())
+        scale = min(self.width() / vs.width(), self.height() / vs.height())
+        w, h = vs.width() * scale, vs.height() * scale
+        return QRectF((self.width() - w) / 2, (self.height() - h) / 2, w, h)
+
+    def widget_to_video(self, r: QRect) -> QRect:
+        disp = self.display_rect()
+        vs = self._video_size()
+        if vs is None or disp.width() < 1:
+            return QRect()
+        sx, sy = vs.width() / disp.width(), vs.height() / disp.height()
+        out = QRect(round((r.x() - disp.x()) * sx),
+                    round((r.y() - disp.y()) * sy),
+                    round(r.width() * sx), round(r.height() * sy))
+        return out.intersected(QRect(0, 0, vs.width(), vs.height()))
+
+    def video_to_widget(self, r: QRect) -> QRectF:
+        disp = self.display_rect()
+        vs = self._video_size()
+        if vs is None:
+            return QRectF()
+        sx, sy = disp.width() / vs.width(), disp.height() / vs.height()
+        return QRectF(disp.x() + r.x() * sx, disp.y() + r.y() * sy,
+                      r.width() * sx, r.height() * sy)
+
+    # -- interaction -------------------------------------------------------------
+
+    def mousePressEvent(self, ev):  # noqa: N802
+        if self.active and ev.button() == Qt.LeftButton:
+            self._origin = ev.position().toPoint()
+            self._band = QRect(self._origin, self._origin)
+            self.update()
+
+    def mouseMoveEvent(self, ev):  # noqa: N802
+        if self._origin is not None:
+            self._band = QRect(self._origin,
+                               ev.position().toPoint()).normalized()
+            self.update()
+
+    def mouseReleaseEvent(self, _ev):  # noqa: N802
+        if self._origin is None:
+            return
+        band, self._origin, self._band = self._band, None, None
+        self.update()
+        if band is not None and band.width() > 6 and band.height() > 6:
+            video_rect = self.widget_to_video(band)
+            if not video_rect.isEmpty():
+                self.region_drawn.emit(video_rect)
+
+    # -- painting ------------------------------------------------------------------
+
+    def paintEvent(self, _ev):  # noqa: N802
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        t = self.pane.player.position() / 1000.0
+        for i, red in enumerate(self.pane.redactions):
+            # The frost is only shown while the playhead is inside the
+            # span — scrubbing previews exactly what gets blurred and when.
+            if not (red.start <= t <= red.end):
+                continue
+            r = self.video_to_widget(red.rect)
+            color = QColor(PALETTE[i % len(PALETTE)])
+            pen = QPen(color, 2, Qt.DashLine)
+            p.setPen(pen)
+            p.setBrush(QColor(255, 255, 255, 70))
+            p.drawRect(r)
+            f = p.font()
+            f.setBold(True)
+            f.setPointSize(13)
+            p.setFont(f)
+            p.setPen(QColor("white"))
+            p.drawText(r.adjusted(8, 6, 0, 0).topLeft() + QPoint(0, 14),
+                       str(i + 1))
+        if self._band is not None:
+            p.setPen(QPen(QColor("#3daee9"), 2, Qt.DashLine))
+            p.setBrush(QColor(61, 174, 233, 50))
+            p.drawRect(self._band)
+        elif self.active:
+            p.setPen(QColor(255, 255, 255, 210))
+            p.drawText(self.rect(), Qt.AlignCenter,
+                       "Drag a box over the area to blur")
+        p.end()
+
+
+class VideoStack(QWidget):
+    """Container keeping the overlay glued on top of the video widget."""
+
+    def __init__(self, pane: "VideoPane"):
+        super().__init__(pane)
+        self.video = QVideoWidget(self)
+        self.video.setStyleSheet("background: #1a1a1d;")
+        self.overlay = RedactOverlay(self, pane)
+        self.overlay.raise_()
 
     def resizeEvent(self, ev):  # noqa: N802
         super().resizeEvent(ev)
-        self.fit()
-
-    # -- drawing a region ----------------------------------------------------
-
-    def mousePressEvent(self, ev):  # noqa: N802
-        if not self.blur_mode or ev.button() != Qt.LeftButton:
-            super().mousePressEvent(ev)
-            return
-        self._origin = self.mapToScene(ev.position().toPoint())
-        self._band = QGraphicsRectItem(QRectF(self._origin, self._origin))
-        pen = QPen(QColor("#3daee9"), 2, Qt.DashLine)
-        pen.setCosmetic(True)
-        self._band.setPen(pen)
-        self._band.setBrush(QColor(61, 174, 233, 60))
-        self._band.setZValue(10000)
-        self.scene_.addItem(self._band)
-
-    def mouseMoveEvent(self, ev):  # noqa: N802
-        if self._band is None:
-            super().mouseMoveEvent(ev)
-            return
-        pos = self.mapToScene(ev.position().toPoint())
-        self._band.setRect(QRectF(self._origin, pos).normalized())
-
-    def mouseReleaseEvent(self, ev):  # noqa: N802
-        if self._band is None:
-            super().mouseReleaseEvent(ev)
-            return
-        band, self._band = self._band, None
-        rect = band.rect().toRect()
-        self.scene_.removeItem(band)
-        self._origin = None
-        # scene coords ARE video pixel coords (video item sized to native)
-        bounds = self.scene_.sceneRect().toRect()
-        rect = rect.intersected(bounds)
-        if rect.width() > 6 and rect.height() > 6:
-            self.region_drawn.emit(rect)
+        self.video.setGeometry(self.rect())
+        self.overlay.setGeometry(self.rect())
+        self.overlay.raise_()
 
 
 class RangeBar(QWidget):
@@ -179,7 +240,7 @@ class RangeBar(QWidget):
     - drag on empty bar: define the active blur's span from scratch
     """
 
-    PALETTE = ["#e05555", "#e0a030", "#46a3e0", "#9a59d0", "#43b97f"]
+    PALETTE = PALETTE
     EDGE_PX = 7
 
     def __init__(self, pane: "VideoPane"):
@@ -291,7 +352,7 @@ class RangeBar(QWidget):
         for i, red in enumerate(self.pane.redactions):
             x1 = red.start * 1000 / dur * w
             x2 = red.end * 1000 / dur * w
-            color = QColor(self.PALETTE[i % len(self.PALETTE)])
+            color = QColor(PALETTE[i % len(PALETTE)])
             active = i == self.pane.active_idx
             color.setAlpha(230 if active else 130)
             p.setBrush(color)
@@ -318,18 +379,15 @@ class VideoPane(QWidget):
         self.redactions: list[Redaction] = []
         self.active_idx = -1
         self._row_spins: list[tuple[QDoubleSpinBox, QDoubleSpinBox]] = []
-        self._overlay_items: list = []
         self._pause_on_load = False
 
         self.player = QMediaPlayer(self)
         self.audio = QAudioOutput(self)
         self.player.setAudioOutput(self.audio)
-        self.video_item = QGraphicsVideoItem()
-        self.player.setVideoOutput(self.video_item)
-        self.canvas = VideoCanvas(self)
-        self.canvas.scene_.addItem(self.video_item)
-        self.canvas.region_drawn.connect(self._region_drawn)
-        self.video_item.nativeSizeChanged.connect(self._native_size_changed)
+        self.stack = VideoStack(self)
+        self.player.setVideoOutput(self.stack.video)
+        self.overlay = self.stack.overlay
+        self.overlay.region_drawn.connect(self._region_drawn)
 
         self.play_btn = QPushButton(self)
         self.play_btn.setIcon(QIcon.fromTheme("media-playback-start"))
@@ -385,7 +443,7 @@ class VideoPane(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(2)
-        layout.addWidget(self.canvas, 1)
+        layout.addWidget(self.stack, 1)
         layout.addLayout(controls)
         layout.addWidget(self.range_bar)
         layout.addWidget(self.hint)
@@ -423,13 +481,6 @@ class VideoPane(QWidget):
         else:
             self.player.play()
 
-    def _native_size_changed(self, size) -> None:
-        if size.isEmpty():
-            return
-        self.video_item.setSize(size)
-        self.canvas.scene_.setSceneRect(QRectF(QPointF(0, 0), size))
-        self.canvas.fit()
-
     def _media_status(self, status) -> None:
         if self._pause_on_load and status == QMediaPlayer.BufferedMedia:
             self._pause_on_load = False
@@ -446,8 +497,8 @@ class VideoPane(QWidget):
             self.slider.setValue(pos)
         self.time_label.setText(
             f"{_fmt_ms(pos)} / {_fmt_ms(self.player.duration())}")
-        self._update_overlay_visibility()
         if self.redactions:
+            self.overlay.update()
             self.range_bar.update()
 
     def _duration_changed(self, dur: int) -> None:
@@ -474,7 +525,7 @@ class VideoPane(QWidget):
             self.hint.show()
         else:
             self.hint.hide()
-        self.canvas.set_blur_mode(on)
+        self.overlay.set_active(on)
 
     def _region_drawn(self, video_rect: QRect) -> None:
         start = self.player.position() / 1000.0
@@ -499,41 +550,10 @@ class VideoPane(QWidget):
         self._rebuild_rows()
         self.refresh_overlays()
 
-    # -- overlays ----------------------------------------------------------------
-
     def refresh_overlays(self) -> None:
-        for item in self._overlay_items:
-            if item.scene() is not None:
-                self.canvas.scene_.removeItem(item)
-        self._overlay_items = []
-        for i, red in enumerate(self.redactions):
-            color = QColor(RangeBar.PALETTE[i % len(RangeBar.PALETTE)])
-            rect_item = QGraphicsRectItem(QRectF(red.rect))
-            pen = QPen(color, 2, Qt.DashLine)
-            pen.setCosmetic(True)
-            rect_item.setPen(pen)
-            frost = QColor(255, 255, 255, 70)
-            rect_item.setBrush(QBrush(frost))
-            rect_item.setZValue(5000)
-            label = QGraphicsSimpleTextItem(str(i + 1), rect_item)
-            label.setBrush(QBrush(QColor("white")))
-            label.setPos(red.rect.x() + 6, red.rect.y() + 4)
-            f = label.font()
-            f.setBold(True)
-            f.setPointSize(14)
-            label.setFont(f)
-            self.canvas.scene_.addItem(rect_item)
-            self._overlay_items.append(rect_item)
-        self._update_overlay_visibility()
+        self.overlay.update()
         self.range_bar.setVisible(bool(self.redactions))
         self.range_bar.update()
-
-    def _update_overlay_visibility(self) -> None:
-        """A blur's frost is only shown while the playhead is inside its
-        span — scrubbing previews exactly what gets blurred and when."""
-        t = self.player.position() / 1000.0
-        for item, red in zip(self._overlay_items, self.redactions):
-            item.setVisible(red.start <= t <= red.end)
 
     # -- rows -------------------------------------------------------------------
 
@@ -569,7 +589,7 @@ class VideoPane(QWidget):
 
         pick = QToolButton(row)
         pick.setText(str(i + 1))
-        color = RangeBar.PALETTE[i % len(RangeBar.PALETTE)]
+        color = PALETTE[i % len(PALETTE)]
         weight = "bold" if i == self.active_idx else "normal"
         pick.setStyleSheet(
             f"QToolButton {{ color: {color}; font-weight: {weight}; }}")
@@ -656,15 +676,13 @@ class VideoPane(QWidget):
         self.apply_btn.setEnabled(not on)
         self.redact_box.setVisible(not on and bool(self.redactions))
         self.range_bar.setVisible(not on and bool(self.redactions))
-        for item in self._overlay_items:
-            item.setVisible(False)
         if on:
             self.hint.setText("Rendering — the result will appear in the "
                               "gallery when done. You can keep working.")
             self.hint.show()
         else:
             self.hint.hide()
-            self._update_overlay_visibility()
+        self.overlay.update()
 
     def _apply_blurs(self) -> None:
         if not self.path or not self.redactions or self._blur_proc is not None:
@@ -675,10 +693,12 @@ class VideoPane(QWidget):
             self.status.emit(f"Blur {bad[0]}: end must be after start", 4000)
             return
         from .capture import unique_path
-        native = self.video_item.nativeSize()
+        sink = self.player.videoSink()
+        vs = sink.videoSize() if sink else None
         graph, out_label = build_blur_filter(
             self.redactions,
-            video_w=int(native.width()), video_h=int(native.height()))
+            video_w=vs.width() if vs else 0,
+            video_h=vs.height() if vs else 0)
         base, ext = os.path.splitext(os.path.basename(self.path))
         out = unique_path(self.settings.library_dir, f"{base}-redacted{ext}")
         tmp = self._render_temp(out)
