@@ -489,6 +489,7 @@ class EditorWindow(QMainWindow):
         self.settings.share_provider = provider  # clicking selects default
         self.share_btn.setEnabled(False)
         self.statusBar().showMessage("Uploading…")
+        self.share_status.emit("Uploading…")
         job = ShareJob(self.settings, path, provider)
         job.emitter.done.connect(self._share_done)
         self._share_job = job  # keep the signal emitter alive

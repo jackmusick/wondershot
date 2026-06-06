@@ -279,3 +279,6 @@ class GrabbitApp(QObject):
             self.gallery.rescan()
         elif action == "quit":
             self.gallery.really_quit()
+        elif action == "oauth":
+            self.show_gallery()  # bring the Settings dialog forward
+            self.gallery.oauth_callback.emit(cmd.get("url", ""))

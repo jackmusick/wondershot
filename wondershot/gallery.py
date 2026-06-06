@@ -331,6 +331,7 @@ def _video_placeholder(path: str) -> QImage:
 class GalleryWindow(QMainWindow):
     quit_requested = Signal()
     settings_applied = Signal()
+    oauth_callback = Signal(str)  # wondershot://auth?... redirect URL
 
     def __init__(self, settings, capture, recorder=None, parent=None):
         super().__init__(parent)
@@ -672,7 +673,24 @@ class GalleryWindow(QMainWindow):
             lambda: self._share_default_path(self._share_target()))
         self._share_menu = _QMenu(self.share_btn)
         tb.addWidget(self.share_btn)
+        self.editor.share_status.connect(self._on_share_status)
         self._update_share_toolbar()
+
+    def _on_share_status(self, msg: str) -> None:
+        """Make the toolbar Share button itself the confirmation."""
+        if msg == "Uploading…":
+            self.share_btn.setText("Uploading…")
+            return
+        if msg.startswith("Copied"):
+            self.share_btn.setText("✓ Copied link")
+        elif msg.startswith(("Share failed", "No sharing")):
+            self.share_btn.setText("Share")
+            QMessageBox.warning(self, "Wondershot", msg)
+            return
+        else:
+            self.share_btn.setText("Share")
+            return
+        QTimer.singleShot(2500, lambda: self.share_btn.setText("Share"))
 
     def _share_target(self) -> str:
         paths = self._selected_paths()

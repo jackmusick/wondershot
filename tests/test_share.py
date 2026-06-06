@@ -54,7 +54,9 @@ class _S(dict):
         return self.get(k, "")
 
 
-def test_configured_providers():
+def test_configured_providers(tmp_path, monkeypatch):
+    # isolate OneDrive token state so a real local connection can't leak in
+    monkeypatch.setenv("WONDERSHOT_DATA_DIR", str(tmp_path))
     assert configured_providers(_S()) == []
     s3 = _S(s3_endpoint="https://x", s3_bucket="b",
             s3_access_key="a", s3_secret_key="s")

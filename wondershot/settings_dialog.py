@@ -59,6 +59,28 @@ class _DeviceAuthJob(QRunnable):
             self.emitter.done.emit("", str(e))
 
 
+class _ExchangeJob(QRunnable):
+    """Swap an auth code (from the wondershot:// redirect) for tokens."""
+
+    def __init__(self, client_id: str, code: str, verifier: str):
+        super().__init__()
+        self.client_id = client_id
+        self.code = code
+        self.verifier = verifier
+        self.emitter = _AuthSignal()
+
+    def run(self) -> None:
+        from . import msgraph
+        try:
+            tokens = msgraph.exchange_code(self.client_id, self.code,
+                                           self.verifier)
+            account = msgraph.whoami(tokens["access_token"])
+            msgraph.save_tokens(tokens, self.client_id, account)
+            self.emitter.done.emit(account, "")
+        except Exception as e:  # noqa: BLE001
+            self.emitter.done.emit("", str(e))
+
+
 class SettingsDialog(QDialog):
     def __init__(self, settings, parent=None):
         super().__init__(parent)
@@ -224,26 +246,7 @@ class SettingsDialog(QDialog):
         azf.addRow("Account key:", self.azure_key)
         v.addWidget(az)
 
-        od = QGroupBox("OneDrive / SharePoint (Microsoft account)")
-        odf = QFormLayout(od)
-        self.graph_client = QLineEdit(s.graph_client_id)
-        odf.addRow("Client ID:", self.graph_client)
-        from .msgraph import connected_account
-        account = connected_account()
-        self.graph_status = QLabel(
-            f"Connected as <b>{account}</b>" if account else "Not connected")
-        odf.addRow("Status:", self.graph_status)
-        self.graph_btn = QPushButton("Disconnect" if account else "Connect…")
-        self.graph_btn.clicked.connect(self._graph_connect)
-        odf.addRow("", self.graph_btn)
-        dest_row = QHBoxLayout()
-        self.graph_dest = QLabel(s.graph_drive_label or "My OneDrive")
-        dest_btn = QPushButton("Change…")
-        dest_btn.clicked.connect(self._graph_pick_destination)
-        dest_row.addWidget(self.graph_dest, 1)
-        dest_row.addWidget(dest_btn)
-        odf.addRow("Destination:", dest_row)
-        v.addWidget(od)
+        v.addWidget(self._build_onedrive_group(s))
 
         warn = QLabel("S3/Azure credentials are stored unencrypted in "
                       "Wondershot's config file — use a scoped key. "
@@ -254,22 +257,161 @@ class SettingsDialog(QDialog):
         v.addStretch(1)
         return w
 
-    # -- OneDrive device-code flow ---------------------------------------
+    # -- OneDrive / SharePoint -------------------------------------------
+
+    def _build_onedrive_group(self, s):
+        from PySide6.QtWidgets import (
+            QComboBox, QStackedWidget, QWidget,
+        )
+        from .msgraph import DEFAULT_CLIENT_ID, connected_account
+
+        od = QGroupBox("OneDrive / SharePoint (Microsoft account)")
+        odf = QFormLayout(od)
+
+        account = connected_account()
+        self.graph_status = QLabel(
+            f"Connected as <b>{account}</b>" if account else "Not connected")
+        odf.addRow("Status:", self.graph_status)
+
+        self.graph_btn = QPushButton("Disconnect" if account else "Connect…")
+        self.graph_btn.clicked.connect(self._graph_connect)
+        self.graph_code_btn = QPushButton("Use a code instead")
+        self.graph_code_btn.setFlat(True)
+        self.graph_code_btn.clicked.connect(self._graph_connect_code)
+        btn_row = QHBoxLayout()
+        btn_row.addWidget(self.graph_btn)
+        btn_row.addWidget(self.graph_code_btn)
+        btn_row.addStretch(1)
+        odf.addRow("", self._wrap(btn_row))
+
+        # -- destination, inline (no popup) -------------------------------
+        self.dest_combo = QComboBox()
+        self.dest_combo.addItem("My OneDrive", "onedrive")
+        self.dest_combo.addItem("A SharePoint site", "sharepoint")
+        on_sp = bool(s.graph_drive_id)
+        self.dest_combo.setCurrentIndex(1 if on_sp else 0)
+        self.dest_combo.currentIndexChanged.connect(self._dest_mode_changed)
+        odf.addRow("Save to:", self.dest_combo)
+
+        self.sp_box = QWidget()
+        spv = QFormLayout(self.sp_box)
+        spv.setContentsMargins(0, 0, 0, 0)
+        site_row = QHBoxLayout()
+        self.sp_search = QLineEdit()
+        self.sp_search.setPlaceholderText("search site name…")
+        self.sp_search.returnPressed.connect(self._sp_find)
+        find_btn = QPushButton("Find")
+        find_btn.clicked.connect(self._sp_find)
+        site_row.addWidget(self.sp_search, 1)
+        site_row.addWidget(find_btn)
+        spv.addRow("Site:", self._wrap(site_row))
+        self.sp_site_combo = QComboBox()
+        self.sp_site_combo.currentIndexChanged.connect(self._sp_site_chosen)
+        spv.addRow("", self.sp_site_combo)
+        self.sp_lib_combo = QComboBox()
+        self.sp_lib_combo.currentIndexChanged.connect(self._sp_lib_chosen)
+        spv.addRow("Library:", self.sp_lib_combo)
+        self.sp_current = QLabel(s.graph_drive_label or "")
+        self.sp_current.setStyleSheet("color: palette(mid);")
+        spv.addRow("Selected:", self.sp_current)
+        odf.addRow("", self.sp_box)
+        self.sp_box.setVisible(on_sp)
+
+        # -- client id: default unless changed ----------------------------
+        self.client_is_default = (s.graph_client_id == DEFAULT_CLIENT_ID)
+        self.graph_client = QLineEdit(s.graph_client_id)
+        self.graph_client.setReadOnly(self.client_is_default)
+        client_row = QHBoxLayout()
+        client_row.addWidget(self.graph_client, 1)
+        self.client_change_btn = QPushButton(
+            "Change" if self.client_is_default else "Use default")
+        self.client_change_btn.clicked.connect(self._toggle_client)
+        client_row.addWidget(self.client_change_btn)
+        odf.addRow("Client ID:", self._wrap(client_row))
+        self._sites_cache = []
+        self._drives_cache = []
+        return od
+
+    @staticmethod
+    def _wrap(layout):
+        from PySide6.QtWidgets import QWidget
+        w = QWidget()
+        layout.setContentsMargins(0, 0, 0, 0)
+        w.setLayout(layout)
+        return w
+
+    def _toggle_client(self) -> None:
+        from .msgraph import DEFAULT_CLIENT_ID
+        if self.graph_client.isReadOnly():  # was default → allow editing
+            self.graph_client.setReadOnly(False)
+            self.graph_client.setFocus()
+            self.client_change_btn.setText("Use default")
+        else:  # reset to the shipped default
+            self.graph_client.setText(DEFAULT_CLIENT_ID)
+            self.graph_client.setReadOnly(True)
+            self.client_change_btn.setText("Change")
+
+    def _dest_mode_changed(self) -> None:
+        sharepoint = self.dest_combo.currentData() == "sharepoint"
+        self.sp_box.setVisible(sharepoint)
+        if not sharepoint:
+            self.settings.graph_drive_id = ""
+            self.settings.graph_drive_label = ""
+            self.sp_current.setText("")
+
+    # -- connect (browser redirect, with device-code fallback) -----------
 
     def _graph_connect(self) -> None:
         from . import msgraph
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
         if msgraph.connected_account():
             msgraph.disconnect()
             self.graph_status.setText("Not connected")
             self.graph_btn.setText("Connect…")
             return
+        parent = self.parent()
+        if parent is not None and hasattr(parent, "oauth_callback"):
+            parent.oauth_callback.connect(self._oauth_redirect,
+                                          Qt.UniqueConnection)
+        self._pkce_verifier, challenge = msgraph.make_pkce()
+        self._oauth_state = msgraph.new_state()
+        url = msgraph.build_auth_url(self.graph_client.text().strip(),
+                                     challenge, self._oauth_state)
+        self.graph_status.setText("Waiting for sign-in in your browser…")
+        QDesktopServices.openUrl(QUrl(url))
+
+    def _oauth_redirect(self, url: str) -> None:
+        import urllib.parse
         from PySide6.QtCore import QThreadPool
+        params = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
+        if params.get("state", [""])[0] != getattr(self, "_oauth_state", ""):
+            return  # not ours / stale
+        if "error" in params:
+            self.graph_status.setText(
+                f"<i>{params.get('error_description', params['error'])[0]}</i>")
+            return
+        code = params.get("code", [""])[0]
+        if not code:
+            return
+        self.graph_status.setText("Completing sign-in…")
+        job = _ExchangeJob(self.graph_client.text().strip(), code,
+                           self._pkce_verifier)
+        job.emitter.done.connect(self._graph_done)
+        self._auth_job = job
+        QThreadPool.globalInstance().start(job)
+
+    def _graph_connect_code(self) -> None:
+        from . import msgraph
+        from PySide6.QtCore import QThreadPool
+        if msgraph.connected_account():
+            return
         self.graph_btn.setEnabled(False)
         self.graph_status.setText("Starting sign-in…")
         job = _DeviceAuthJob(self.graph_client.text().strip())
         job.emitter.code_ready.connect(self._graph_show_code)
         job.emitter.done.connect(self._graph_done)
-        self._auth_job = job  # keep emitter alive
+        self._auth_job = job
         QThreadPool.globalInstance().start(job)
 
     def _graph_show_code(self, user_code: str, uri: str) -> None:
@@ -289,68 +431,74 @@ class SettingsDialog(QDialog):
             self.graph_status.setText(f"Connected as <b>{account}</b>")
             self.graph_btn.setText("Disconnect")
 
-    def _graph_pick_destination(self) -> None:
-        """My OneDrive (personal or business = whoever signed in), or a
-        SharePoint site document library."""
-        from PySide6.QtWidgets import QInputDialog, QMessageBox
+    # -- SharePoint destination (inline) ---------------------------------
+
+    def _sp_find(self) -> None:
+        from PySide6.QtGui import QGuiApplication
+        from PySide6.QtWidgets import QMessageBox
         from . import msgraph
         if not msgraph.connected_account():
             QMessageBox.information(self, "Wondershot", "Connect first.")
             return
-        choice, ok = QInputDialog.getItem(
-            self, "Share destination", "Upload to:",
-            ["My OneDrive", "A SharePoint site…"], 0, False)
-        if not ok:
+        query = self.sp_search.text().strip()
+        if not query:
             return
-        if choice == "My OneDrive":
-            self.settings.graph_drive_id = ""
-            self.settings.graph_drive_label = ""
-            self.graph_dest.setText("My OneDrive")
-            return
-        query, ok = QInputDialog.getText(
-            self, "Find site", "Search SharePoint sites:")
-        if not ok or not query.strip():
-            return
+        QGuiApplication.setOverrideCursor(Qt.WaitCursor)
         try:
-            from PySide6.QtGui import QGuiApplication
-            QGuiApplication.setOverrideCursor(Qt.WaitCursor)
-            try:
-                token = msgraph.ensure_access_token()
-                sites = msgraph.sites_search(token, query.strip())
-            finally:
-                QGuiApplication.restoreOverrideCursor()
-            if not sites:
-                QMessageBox.information(self, "Wondershot",
-                                        "No sites matched.")
-                return
-            names = [f'{x["name"]} — {x["url"]}' for x in sites]
-            pick, ok = QInputDialog.getItem(self, "Site", "Site:",
-                                            names, 0, False)
-            if not ok:
-                return
-            site = sites[names.index(pick)]
-            QGuiApplication.setOverrideCursor(Qt.WaitCursor)
-            try:
-                drives = msgraph.site_drives(token, site["id"])
-            finally:
-                QGuiApplication.restoreOverrideCursor()
-            if not drives:
-                QMessageBox.information(self, "Wondershot",
-                                        "Site has no document libraries.")
-                return
-            dnames = [x["name"] for x in drives]
-            dpick, ok = QInputDialog.getItem(self, "Library",
-                                             "Document library:",
-                                             dnames, 0, False)
-            if not ok:
-                return
-            drive = drives[dnames.index(dpick)]
-            label = f'{site["name"]} / {drive["name"]}'
-            self.settings.graph_drive_id = drive["id"]
-            self.settings.graph_drive_label = label
-            self.graph_dest.setText(label)
+            token = msgraph.ensure_access_token()
+            self._sites_cache = msgraph.sites_search(token, query)
         except OSError as e:
-            QMessageBox.warning(self, "Wondershot", str(e))
+            self.sp_current.setText(f"search failed: {e}")
+            return
+        finally:
+            QGuiApplication.restoreOverrideCursor()
+        self.sp_site_combo.blockSignals(True)
+        self.sp_site_combo.clear()
+        for site in self._sites_cache:
+            self.sp_site_combo.addItem(f'{site["name"]} — {site["url"]}')
+        self.sp_site_combo.blockSignals(False)
+        if self._sites_cache:
+            self._sp_site_chosen()
+        else:
+            self.sp_current.setText("no sites matched")
+
+    def _sp_site_chosen(self) -> None:
+        from PySide6.QtGui import QGuiApplication
+        from . import msgraph
+        i = self.sp_site_combo.currentIndex()
+        if i < 0 or i >= len(self._sites_cache):
+            return
+        QGuiApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            token = msgraph.ensure_access_token()
+            self._drives_cache = msgraph.site_drives(
+                token, self._sites_cache[i]["id"])
+        except OSError as e:
+            self.sp_current.setText(f"load failed: {e}")
+            return
+        finally:
+            QGuiApplication.restoreOverrideCursor()
+        self.sp_lib_combo.blockSignals(True)
+        self.sp_lib_combo.clear()
+        for d in self._drives_cache:
+            self.sp_lib_combo.addItem(d["name"])
+        self.sp_lib_combo.blockSignals(False)
+        if self._drives_cache:
+            self._sp_lib_chosen()
+
+    def _sp_lib_chosen(self) -> None:
+        si = self.sp_site_combo.currentIndex()
+        di = self.sp_lib_combo.currentIndex()
+        if not (0 <= si < len(self._sites_cache)):
+            return
+        if not (0 <= di < len(self._drives_cache)):
+            return
+        site = self._sites_cache[si]
+        drive = self._drives_cache[di]
+        label = f'{site["name"]} / {drive["name"]}'
+        self.settings.graph_drive_id = drive["id"]
+        self.settings.graph_drive_label = label
+        self.sp_current.setText(label)
 
     def _browse(self) -> None:
         d = QFileDialog.getExistingDirectory(
@@ -388,7 +536,9 @@ class SettingsDialog(QDialog):
         self.settings.copy_after_capture = self.copy_check.isChecked()
         self.settings.show_gallery_after_capture = self.show_check.isChecked()
         self.settings.share_provider = self.share_default.currentData()
-        self.settings.graph_client_id = self.graph_client.text().strip()
+        from .msgraph import DEFAULT_CLIENT_ID
+        self.settings.graph_client_id = (
+            self.graph_client.text().strip() or DEFAULT_CLIENT_ID)
         self.settings.share_expiry_days = self.share_expiry.value()
         for field in ("s3_endpoint", "s3_region", "s3_bucket",
                       "s3_access_key", "s3_secret_key",

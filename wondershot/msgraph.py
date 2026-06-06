@@ -10,8 +10,11 @@ organization scope when the tenant forbids anonymous links).
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import os
+import secrets
 import time
 import urllib.error
 import urllib.parse
@@ -21,6 +24,52 @@ DEFAULT_CLIENT_ID = "cf7aef3a-2dc5-4b58-b247-2e61fe6a98cc"
 AUTH_BASE = "https://login.microsoftonline.com/common/oauth2/v2.0"
 GRAPH = "https://graph.microsoft.com/v1.0"
 SCOPE = "Files.ReadWrite offline_access openid profile"
+REDIRECT_URI = "wondershot://auth"
+
+
+# -- authorization-code + PKCE (browser redirect, no secret) -----------------
+
+
+def make_pkce() -> tuple[str, str]:
+    """(code_verifier, code_challenge) for an S256 PKCE exchange."""
+    verifier = base64.urlsafe_b64encode(
+        secrets.token_bytes(64)).rstrip(b"=").decode()
+    challenge = base64.urlsafe_b64encode(
+        hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+    return verifier, challenge
+
+
+def new_state() -> str:
+    return secrets.token_urlsafe(16)
+
+
+def build_auth_url(client_id: str, code_challenge: str, state: str,
+                   redirect_uri: str = REDIRECT_URI) -> str:
+    return f"{AUTH_BASE}/authorize?" + urllib.parse.urlencode({
+        "client_id": client_id,
+        "response_type": "code",
+        "redirect_uri": redirect_uri,
+        "response_mode": "query",
+        "scope": SCOPE,
+        "state": state,
+        "code_challenge": code_challenge,
+        "code_challenge_method": "S256",
+    })
+
+
+def exchange_code(client_id: str, code: str, code_verifier: str,
+                  redirect_uri: str = REDIRECT_URI) -> dict:
+    out = _post_form(f"{AUTH_BASE}/token", {
+        "client_id": client_id,
+        "grant_type": "authorization_code",
+        "code": code,
+        "redirect_uri": redirect_uri,
+        "code_verifier": code_verifier,
+    })
+    if "access_token" not in out:
+        raise OSError(out.get("error_description",
+                              out.get("error", "token exchange failed")))
+    return out
 _SIMPLE_UPLOAD_LIMIT = 4 * 1024 * 1024
 _CHUNK = 10 * 1024 * 1024  # upload-session chunk (multiple of 320 KiB)
 

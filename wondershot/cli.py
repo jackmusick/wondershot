@@ -11,6 +11,8 @@ from . import __version__
 
 
 def build_command(args) -> dict:
+    if args.url and args.url.startswith("wondershot://"):
+        return {"action": "oauth", "url": args.url}
     if args.capture:
         return {"action": "capture"}
     if args.fullscreen:
@@ -45,6 +47,7 @@ def main(argv=None) -> int:
                         help="render UI screenshots into DIR and exit (dev tool)")
     parser.add_argument("--version", action="version",
                         version=f"wondershot {__version__}")
+    parser.add_argument("url", nargs="?", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
 
     if args.install_desktop:
@@ -101,6 +104,18 @@ def install_desktop() -> int:
     svg = resources.files("wondershot").joinpath("data/wondershot.svg").read_bytes()
     with open(os.path.join(icons, "wondershot.svg"), "wb") as f:
         f.write(svg)
+
+    # Register as the wondershot:// scheme handler (OneDrive sign-in
+    # redirect) and refresh the desktop database so it takes effect.
+    if shutil.which("xdg-mime"):
+        import subprocess
+        subprocess.run(["xdg-mime", "default", "wondershot.desktop",
+                        "x-scheme-handler/wondershot"],
+                       capture_output=True)
+    if shutil.which("update-desktop-database"):
+        import subprocess
+        subprocess.run(["update-desktop-database", apps],
+                       capture_output=True)
 
     print(f"installed {dest}")
     print(f"installed {os.path.join(icons, 'wondershot.svg')}")
