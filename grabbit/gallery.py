@@ -60,6 +60,12 @@ def is_video(path: str) -> bool:
     return os.path.splitext(path)[1].lower() in VIDEO_EXTS
 
 
+def is_animated(path: str) -> bool:
+    """Anything routed to the player pane: real videos plus GIFs."""
+    ext = os.path.splitext(path)[1].lower()
+    return ext in VIDEO_EXTS or ext == ".gif"
+
+
 class _ThumbSignal(QObject):
     done = Signal(str, QImage)
 
@@ -92,6 +98,8 @@ class _ThumbJob(QRunnable):
                         (THUMB_SIZE.height() - scaled.height()) // 2, scaled)
             if is_video(self.path):
                 self._draw_play_badge(p, canvas)
+            elif self.path.lower().endswith(".gif"):
+                self._draw_gif_badge(p, canvas)
             p.end()
             img = canvas
         self.emitter.done.emit(self.path, img)
@@ -142,6 +150,21 @@ class _ThumbJob(QRunnable):
             QPointF(cx - 6, cy - 9), QPointF(cx - 6, cy + 9),
             QPointF(cx + 10, cy),
         ]))
+
+    @staticmethod
+    def _draw_gif_badge(p: QPainter, canvas: QImage) -> None:
+        from PySide6.QtCore import QRectF
+        rect = QRectF(canvas.width() - 42, canvas.height() - 24, 36, 18)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(0, 0, 0, 170))
+        p.drawRoundedRect(rect, 5, 5)
+        f = p.font()
+        f.setPointSize(9)
+        f.setBold(True)
+        p.setFont(f)
+        p.setPen(QColor(255, 255, 255, 235))
+        p.drawText(rect, Qt.AlignCenter, "GIF")
 
 
 class GalleryModel(QStandardItemModel):
@@ -239,6 +262,7 @@ class GalleryWindow(QMainWindow):
         self.strip.setResizeMode(QListView.Adjust)
         self.strip.setMovement(QListView.Static)
         self.strip.setIconSize(THUMB_SIZE)
+        self.strip.setUniformItemSizes(True)
         self.strip.setGridSize(QSize(THUMB_SIZE.width() + 16,
                                      THUMB_SIZE.height() + 16))
         self.strip.setSpacing(6)
@@ -338,18 +362,26 @@ class GalleryWindow(QMainWindow):
             it = self.model.item(row)
             existing[it.data(PATH_ROLE)] = it.icon()
 
-        with_signals_blocked(self.strip.selectionModel(), self.model.clear)
-        for path in entries:
-            old_icon = existing.pop(path, None)
-            item = QStandardItem()
-            item.setData(path, PATH_ROLE)
-            item.setDragEnabled(True)
-            item.setToolTip(os.path.basename(path))
-            if old_icon is not None and not old_icon.isNull():
-                item.setIcon(old_icon)
-            else:
-                self._thumb_pool.start(_ThumbJob(path, self._thumb_emitter))
-            self.model.appendRow(item)
+        # Rebuild with updates frozen — incremental relayout of the icon
+        # view paints overlapping "half cards" otherwise.
+        self.strip.setUpdatesEnabled(False)
+        try:
+            with_signals_blocked(self.strip.selectionModel(), self.model.clear)
+            for path in entries:
+                old_icon = existing.pop(path, None)
+                item = QStandardItem()
+                item.setData(path, PATH_ROLE)
+                item.setDragEnabled(True)
+                item.setToolTip(os.path.basename(path))
+                if old_icon is not None and not old_icon.isNull():
+                    item.setIcon(old_icon)
+                else:
+                    self._thumb_pool.start(_ThumbJob(path, self._thumb_emitter))
+                self.model.appendRow(item)
+        finally:
+            self.strip.setUpdatesEnabled(True)
+            self.strip.doItemsLayout()
+            self.strip.viewport().update()
         self._counter.setText(f"{len(entries)} shots")
 
         # Keep the current item selected; otherwise load the newest.
@@ -370,6 +402,7 @@ class GalleryWindow(QMainWindow):
             it = self.model.item(row)
             if it.data(PATH_ROLE) == path:
                 it.setIcon(QIcon(QPixmap.fromImage(img)))
+                self.strip.viewport().update()
                 break
 
     def refresh_path(self, path: str) -> None:
@@ -410,13 +443,16 @@ class GalleryWindow(QMainWindow):
         if not self.editor.maybe_save():
             self._select_silently(self._current_path or "")
             return
-        if is_video(path):
+        if is_animated(path):
             if self.video_pane is not None:
                 self.stack.setCurrentWidget(self.video_pane)
                 self.video_pane.load(path)
-            else:
+            elif is_video(path):
                 self.stack.setCurrentWidget(self.editor)
                 self.editor.load_preview(path, _video_placeholder(path))
+            else:  # gif without QtMultimedia: edit first frame
+                self.stack.setCurrentWidget(self.editor)
+                self.editor.load(path)
         else:
             if self.video_pane is not None:
                 self.video_pane.stop()
@@ -490,7 +526,7 @@ class GalleryWindow(QMainWindow):
 
     def _double_clicked(self, index) -> None:
         path = index.data(PATH_ROLE)
-        if not path or not is_video(path):
+        if not path or not is_animated(path):
             return
         if self.video_pane is not None and self.video_pane.path == path:
             self.video_pane.toggle()

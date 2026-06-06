@@ -80,10 +80,14 @@ class VideoPane(QWidget):
 
     def load(self, path: str) -> None:
         self.path = path
+        is_gif = path.lower().endswith(".gif")
         self.player.setSource(QUrl.fromLocalFile(path))
-        # Render the first frame, then wait for the user to hit play.
+        # GIFs: autoplay and loop forever; videos: show the first frame
+        # paused and wait for the user to hit play.
+        self.player.setLoops(QMediaPlayer.Loops.Infinite if is_gif else 1)
+        self.gif_btn.setVisible(not is_gif)
+        self._pause_on_load = not is_gif
         self.player.play()
-        self._pause_on_load = True
 
     def stop(self) -> None:
         self.player.stop()
