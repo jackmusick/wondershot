@@ -865,7 +865,11 @@ class GalleryWindow(QMainWindow):
     def _share_default_path(self, path: str) -> None:
         from .share import configured_providers
         providers = configured_providers(self.settings)
-        if not path or not providers:
+        if not providers:
+            self.editor.share_status.emit(
+                "No sharing configured — Settings → Sharing")
+            return
+        if not path:
             return
         default = self.settings.share_provider
         provider = default if default in providers else providers[0]
@@ -903,10 +907,8 @@ class GalleryWindow(QMainWindow):
                                "\n".join(self._selected_paths())))
             menu.addAction(QIcon.fromTheme("edit-rename"), "Rename…",
                            self._rename_selected)
-            from .share import configured_providers
-            if configured_providers(self.settings):
-                menu.addAction(QIcon.fromTheme("document-send"), "Share…",
-                               self._share_selected)
+            menu.addAction(QIcon.fromTheme("document-send"), "Share…",
+                           self._share_selected)
             menu.addSeparator()
             menu.addAction(QIcon.fromTheme("edit-delete"), "Move to trash",
                            self._delete_selected)

@@ -267,6 +267,69 @@ class SettingsDialog(QDialog):
             self.graph_status.setText(f"Connected as <b>{account}</b>")
             self.graph_btn.setText("Disconnect")
 
+    def _graph_pick_destination(self) -> None:
+        """My OneDrive (personal or business = whoever signed in), or a
+        SharePoint site document library."""
+        from PySide6.QtWidgets import QInputDialog, QMessageBox
+        from . import msgraph
+        if not msgraph.connected_account():
+            QMessageBox.information(self, "Wondershot", "Connect first.")
+            return
+        choice, ok = QInputDialog.getItem(
+            self, "Share destination", "Upload to:",
+            ["My OneDrive", "A SharePoint site…"], 0, False)
+        if not ok:
+            return
+        if choice == "My OneDrive":
+            self.settings.graph_drive_id = ""
+            self.settings.graph_drive_label = ""
+            self.graph_dest.setText("My OneDrive")
+            return
+        query, ok = QInputDialog.getText(
+            self, "Find site", "Search SharePoint sites:")
+        if not ok or not query.strip():
+            return
+        try:
+            from PySide6.QtGui import QGuiApplication
+            QGuiApplication.setOverrideCursor(Qt.WaitCursor)
+            try:
+                token = msgraph.ensure_access_token()
+                sites = msgraph.sites_search(token, query.strip())
+            finally:
+                QGuiApplication.restoreOverrideCursor()
+            if not sites:
+                QMessageBox.information(self, "Wondershot",
+                                        "No sites matched.")
+                return
+            names = [f'{x["name"]} — {x["url"]}' for x in sites]
+            pick, ok = QInputDialog.getItem(self, "Site", "Site:",
+                                            names, 0, False)
+            if not ok:
+                return
+            site = sites[names.index(pick)]
+            QGuiApplication.setOverrideCursor(Qt.WaitCursor)
+            try:
+                drives = msgraph.site_drives(token, site["id"])
+            finally:
+                QGuiApplication.restoreOverrideCursor()
+            if not drives:
+                QMessageBox.information(self, "Wondershot",
+                                        "Site has no document libraries.")
+                return
+            dnames = [x["name"] for x in drives]
+            dpick, ok = QInputDialog.getItem(self, "Library",
+                                             "Document library:",
+                                             dnames, 0, False)
+            if not ok:
+                return
+            drive = drives[dnames.index(dpick)]
+            label = f'{site["name"]} / {drive["name"]}'
+            self.settings.graph_drive_id = drive["id"]
+            self.settings.graph_drive_label = label
+            self.graph_dest.setText(label)
+        except OSError as e:
+            QMessageBox.warning(self, "Wondershot", str(e))
+
     def _browse(self) -> None:
         d = QFileDialog.getExistingDirectory(
             self, "Choose screenshot library", self.dir_edit.text())

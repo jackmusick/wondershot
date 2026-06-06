@@ -175,7 +175,8 @@ def share_file(settings, path: str, provider: str) -> str:
                              settings.azure_key, expires_days=days)
     if provider == "onedrive":
         from . import msgraph
-        return msgraph.share(path)
+        return msgraph.share(path,
+                             getattr(settings, "graph_drive_id", "") or "")
     raise ValueError(f"unknown share provider: {provider}")
 
 

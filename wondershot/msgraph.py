@@ -139,10 +139,29 @@ def whoami(token: str) -> str:
     return me.get("userPrincipalName") or me.get("displayName", "connected")
 
 
-def upload(path: str, token: str) -> str:
-    """Upload to /Wondershot/<name> in the user's drive; returns item id."""
+def _drive_base(drive_id: str) -> str:
+    """'' = the signed-in account's own OneDrive (personal or business);
+    a drive id targets a specific SharePoint document library."""
+    return f"{GRAPH}/drives/{drive_id}" if drive_id else f"{GRAPH}/me/drive"
+
+
+def sites_search(token: str, query: str) -> list[dict]:
+    out = _graph("GET", f"{GRAPH}/sites?search={urllib.parse.quote(query)}",
+                 token)
+    return [{"id": s["id"], "name": s.get("displayName", s.get("name", "?")),
+             "url": s.get("webUrl", "")} for s in out.get("value", [])]
+
+
+def site_drives(token: str, site_id: str) -> list[dict]:
+    out = _graph("GET", f"{GRAPH}/sites/{site_id}/drives", token)
+    return [{"id": d["id"], "name": d.get("name", "Documents")}
+            for d in out.get("value", [])]
+
+
+def upload(path: str, token: str, drive_id: str = "") -> str:
+    """Upload to /Wondershot/<name>; returns item id."""
     name = urllib.parse.quote(os.path.basename(path))
-    base = f"{GRAPH}/me/drive/root:/Wondershot/{name}:"
+    base = f"{_drive_base(drive_id)}/root:/Wondershot/{name}:"
     size = os.path.getsize(path)
     if size <= _SIMPLE_UPLOAD_LIMIT:
         with open(path, "rb") as f:
@@ -172,11 +191,12 @@ def upload(path: str, token: str) -> str:
     return item["id"]
 
 
-def create_link(item_id: str, token: str) -> str:
+def create_link(item_id: str, token: str, drive_id: str = "") -> str:
     """View link; anonymous when the tenant allows it, else org-scoped."""
     for scope in ("anonymous", "organization"):
         try:
-            out = _graph("POST", f"{GRAPH}/me/drive/items/{item_id}/createLink",
+            out = _graph("POST",
+                         f"{_drive_base(drive_id)}/items/{item_id}/createLink",
                          token, json.dumps({"type": "view",
                                             "scope": scope}).encode())
             return out["link"]["webUrl"]
@@ -186,6 +206,6 @@ def create_link(item_id: str, token: str) -> str:
     raise OSError("createLink failed")  # unreachable
 
 
-def share(path: str) -> str:
+def share(path: str, drive_id: str = "") -> str:
     token = ensure_access_token()
-    return create_link(upload(path, token), token)
+    return create_link(upload(path, token, drive_id), token, drive_id)

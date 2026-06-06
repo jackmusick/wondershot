@@ -176,6 +176,23 @@ class Settings:
         self._s.setValue("graph_client_id", value)
 
     @property
+    def graph_drive_id(self) -> str:
+        """'' = signed-in account's OneDrive; else a SharePoint drive id."""
+        return self._s.value("graph_drive_id", "")
+
+    @graph_drive_id.setter
+    def graph_drive_id(self, value: str) -> None:
+        self._s.setValue("graph_drive_id", value)
+
+    @property
+    def graph_drive_label(self) -> str:
+        return self._s.value("graph_drive_label", "")
+
+    @graph_drive_label.setter
+    def graph_drive_label(self, value: str) -> None:
+        self._s.setValue("graph_drive_label", value)
+
+    @property
     def share_expiry_days(self) -> int:
         return int(self._s.value("share_expiry_days", 7))
 

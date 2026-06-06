@@ -450,7 +450,9 @@ class EditorWindow(QMainWindow):
     def _update_share_button(self) -> None:
         from PySide6.QtWidgets import QToolButton
         providers = self._share_providers()
-        self.share_btn.setVisible(bool(providers))
+        self.share_btn.setToolTip(
+            "Copy a share link" if providers
+            else "Set up sharing in Settings → Sharing")
         self._share_menu.clear()
         if len(providers) > 1:
             labels = {"s3": "Share via S3", "azure": "Share via Azure",
@@ -466,6 +468,9 @@ class EditorWindow(QMainWindow):
     def _share_default(self) -> None:
         providers = self._share_providers()
         if not providers:
+            msg = "No sharing configured — Settings → Sharing"
+            self.statusBar().showMessage(msg, 6000)
+            self.share_status.emit(msg)
             return
         default = self.settings.share_provider
         self.share_path(self.path,

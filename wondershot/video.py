@@ -510,7 +510,9 @@ class VideoPane(QWidget):
 
     def update_share_visible(self) -> None:
         from .share import configured_providers
-        self.share_btn.setVisible(bool(configured_providers(self.settings)))
+        self.share_btn.setToolTip(
+            "Copy a share link" if configured_providers(self.settings)
+            else "Set up sharing in Settings → Sharing")
 
     def _refresh_audio_device(self) -> None:
         self.audio.setDevice(QMediaDevices.defaultAudioOutput())
