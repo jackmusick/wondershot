@@ -163,46 +163,112 @@ class VideoCanvas(QGraphicsView):
 
 
 class RangeBar(QWidget):
-    """Timeline strip: drag to set the active blur's time span while the
-    player scrubs along under your finger; spans render as colored bands."""
+    """Timeline strip showing each blur's span as a colored band.
+
+    Interactions (video scrubs live during every drag):
+    - drag a band's edge: adjust its start/end independently
+    - drag inside a band: move the whole span
+    - drag on empty bar: define the active blur's span from scratch
+    """
 
     PALETTE = ["#e05555", "#e0a030", "#46a3e0", "#9a59d0", "#43b97f"]
+    EDGE_PX = 7
 
     def __init__(self, pane: "VideoPane"):
         super().__init__(pane)
         self.pane = pane
         self.setFixedHeight(20)
-        self.setCursor(Qt.SizeHorCursor)
-        self.setToolTip("Drag to set when the selected blur is active — "
-                        "the video scrubs along as you drag")
-        self._drag_t0: float | None = None
+        self.setMouseTracking(True)
+        self.setToolTip("Drag edges to adjust · drag inside to move · "
+                        "drag empty space to redefine the selected blur")
+        self._mode: tuple | None = None  # ("new",t0)|("start",i)|("end",i)|("move",i,offset)
 
     def _time_at(self, x: float) -> float:
         dur = max(1, self.pane.player.duration())
         return max(0.0, min(dur, x / max(1, self.width()) * dur)) / 1000.0
 
-    def mousePressEvent(self, ev):  # noqa: N802
-        t = self._time_at(ev.position().x())
-        self.pane.player.pause()
+    def _x_of(self, seconds: float) -> float:
+        dur = max(1, self.pane.player.duration())
+        return seconds * 1000 / dur * self.width()
+
+    def _hit(self, x: float) -> tuple | None:
+        """Edge/inside hit-test, active band first."""
+        order = []
+        if 0 <= self.pane.active_idx < len(self.pane.redactions):
+            order.append(self.pane.active_idx)
+        order += [i for i in range(len(self.pane.redactions))
+                  if i not in order]
+        for i in order:
+            red = self.pane.redactions[i]
+            x1, x2 = self._x_of(red.start), self._x_of(red.end)
+            if abs(x - x1) <= self.EDGE_PX:
+                return ("start", i)
+            if abs(x - x2) <= self.EDGE_PX:
+                return ("end", i)
+            if x1 < x < x2:
+                return ("move", i, self._time_at(x) - red.start)
+        return None
+
+    def _scrub(self, t: float) -> None:
         self.pane.player.setPosition(int(t * 1000))
-        if self.pane.redactions:
-            self._drag_t0 = t
+
+    def mousePressEvent(self, ev):  # noqa: N802
+        x = ev.position().x()
+        t = self._time_at(x)
+        self.pane.player.pause()
+        hit = self._hit(x)
+        if hit is not None:
+            self._mode = hit
+            self.pane.set_active(hit[1])
+            red = self.pane.redactions[hit[1]]
+            self._scrub({"start": red.start, "end": red.end,
+                         "move": red.start}[hit[0]])
+        elif self.pane.redactions:
+            self._mode = ("new", t)
+            self._scrub(t)
+        else:
+            self._scrub(t)
         self.update()
 
     def mouseMoveEvent(self, ev):  # noqa: N802
-        if self._drag_t0 is None:
+        x = ev.position().x()
+        if self._mode is None:
+            hit = self._hit(x)
+            if hit is None:
+                self.setCursor(Qt.ArrowCursor)
+            elif hit[0] in ("start", "end"):
+                self.setCursor(Qt.SplitHCursor)
+            else:
+                self.setCursor(Qt.SizeHorCursor)
             return
-        t = self._time_at(ev.position().x())
-        self.pane.player.setPosition(int(t * 1000))  # live scrub preview
+        t = self._time_at(x)
         red = self.pane.active_redaction()
-        if red is not None:
-            red.start = round(min(self._drag_t0, t), 2)
-            red.end = round(max(self._drag_t0, t), 2)
-            self.pane.sync_active_row()
+        if red is None:
+            return
+        kind = self._mode[0]
+        if kind == "new":
+            t0 = self._mode[1]
+            red.start = round(min(t0, t), 2)
+            red.end = round(max(t0, t), 2)
+            self._scrub(t)
+        elif kind == "start":
+            red.start = round(min(t, red.end - 0.1), 2)
+            self._scrub(red.start)
+        elif kind == "end":
+            red.end = round(max(t, red.start + 0.1), 2)
+            self._scrub(red.end)
+        elif kind == "move":
+            span = red.end - red.start
+            dur = self.pane.player.duration() / 1000.0
+            new_start = max(0.0, min(t - self._mode[2], dur - span))
+            red.start = round(new_start, 2)
+            red.end = round(new_start + span, 2)
+            self._scrub(red.start)
+        self.pane.sync_active_row()
         self.update()
 
     def mouseReleaseEvent(self, _ev):  # noqa: N802
-        self._drag_t0 = None
+        self._mode = None
         self.pane.refresh_overlays()
         self.update()
 
@@ -386,6 +452,12 @@ class VideoPane(QWidget):
             return self.redactions[self.active_idx]
         return None
 
+    def set_active(self, idx: int) -> None:
+        if idx != self.active_idx and 0 <= idx < len(self.redactions):
+            self.active_idx = idx
+            self._rebuild_rows()
+            self.range_bar.update()
+
     def _blur_mode(self, on: bool) -> None:
         if on:
             self.player.pause()
@@ -562,6 +634,30 @@ class VideoPane(QWidget):
 
     # -- rendering ----------------------------------------------------------------
 
+    def _render_temp(self, final_path: str) -> str:
+        """Render target in a hidden dir the gallery never lists, so a
+        half-written file can't show up (and get played) mid-render."""
+        tmp_dir = os.path.join(self.settings.library_dir, ".rendering")
+        os.makedirs(tmp_dir, exist_ok=True)
+        return os.path.join(tmp_dir, os.path.basename(final_path))
+
+    def _set_rendering(self, on: bool) -> None:
+        """Visually leave blur-editing mode while ffmpeg runs."""
+        self.blur_btn.setChecked(False)
+        self.blur_btn.setEnabled(not on)
+        self.apply_btn.setEnabled(not on)
+        self.redact_box.setVisible(not on and bool(self.redactions))
+        self.range_bar.setVisible(not on and bool(self.redactions))
+        for item in self._overlay_items:
+            item.setVisible(False)
+        if on:
+            self.hint.setText("Rendering — the result will appear in the "
+                              "gallery when done. You can keep working.")
+            self.hint.show()
+        else:
+            self.hint.hide()
+            self._update_overlay_visibility()
+
     def _apply_blurs(self) -> None:
         if not self.path or not self.redactions or self._blur_proc is not None:
             return
@@ -577,38 +673,45 @@ class VideoPane(QWidget):
             video_w=int(native.width()), video_h=int(native.height()))
         base, ext = os.path.splitext(os.path.basename(self.path))
         out = unique_path(self.settings.library_dir, f"{base}-redacted{ext}")
+        tmp = self._render_temp(out)
         enc = pick_encoder()
         enc_opts = (["-crf", "20", "-preset", "veryfast"]
                     if enc == "libx264" else ["-q:v", "4"])
+        if ext.lower() in (".mp4", ".m4v", ".mov"):
+            enc_opts += ["-movflags", "+faststart"]  # instant seeking
         args = ["-y", "-i", self.path, "-filter_complex", graph,
                 "-map", f"[{out_label}]", "-map", "0:a?", "-c:a", "copy",
-                "-c:v", enc, *enc_opts, out]
+                "-c:v", enc, *enc_opts, tmp]
         self._blur_proc = QProcess(self)
         self._blur_proc.finished.connect(
-            lambda code, _st: self._blur_done(code, out))
-        self.apply_btn.setEnabled(False)
+            lambda code, _st: self._blur_done(code, tmp, out))
         self.apply_btn.setText("Rendering…")
         self.status.emit("Rendering blurred video…", 0)
+        self._set_rendering(True)
         self._blur_proc.start("ffmpeg", args)
 
-    def _blur_done(self, code: int, out: str) -> None:
+    def _blur_done(self, code: int, tmp: str, out: str) -> None:
         proc, self._blur_proc = self._blur_proc, None
         if proc is not None:
             err = bytes(proc.readAllStandardError()).decode(errors="replace")
             proc.deleteLater()
         else:
             err = ""
-        self.apply_btn.setEnabled(True)
-        self._rebuild_rows()
-        if code == 0 and os.path.exists(out) and os.path.getsize(out) > 0:
+        self.apply_btn.setText(f"Apply blurs ({len(self.redactions)})")
+        if code == 0 and os.path.exists(tmp) and os.path.getsize(tmp) > 0:
+            shutil.move(tmp, out)
+            self._set_rendering(False)
             self._clear_redactions()
             self.status.emit(f"Saved {os.path.basename(out)}", 4000)
             self.file_ready.emit(out)
         else:
+            self._set_rendering(False)
+            self._rebuild_rows()
+            self.refresh_overlays()
             tail = err.strip().splitlines()[-1] if err.strip() else "unknown"
             self.status.emit(f"Blur render failed: {tail[:120]}", 6000)
-            if os.path.exists(out):
-                os.unlink(out)
+            if os.path.exists(tmp):
+                os.unlink(tmp)
 
     # -- gif conversion ------------------------------------------------------
 
@@ -618,27 +721,29 @@ class VideoPane(QWidget):
         from .capture import unique_path
         base = os.path.splitext(os.path.basename(self.path))[0]
         out = unique_path(self.settings.library_dir, f"{base}.gif")
+        tmp = self._render_temp(out)
         vf = ("fps=12,scale='min(720,iw)':-1:flags=lanczos,"
               "split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse")
         self._gif_proc = QProcess(self)
         self._gif_proc.finished.connect(
-            lambda code, _st: self._gif_done(code, out))
+            lambda code, _st: self._gif_done(code, tmp, out))
         self.gif_btn.setEnabled(False)
         self.gif_btn.setText("Converting…")
         self.status.emit("Converting to GIF…", 0)
         self._gif_proc.start("ffmpeg", ["-y", "-i", self.path,
-                                        "-vf", vf, out])
+                                        "-vf", vf, tmp])
 
-    def _gif_done(self, code: int, out: str) -> None:
+    def _gif_done(self, code: int, tmp: str, out: str) -> None:
         proc, self._gif_proc = self._gif_proc, None
         if proc is not None:
             proc.deleteLater()
         self.gif_btn.setEnabled(True)
         self.gif_btn.setText("Convert to GIF")
-        if code == 0 and os.path.exists(out):
+        if code == 0 and os.path.exists(tmp) and os.path.getsize(tmp) > 0:
+            shutil.move(tmp, out)
             self.status.emit(f"GIF saved: {os.path.basename(out)}", 4000)
             self.file_ready.emit(out)
         else:
             self.status.emit("GIF conversion failed", 4000)
-            if os.path.exists(out):
-                os.unlink(out)
+            if os.path.exists(tmp):
+                os.unlink(tmp)
