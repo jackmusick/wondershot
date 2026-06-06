@@ -85,6 +85,32 @@ class Settings:
     def noise_suppression(self, value: bool) -> None:
         self._s.setValue("noise_suppression", "true" if value else "false")
 
+    # -- editor tool defaults (persist the last-used values) ---------------
+
+    @property
+    def stroke_width(self) -> int:
+        return int(self._s.value("stroke_width", 10))
+
+    @stroke_width.setter
+    def stroke_width(self, value: int) -> None:
+        self._s.setValue("stroke_width", int(value))
+
+    @property
+    def font_size(self) -> int:
+        return int(self._s.value("font_size", 24))
+
+    @font_size.setter
+    def font_size(self, value: int) -> None:
+        self._s.setValue("font_size", int(value))
+
+    @property
+    def tool_color(self) -> str:
+        return self._s.value("tool_color", "#e3242b")
+
+    @tool_color.setter
+    def tool_color(self, value: str) -> None:
+        self._s.setValue("tool_color", value)
+
     @property
     def screencast_token(self) -> str:
         """Portal restore token so the share picker shows only once."""

@@ -16,7 +16,7 @@ from dataclasses import dataclass
 
 from PySide6.QtCore import QPoint, QPointF, QProcess, QRect, QRectF, Qt, QUrl, Signal
 from PySide6.QtGui import QColor, QIcon, QPainter, QPen
-from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
+from PySide6.QtMultimedia import QAudioOutput, QMediaDevices, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
     QDoubleSpinBox,
@@ -397,6 +397,12 @@ class VideoPane(QWidget):
         self.player = QMediaPlayer(self)
         self.audio = QAudioOutput(self)
         self.player.setAudioOutput(self.audio)
+        # QAudioOutput resolves the default device once at construction;
+        # follow the system default as it changes (the backend re-lists
+        # devices when the default flag moves between sinks).
+        self._media_devices = QMediaDevices(self)
+        self._media_devices.audioOutputsChanged.connect(
+            self._refresh_audio_device)
         self.stack = VideoStack(self)
         self.player.setVideoOutput(self.stack.video)
         self.overlay = self.stack.overlay
@@ -493,6 +499,9 @@ class VideoPane(QWidget):
         self.player.setSource(QUrl())
         self.path = None
         self._clear_redactions()
+
+    def _refresh_audio_device(self) -> None:
+        self.audio.setDevice(QMediaDevices.defaultAudioOutput())
 
     def toggle(self) -> None:
         if self.player.playbackState() == QMediaPlayer.PlayingState:

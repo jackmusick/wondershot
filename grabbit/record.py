@@ -20,6 +20,7 @@ import random
 import shutil
 import signal
 import subprocess
+import time
 
 from PySide6.QtCore import QObject, QTimer, Signal
 
@@ -71,6 +72,7 @@ class ScreenRecorder(QObject):
     started = Signal()
     finished = Signal(str)  # final file path
     failed = Signal(str)
+    tick = Signal(str)  # elapsed time ("1:05"), once a second while recording
 
     def __init__(self, settings, parent=None):
         super().__init__(parent)
@@ -84,6 +86,9 @@ class ScreenRecorder(QObject):
         self._conn = None
         self._subs: list[int] = []
         self._stopping = False
+        self._watchdog: QTimer | None = None
+        self._started_at: float | None = None
+        self.log_path = ""
 
     # -- public ------------------------------------------------------------
 
@@ -113,11 +118,15 @@ class ScreenRecorder(QObject):
     def stop(self) -> None:
         if self._stopping:
             return  # double-stop (tray + toolbar) must not double-finalize
-        if self._proc is not None and self._proc.poll() is None:
-            self._stopping = True
+        if self._proc is None:
+            return
+        self._stopping = True
+        if self._proc.poll() is None:
             # -e turns SIGINT into EOS: the mp4 finalizes, then exits.
             self._proc.send_signal(signal.SIGINT)
-            self._poll_exit(timeout_ms=15000)
+        # Even if the pipeline already died (mux error etc.), finalize so
+        # finished/failed always fires — the UI must never stay "Stopping".
+        self._poll_exit(timeout_ms=15000)
 
     # -- portal plumbing -------------------------------------------------------
 
@@ -216,20 +225,16 @@ class ScreenRecorder(QObject):
 
     # -- gstreamer ---------------------------------------------------------------
 
-    def _launch_gst(self, fd: int, node: int) -> None:
-        from .capture import timestamp_name, unique_path
-        out = unique_path(self.settings.library_dir,
-                          timestamp_name("Recording").replace(".png", ".mp4"))
-        tmp_dir = os.path.join(self.settings.library_dir, ".rendering")
-        os.makedirs(tmp_dir, exist_ok=True)
-        tmp = os.path.join(tmp_dir, os.path.basename(out))
-        self._tmp, self._out = tmp, out
-
+    def _gst_args(self, fd: int, node: int, tmp: str) -> list[str]:
         args = [
             "gst-launch-1.0", "-e",
             "pipewiresrc", f"fd={fd}", f"path={node}", "do-timestamp=true",
             "!", "queue", "!", "videoconvert",
-            "!", "video/x-raw,format=I420",
+            # pipewiresrc intermittently emits buffers with no PTS (fatal
+            # to mp4mux: "Buffer has no PTS"); videorate drops them and
+            # turns the damage-driven stream into clean CFR.
+            "!", "videorate",
+            "!", "video/x-raw,format=I420,framerate=30/1",
             "!", "x264enc", "speed-preset=veryfast", "tune=zerolatency",
             "bitrate=8000", "key-int-max=120",
             "!", "h264parse", "!", "queue", "!", "mux.",
@@ -260,6 +265,17 @@ class ScreenRecorder(QObject):
                 "!", "aacparse", "!", "queue", "!", "mux.",
             ]
         args += ["mp4mux", "name=mux", "!", "filesink", f"location={tmp}"]
+        return args
+
+    def _launch_gst(self, fd: int, node: int) -> None:
+        from .capture import timestamp_name, unique_path
+        out = unique_path(self.settings.library_dir,
+                          timestamp_name("Recording").replace(".png", ".mp4"))
+        tmp_dir = os.path.join(self.settings.library_dir, ".rendering")
+        os.makedirs(tmp_dir, exist_ok=True)
+        tmp = os.path.join(tmp_dir, os.path.basename(out))
+        self._tmp, self._out = tmp, out
+        args = self._gst_args(fd, node, tmp)
 
         os.set_inheritable(fd, True)
         log_dir = os.path.join(
@@ -276,10 +292,12 @@ class ScreenRecorder(QObject):
         except OSError as e:
             self._fail(f"could not start gstreamer: {e}")
             return
-        # If the pipeline dies immediately (bad caps etc.), report it.
-        QTimer.singleShot(1200, self._check_alive)
+        # Watch for pipeline death for the whole recording (mux errors
+        # can kill it minutes in), not just at startup.
+        self._start_watchdog()
         self._busy = False
         self.recording = True
+        self._started_at = time.monotonic()
         self.started.emit()
 
     def _log_tail(self) -> str:
@@ -291,13 +309,32 @@ class ScreenRecorder(QObject):
         except OSError:
             return "unknown"
 
+    def _start_watchdog(self) -> None:
+        self._watchdog = QTimer(self)
+        self._watchdog.setInterval(1000)
+        self._watchdog.timeout.connect(self._check_alive)
+        self._watchdog.start()
+
+    def elapsed_str(self) -> str:
+        if not self.recording or self._started_at is None:
+            return ""
+        s = int(time.monotonic() - self._started_at)
+        return f"{s // 60}:{s % 60:02d}"
+
     def _check_alive(self) -> None:
+        if self._stopping:
+            return  # _poll_exit owns the exit path now
         if self._proc is not None and self._proc.poll() is not None:
             self.recording = False
+            tmp = self._tmp
             self._cleanup()
+            if tmp and os.path.exists(tmp):
+                os.unlink(tmp)
             self.failed.emit(
                 f"recorder died: {self._log_tail()[:160]} "
                 f"(full log: {self.log_path})")
+            return
+        self.tick.emit(self.elapsed_str())
 
     def _poll_exit(self, timeout_ms: int) -> None:
         if self._proc is None:
@@ -336,6 +373,9 @@ class ScreenRecorder(QObject):
 
     def _cleanup(self) -> None:
         self._stopping = False
+        if getattr(self, "_watchdog", None) is not None:
+            self._watchdog.stop()
+            self._watchdog = None
         if self._fd >= 0:
             try:
                 os.close(self._fd)

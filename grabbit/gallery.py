@@ -7,6 +7,7 @@ thumbnail loads it into the editor, and thumbnails drag out as files.
 from __future__ import annotations
 
 import os
+from datetime import date, datetime
 
 from PySide6.QtCore import (
     QFileSystemWatcher,
@@ -42,6 +43,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMenu,
     QMessageBox,
+    QStyledItemDelegate,
     QToolBar,
     QVBoxLayout,
     QWidget,
@@ -54,6 +56,50 @@ THUMB_SIZE = QSize(170, 105)
 CAROUSEL_HEIGHT = 158
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}
 VIDEO_EXTS = {".mp4", ".mkv", ".webm", ".mov", ".avi", ".m4v"}
+
+
+def _timestamp_labels(mtime: float) -> tuple[str, str]:
+    """('Today' or '01/01/2026', '12:03PM') for a file mtime."""
+    dt = datetime.fromtimestamp(mtime)
+    date_s = "Today" if dt.date() == date.today() else dt.strftime("%m/%d/%Y")
+    return date_s, dt.strftime("%I:%M%p").lstrip("0")
+
+
+class _ThumbDelegate(QStyledItemDelegate):
+    """Date/time overlay on each card: 'Today'/date bottom-left, time
+    bottom-right. Painted live from mtime (not baked into the thumbnail)
+    so 'Today' rolls over correctly in a long-running session."""
+
+    def paint(self, p, option, index):  # noqa: N802
+        super().paint(p, option, index)
+        path = index.data(PATH_ROLE)
+        if not path:
+            return
+        try:
+            mtime = os.path.getmtime(path)
+        except OSError:
+            return
+        date_s, time_s = _timestamp_labels(mtime)
+        r = option.rect
+        band_h = 18
+        band = r.adjusted(
+            (r.width() - THUMB_SIZE.width()) // 2,
+            r.height() - (r.height() - THUMB_SIZE.height()) // 2 - band_h,
+            -(r.width() - THUMB_SIZE.width()) // 2, 0)
+        band.setHeight(band_h)
+        p.save()
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(0, 0, 0, 150))
+        p.drawRoundedRect(band, 4, 4)
+        f = p.font()
+        f.setPointSize(8)
+        p.setFont(f)
+        p.setPen(QColor(235, 235, 235, 235))
+        text = band.adjusted(6, 0, -6, 0)
+        p.drawText(text, Qt.AlignVCenter | Qt.AlignLeft, date_s)
+        p.drawText(text, Qt.AlignVCenter | Qt.AlignRight, time_s)
+        p.restore()
 
 
 def is_video(path: str) -> bool:
@@ -154,7 +200,8 @@ class _ThumbJob(QRunnable):
     @staticmethod
     def _draw_gif_badge(p: QPainter, canvas: QImage) -> None:
         from PySide6.QtCore import QRectF
-        rect = QRectF(canvas.width() - 42, canvas.height() - 24, 36, 18)
+        # Sits above the date/time band the delegate paints along the bottom.
+        rect = QRectF(canvas.width() - 42, canvas.height() - 46, 36, 18)
         p.setRenderHint(QPainter.Antialiasing)
         p.setPen(Qt.NoPen)
         p.setBrush(QColor(0, 0, 0, 170))
@@ -235,6 +282,7 @@ def _video_placeholder(path: str) -> QImage:
 
 class GalleryWindow(QMainWindow):
     quit_requested = Signal()
+    settings_applied = Signal()
 
     def __init__(self, settings, capture, recorder=None, parent=None):
         super().__init__(parent)
@@ -290,6 +338,7 @@ class GalleryWindow(QMainWindow):
         self.strip.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.strip.setContextMenuPolicy(Qt.CustomContextMenu)
         self.strip.customContextMenuRequested.connect(self._context_menu)
+        self.strip.setItemDelegate(_ThumbDelegate(self.strip))
         # Distinct shelf look: clearly darker background than the canvas,
         # thumbnails sit as raised cards with hover/selection chrome.
         self.strip.setStyleSheet("""
@@ -338,6 +387,10 @@ class GalleryWindow(QMainWindow):
             lambda _p: self._rescan_timer.start())
 
         self._build_toolbar()
+        if self.recorder is not None:
+            self.recorder.tick.connect(
+                lambda t: self.record_action.setText(f"Stop {t}" if t
+                                                     else "Stop"))
         self._counter = QLabel(self)
         self.editor.statusBar().addPermanentWidget(self._counter)
 
@@ -673,6 +726,7 @@ class GalleryWindow(QMainWindow):
         if dlg.exec() == SettingsDialog.Accepted:
             if dlg.apply():
                 self.set_library(self.settings.library_dir)
+            self.settings_applied.emit()
 
     def _toggle_pin(self) -> None:
         self.settings.pin_on_top = self.pin_action.isChecked()

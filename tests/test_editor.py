@@ -209,3 +209,49 @@ def test_save_emits_signal(qapp, tmp_path):
     assert os.path.exists(target)
     assert got == [target]
     assert ed.undo_stack.isClean()
+
+
+class _FakeEditorSettings:
+    library_dir = "/tmp"
+    stroke_width = 12
+    font_size = 30
+    tool_color = "#00ff00"
+
+
+def test_editor_reads_tool_defaults_from_settings(qapp):
+    from grabbit.editor import EditorWindow
+    img = QImage(100, 100, QImage.Format_ARGB32_Premultiplied)
+    img.fill(QColor("white"))
+    ed = EditorWindow(image=img, settings=_FakeEditorSettings())
+    assert ed.stroke_width == 12
+    assert ed.font_size == 30
+    assert ed.color.name() == "#00ff00"
+
+
+def test_editor_persists_tool_defaults(qapp):
+    from grabbit.editor import EditorWindow
+    img = QImage(100, 100, QImage.Format_ARGB32_Premultiplied)
+    img.fill(QColor("white"))
+    s = _FakeEditorSettings()
+    ed = EditorWindow(image=img, settings=s)
+    ed.width_spin.setValue(14)
+    ed.font_spin.setValue(36)
+    assert s.stroke_width == 14
+    assert s.font_size == 36
+
+
+def test_panel_rows_follow_selection(qapp):
+    from grabbit.items import ArrowItem, TextItem
+    from PySide6.QtCore import QPointF
+    ed = make_editor(qapp)
+    ed.show()
+    arrow = ArrowItem(QPointF(10, 10), QPointF(80, 80), QColor("red"), 6)
+    ed.scene.addItem(arrow)
+    ed._select_only(arrow)
+    assert not ed.font_spin.isVisibleTo(ed)
+    assert ed.width_spin.isVisibleTo(ed)
+    text = TextItem(QPointF(10, 10), QColor("red"), 18)
+    ed.scene.addItem(text)
+    ed._select_only(text)
+    assert ed.font_spin.isVisibleTo(ed)
+    assert not ed.width_spin.isVisibleTo(ed)

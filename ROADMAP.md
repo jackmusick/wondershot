@@ -48,6 +48,10 @@ _Last updated: 2026-06-06_
 - [ ] Bubble lands above the taskbar on first open (96px clearance,
       300ms rule-reload delay)
 - [ ] Stop button sync (tray + toolbar both reset after either stops)
+- [ ] Recording survives past the first seconds (videorate fix for the
+      pipewiresrc no-PTS mux abort) and stop always resolves — the
+      watchdog now reports pipeline death instead of "Stopping" forever
+- [ ] Date/time overlay on carousel cards; elapsed time on stop buttons
 
 ## Next up (in order)
 
@@ -90,6 +94,12 @@ per-OS capture work.
 - QGraphicsVideoItem = CPU paint (lags 60fps); QVideoWidget +
   QOpenGLWidget viewport = blank on Wayland.
 - libx264 can't enter WebM containers; transcode webm→mp4 (+AAC).
+- pipewiresrc intermittently emits buffers with no PTS near stream start
+  (even with do-timestamp=true); mp4mux aborts the whole pipeline on the
+  first one ("Buffer has no PTS"). videorate + fixed framerate caps drop
+  them and yield CFR output. Watchdog the gst process for its whole
+  life — a single startup liveness check misses later death and the UI
+  hangs on "Stopping".
 - QListView uniformItemSizes caches the first measurement — set
   explicit sizeHints/placeholder icons before the view measures.
 - Qt movable-drag moves all selected items with the grabber — freeze

@@ -249,9 +249,10 @@ class EditorWindow(QMainWindow):
         self.undo_stack.cleanChanged.connect(self._update_title)
 
         self.tool = Tool.SELECT
-        self.color = QColor("#e3242b")
-        self.stroke_width = 6
-        self.font_size = 18
+        s = self.settings
+        self.color = QColor(s.tool_color if s else "#e3242b")
+        self.stroke_width = s.stroke_width if s else 10
+        self.font_size = s.font_size if s else 24
         self.step_counter = 1
         self.preview_only = False
         self._syncing_panel = False
@@ -469,14 +470,32 @@ class EditorWindow(QMainWindow):
 
         dock.setWidget(w)
         self.addDockWidget(Qt.RightDockWidgetArea, dock)
+        self._panel_form = form
         self._update_color_swatch()
+        self._update_panel_rows()
         self.scene.selectionChanged.connect(self._sync_panel)
+
+    def _update_panel_rows(self) -> None:
+        """Only show the rows that apply: stroke for shapes, size for text."""
+        from .items import get_style
+        items = self._selected_annotations()
+        if items:
+            styles = [get_style(i) for i in items]
+            stroke = any("width" in s for s in styles)
+            text = any("font_size" in s for s in styles)
+        else:  # nothing selected: follow the active tool
+            stroke = self.tool in (Tool.ARROW, Tool.LINE, Tool.RECT,
+                                   Tool.ELLIPSE, Tool.PEN, Tool.SELECT)
+            text = self.tool in (Tool.TEXT, Tool.SELECT)
+        self._panel_form.setRowVisible(self.width_spin, stroke)
+        self._panel_form.setRowVisible(self.font_spin, text)
 
     def _selected_annotations(self):
         return [i for i in self.scene.selectedItems() if is_annotation(i)]
 
     def _sync_panel(self) -> None:
         """Reflect the first selected object's style in the panel."""
+        self._update_panel_rows()
         items = self._selected_annotations()
         if not items:
             return
@@ -509,6 +528,8 @@ class EditorWindow(QMainWindow):
             return
         self.color = c
         self._update_color_swatch()
+        if self.settings:
+            self.settings.tool_color = c.name()
         if not self._syncing_panel:
             self._apply_to_selection(color=c)
 
@@ -526,19 +547,26 @@ class EditorWindow(QMainWindow):
 
     def _width_changed(self, w: int) -> None:
         self.stroke_width = w
-        if not self._syncing_panel:
-            self._apply_to_selection(width=w)
+        if self._syncing_panel:
+            return
+        if self.settings:
+            self.settings.stroke_width = w
+        self._apply_to_selection(width=w)
 
     def _font_changed(self, size: int) -> None:
         self.font_size = size
-        if not self._syncing_panel:
-            self._apply_to_selection(font_size=size)
+        if self._syncing_panel:
+            return
+        if self.settings:
+            self.settings.font_size = size
+        self._apply_to_selection(font_size=size)
 
     # -- tools -------------------------------------------------------------
 
     def set_tool(self, tool: Tool) -> None:
         self.tool = tool
         self._tool_actions[tool].setChecked(True)
+        self._update_panel_rows()
         hints = {
             Tool.SELECT: "Drag to move · grips to resize · Del to delete",
             Tool.CROP: "Drag a rectangle to crop (Ctrl+Z undoes)",

@@ -21,7 +21,20 @@ from PySide6.QtWidgets import (
     QGraphicsPixmapItem,
     QGraphicsRectItem,
     QGraphicsTextItem,
+    QStyle,
+    QStyleOptionGraphicsItem,
 )
+
+
+class _NoSelectionBox:
+    """Suppress Qt's dashed selection rect — selection is shown by the
+    endpoint grips instead (a bounding box around a diagonal arrow reads
+    as a weird floating square)."""
+
+    def paint(self, painter, option, widget=None):
+        opt = QStyleOptionGraphicsItem(option)
+        opt.state &= ~QStyle.State_Selected
+        super().paint(painter, opt, widget)
 
 # Marker attribute: anything with .is_annotation == True gets flattened/undone.
 ANNOTATION_FLAG = "is_annotation"
@@ -37,7 +50,7 @@ def is_annotation(item: QGraphicsItem) -> bool:
     return getattr(item, ANNOTATION_FLAG, False)
 
 
-class ArrowItem(QGraphicsPathItem):
+class ArrowItem(_NoSelectionBox, QGraphicsPathItem):
     """Line with a filled arrowhead at the end point."""
 
     def __init__(self, p1: QPointF, p2: QPointF, color: QColor, width: int):
@@ -99,7 +112,7 @@ class ArrowItem(QGraphicsPathItem):
         self.setPath(path)
 
 
-class LineItem(QGraphicsPathItem):
+class LineItem(_NoSelectionBox, QGraphicsPathItem):
     def __init__(self, p1: QPointF, p2: QPointF, color: QColor, width: int):
         super().__init__()
         _mark(self)
@@ -287,7 +300,9 @@ class HandleItem(QGraphicsRectItem):
 
     def __init__(self, target, role: str, on_pressed, on_moved,
                  on_released=None):
-        s = self.SIZE
+        # Endpoint grips are the only selection indicator on arrows/lines
+        # (no bounding box) — make them a touch bigger.
+        s = 12.0 if role in ("p1", "p2") else self.SIZE
         super().__init__(-s / 2, -s / 2, s, s, target)
         self.role = role
         self._on_pressed = on_pressed
@@ -310,7 +325,7 @@ class HandleItem(QGraphicsRectItem):
         self.setZValue(20000)
 
     def paint(self, painter, option, widget=None):
-        if self.role == "rotate":
+        if self.role in ("rotate", "p1", "p2"):
             painter.setRenderHint(QPainter.Antialiasing)
             painter.setBrush(self.brush())
             painter.setPen(self.pen())

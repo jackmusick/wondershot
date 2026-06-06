@@ -114,6 +114,7 @@ class CameraBubble(QWidget):
             return
         if self.camera is not None:
             self.camera.stop()
+            self.camera.deleteLater()
         self.camera = QCamera(device, self)
         self.session.setCamera(self.camera)
         self.camera.start()

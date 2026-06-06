@@ -79,12 +79,16 @@ class GrabbitApp(QObject):
         self.gallery = GalleryWindow(self.settings, self.capture,
                                      recorder=self.recorder)
         self.gallery.quit_requested.connect(qapp.quit)
+        self.gallery.settings_applied.connect(self._on_settings_applied)
         self._editors: list[EditorWindow] = []
         self._gallery_was_visible = False
 
         self.icon = make_app_icon()
         qapp.setWindowIcon(self.icon)
         self.tray = self._build_tray()
+        self.recorder.tick.connect(
+            lambda t: self.record_action.setText(
+                f"Stop recording ({t})" if t else "Stop recording"))
 
         self.hotkey = HotkeyManager(self)
         self.hotkey.pressed.connect(lambda: self.trigger_capture("region"))
@@ -212,6 +216,16 @@ class GrabbitApp(QObject):
         self.gallery.set_recording(False)
         self.tray.showMessage("grabbit — recording failed", message,
                               self.icon, 5000)
+
+    def _on_settings_applied(self) -> None:
+        # A live bubble should switch to the newly chosen camera without
+        # needing an off/on toggle.
+        bubble = getattr(self, "bubble", None)
+        if bubble is not None:
+            try:
+                bubble.start_camera()
+            except RuntimeError:
+                pass  # bubble closed itself (WA_DeleteOnClose)
 
     def toggle_bubble(self, on: bool) -> None:
         if on:
