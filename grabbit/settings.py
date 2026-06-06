@@ -78,6 +78,14 @@ class Settings:
         self._s.setValue("mic_device", value)
 
     @property
+    def noise_suppression(self) -> bool:
+        return self._s.value("noise_suppression", "true") in (True, "true")
+
+    @noise_suppression.setter
+    def noise_suppression(self, value: bool) -> None:
+        self._s.setValue("noise_suppression", "true" if value else "false")
+
+    @property
     def screencast_token(self) -> str:
         """Portal restore token so the share picker shows only once."""
         return self._s.value("screencast_token", "")

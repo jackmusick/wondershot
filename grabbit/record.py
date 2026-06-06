@@ -30,6 +30,16 @@ try:
 except ImportError:
     _HAVE_GIO = False
 
+_element_cache: dict[str, bool] = {}
+
+
+def _have_gst_element(name: str) -> bool:
+    if name not in _element_cache:
+        _element_cache[name] = subprocess.run(
+            ["gst-inspect-1.0", name], capture_output=True).returncode == 0
+    return _element_cache[name]
+
+
 PORTAL_BUS = "org.freedesktop.portal.Desktop"
 PORTAL_PATH = "/org/freedesktop/portal/desktop"
 SCREENCAST_IFACE = "org.freedesktop.portal.ScreenCast"
@@ -73,6 +83,7 @@ class ScreenRecorder(QObject):
         self._fd = -1
         self._conn = None
         self._subs: list[int] = []
+        self._stopping = False
 
     # -- public ------------------------------------------------------------
 
@@ -100,7 +111,10 @@ class ScreenRecorder(QObject):
             self._fail(f"portal unavailable: {e.message}")
 
     def stop(self) -> None:
+        if self._stopping:
+            return  # double-stop (tray + toolbar) must not double-finalize
         if self._proc is not None and self._proc.poll() is None:
+            self._stopping = True
             # -e turns SIGINT into EOS: the mp4 finalizes, then exits.
             self._proc.send_signal(signal.SIGINT)
             self._poll_exit(timeout_ms=15000)
@@ -223,9 +237,20 @@ class ScreenRecorder(QObject):
         if self.settings.mic_enabled:
             device = mic_pulse_device(self.settings.mic_device)
             dev_arg = [f"device={device}"] if device else []
+            # webrtcdsp: noise suppression + auto gain + high-pass — raw
+            # pulsesrc picks up every fan and echo in the room.
+            dsp = []
+            if (self.settings.noise_suppression
+                    and _have_gst_element("webrtcdsp")):
+                dsp = ["!", "audio/x-raw,rate=48000,channels=1",
+                       "!", "webrtcdsp", "echo-cancel=false",
+                       "noise-suppression=true", "gain-control=true",
+                       "high-pass-filter=true"]
             args += [
                 "pulsesrc", *dev_arg, "do-timestamp=true",
                 "!", "queue", "!", "audioconvert", "!", "audioresample",
+                *dsp,
+                "!", "audioconvert",
                 "!", "avenc_aac", "bitrate=160000",
                 "!", "aacparse", "!", "queue", "!", "mux.",
             ]
@@ -305,6 +330,7 @@ class ScreenRecorder(QObject):
             self._session = None
 
     def _cleanup(self) -> None:
+        self._stopping = False
         if self._fd >= 0:
             try:
                 os.close(self._fd)

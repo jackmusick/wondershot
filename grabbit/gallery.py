@@ -651,14 +651,21 @@ class GalleryWindow(QMainWindow):
             self.capture.record_region()  # spectacle fallback
             return
         if self.recorder.recording:
+            self.set_stopping()
             self.recorder.stop()
         else:
             self.recorder.start()
 
     def set_recording(self, on: bool) -> None:
+        self.record_action.setEnabled(True)
         self.record_action.setText("Stop" if on else "Record")
         self.record_action.setIcon(QIcon.fromTheme(
             "media-playback-stop" if on else "media-record"))
+
+    def set_stopping(self) -> None:
+        # finalizing: neither button should accept clicks until done
+        self.record_action.setText("Stopping…")
+        self.record_action.setEnabled(False)
 
     def _open_settings(self) -> None:
         from .settings_dialog import SettingsDialog

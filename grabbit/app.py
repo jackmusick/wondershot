@@ -181,8 +181,10 @@ class GrabbitApp(QObject):
 
     def toggle_recording(self) -> None:
         if self.recorder.recording:
-            self.recorder.stop()
             self.record_action.setText("Stopping…")
+            self.record_action.setEnabled(False)
+            self.gallery.set_stopping()
+            self.recorder.stop()
         else:
             self.recorder.start()
 
@@ -196,6 +198,7 @@ class GrabbitApp(QObject):
 
     def _on_recording_finished(self, path: str) -> None:
         self.record_action.setText("Record screen…")
+        self.record_action.setEnabled(True)
         self.gallery.set_recording(False)
         self.gallery.rescan()
         self.gallery.select_path(path)
@@ -205,6 +208,7 @@ class GrabbitApp(QObject):
 
     def _on_recording_failed(self, message: str) -> None:
         self.record_action.setText("Record screen…")
+        self.record_action.setEnabled(True)
         self.gallery.set_recording(False)
         self.tray.showMessage("grabbit — recording failed", message,
                               self.icon, 5000)
@@ -216,7 +220,8 @@ class GrabbitApp(QObject):
             self.bubble.setAttribute(Qt.WA_DeleteOnClose, True)
             self.bubble.destroyed.connect(
                 lambda *_: self.bubble_action.setChecked(False))
-            self.bubble.show()
+            # let KWin pick up the freshly-written position rule first
+            QTimer.singleShot(300, self.bubble.show)
         elif getattr(self, "bubble", None) is not None:
             self.bubble.close()
             self.bubble = None

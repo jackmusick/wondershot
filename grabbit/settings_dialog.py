@@ -96,6 +96,11 @@ class SettingsDialog(QDialog):
         self.mic_check.setChecked(settings.mic_enabled)
         form.addRow("", self.mic_check)
 
+        self.noise_check = QCheckBox(
+            "Noise suppression + auto gain (webrtcdsp)")
+        self.noise_check.setChecked(settings.noise_suppression)
+        form.addRow("", self.noise_check)
+
         # hotkey guidance
         hk = QGroupBox("Global capture hotkey")
         hk_layout = QVBoxLayout(hk)
@@ -153,6 +158,7 @@ class SettingsDialog(QDialog):
         self.settings.camera_device = self.camera_combo.currentData()
         self.settings.mic_device = self.mic_combo.currentData()
         self.settings.mic_enabled = self.mic_check.isChecked()
+        self.settings.noise_suppression = self.noise_check.isChecked()
         self.settings.copy_after_capture = self.copy_check.isChecked()
         self.settings.show_gallery_after_capture = self.show_check.isChecked()
         return moved

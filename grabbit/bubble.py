@@ -42,8 +42,10 @@ def ensure_position_rule() -> None:
         return
     avail = screen.availableGeometry()
     size = 220
+    # Wayland gives us no panel struts (availableGeometry == full screen),
+    # so leave generous bottom clearance for the taskbar.
     x = avail.right() - size - 24
-    y = avail.bottom() - size - 24
+    y = avail.bottom() - size - 96
 
     def kwrite(key, value):
         subprocess.run(["kwriteconfig6", "--file", "kwinrulesrc",
