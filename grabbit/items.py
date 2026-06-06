@@ -244,6 +244,16 @@ class HandleItem(QGraphicsRectItem):
     """
 
     SIZE = 10.0
+    CURSORS = {
+        "rotate": Qt.OpenHandCursor,
+        "width": Qt.SizeHorCursor,
+        "radius": Qt.SizeHorCursor,
+        "tl": Qt.SizeFDiagCursor,
+        "br": Qt.SizeFDiagCursor,
+        "tr": Qt.SizeBDiagCursor,
+        "bl": Qt.SizeBDiagCursor,
+        "font": Qt.SizeFDiagCursor,
+    }
 
     def __init__(self, target, role: str, on_pressed, on_moved):
         s = self.SIZE
@@ -256,10 +266,23 @@ class HandleItem(QGraphicsRectItem):
         self.setFlag(QGraphicsItem.ItemIsMovable, True)
         self.setFlag(QGraphicsItem.ItemSendsGeometryChanges, True)
         self.setFlag(QGraphicsItem.ItemIgnoresTransformations, True)
-        self.setBrush(QBrush(QColor("white")))
-        self.setPen(QPen(QColor("#3daee9"), 1.5))
+        if role == "rotate":
+            self.setBrush(QBrush(QColor("#3daee9")))
+            self.setPen(QPen(QColor("white"), 1.5))
+        else:
+            self.setBrush(QBrush(QColor("white")))
+            self.setPen(QPen(QColor("#3daee9"), 1.5))
         self.setZValue(20000)
-        self.setCursor(Qt.SizeAllCursor)
+        self.setCursor(self.CURSORS.get(role, Qt.SizeAllCursor))
+
+    def paint(self, painter, option, widget=None):
+        if self.role == "rotate":
+            painter.setRenderHint(QPainter.Antialiasing)
+            painter.setBrush(self.brush())
+            painter.setPen(self.pen())
+            painter.drawEllipse(self.rect())
+        else:
+            super().paint(painter, option, widget)
 
     def place(self, pos: QPointF) -> None:
         """Reposition without firing the moved callback."""

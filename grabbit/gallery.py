@@ -245,6 +245,7 @@ class GalleryWindow(QMainWindow):
         self._thumb_emitter = _ThumbSignal()
         self._thumb_emitter.done.connect(self._thumb_ready)
         self._really_quit = False
+        self._prompting = False
 
         # -- embedded editor (QMainWindow works fine as a child widget) ----
         self.editor = EditorWindow(image=_placeholder_image(),
@@ -377,6 +378,11 @@ class GalleryWindow(QMainWindow):
         return entries
 
     def rescan(self) -> None:
+        # A save-prompt may be open (nested event loop): rebuilding the
+        # model under it invalidates indexes mid-flight. Try again later.
+        if self._prompting:
+            self._rescan_timer.start()
+            return
         entries = self._list_library()
 
         # Copy icons out before the model clear deletes the C++ items.
@@ -449,8 +455,11 @@ class GalleryWindow(QMainWindow):
         idx = self._index_of(path)
         if idx is None:
             return
-        self.strip.setCurrentIndex(idx)  # triggers _selection_changed
+        # Scroll BEFORE selecting: setCurrentIndex can open a save-prompt
+        # whose nested event loop lets a watcher rescan clear the model,
+        # and scrollTo on the stale index then segfaults.
         self.strip.scrollTo(idx)
+        self.strip.setCurrentIndex(idx)  # triggers _selection_changed
 
     def _select_silently(self, path: str) -> None:
         idx = self._index_of(path)
@@ -469,7 +478,12 @@ class GalleryWindow(QMainWindow):
         path = paths[0]
         if path == self._current_path:
             return
-        if not self.editor.maybe_save():
+        self._prompting = True
+        try:
+            keep_going = self.editor.maybe_save()
+        finally:
+            self._prompting = False
+        if not keep_going:
             self._select_silently(self._current_path or "")
             return
         if is_animated(path):

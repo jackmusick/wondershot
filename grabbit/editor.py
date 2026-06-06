@@ -663,10 +663,11 @@ class EditorWindow(QMainWindow):
             return {"p1": p1, "p2": p2}
         if isinstance(t, (RectItem, EllipseItem, HighlightItem)):
             r = t.rect()
+            # rotate grip sits ON the top edge midpoint: grips floating
+            # outside the object miss hit-testing at some zoom levels
             return {"tl": r.topLeft(), "tr": r.topRight(),
                     "bl": r.bottomLeft(), "br": r.bottomRight(),
-                    "rotate": QPointF(r.center().x(),
-                                      r.top() - self.ROTATE_OFFSET)}
+                    "rotate": QPointF(r.center().x(), r.top())}
         if isinstance(t, PixelateItem):
             r = t.rect()
             return {"tl": r.topLeft(), "tr": r.topRight(),
@@ -675,8 +676,7 @@ class EditorWindow(QMainWindow):
             br = t.boundingRect()
             return {"font": br.bottomRight(),
                     "width": QPointF(br.right(), br.center().y()),
-                    "rotate": QPointF(br.center().x(),
-                                      br.top() - self.ROTATE_OFFSET)}
+                    "rotate": QPointF(br.center().x(), br.top())}
         if isinstance(t, StepItem):
             return {"radius": QPointF(t.radius, 0)}
         return {}
