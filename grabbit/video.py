@@ -182,18 +182,33 @@ class RedactOverlay(QWidget):
     # -- painting ------------------------------------------------------------------
 
     def paintEvent(self, _ev):  # noqa: N802
+        # Wayland won't composite a translucent widget over the video
+        # surface, so when the player is paused (drawing and scrubbing both
+        # happen paused) we paint the current frame OURSELVES and decorate
+        # on top. While playing we paint nothing and playback stays on the
+        # fast path.
+        from PySide6.QtMultimedia import QMediaPlayer as _MP
+        paused = self.pane.player.playbackState() != _MP.PlayingState
+        decorating = self.active or bool(self.pane.redactions)
+        if not (paused and decorating):
+            return
+        frame_img = self.pane.last_frame_image()
+        if frame_img is None:
+            return
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.SmoothPixmapTransform)
+        disp = self.display_rect()
+        p.drawImage(disp, frame_img)
         t = self.pane.player.position() / 1000.0
         for i, red in enumerate(self.pane.redactions):
-            # The frost is only shown while the playhead is inside the
-            # span — scrubbing previews exactly what gets blurred and when.
+            # Frost only inside its span — scrubbing previews what gets
+            # blurred and when.
             if not (red.start <= t <= red.end):
                 continue
             r = self.video_to_widget(red.rect)
             color = QColor(PALETTE[i % len(PALETTE)])
-            pen = QPen(color, 2, Qt.DashLine)
-            p.setPen(pen)
+            p.setPen(QPen(color, 2, Qt.DashLine))
             p.setBrush(QColor(255, 255, 255, 70))
             p.drawRect(r)
             f = p.font()
@@ -388,6 +403,12 @@ class VideoPane(QWidget):
         self.player.setVideoOutput(self.stack.video)
         self.overlay = self.stack.overlay
         self.overlay.region_drawn.connect(self._region_drawn)
+        # Keep the latest frame so the overlay can paint it while paused
+        # (conversion to QImage is deferred to paint time).
+        self._last_frame = None
+        sink = self.stack.video.videoSink()
+        if sink is not None:
+            sink.videoFrameChanged.connect(self._frame_changed)
 
         self.play_btn = QPushButton(self)
         self.play_btn.setIcon(QIcon.fromTheme("media-playback-start"))
@@ -487,10 +508,25 @@ class VideoPane(QWidget):
             self.player.pause()
             self.player.setPosition(0)
 
+    def _frame_changed(self, frame) -> None:
+        if frame.isValid():
+            self._last_frame = frame
+            if (self.player.playbackState() != QMediaPlayer.PlayingState
+                    and (self.overlay.active or self.redactions)):
+                self.overlay.update()
+
+    def last_frame_image(self):
+        if self._last_frame is not None and self._last_frame.isValid():
+            img = self._last_frame.toImage()
+            if not img.isNull():
+                return img
+        return None
+
     def _state_changed(self, state) -> None:
         playing = state == QMediaPlayer.PlayingState
         self.play_btn.setIcon(QIcon.fromTheme(
             "media-playback-pause" if playing else "media-playback-start"))
+        self.overlay.update()
 
     def _position_changed(self, pos: int) -> None:
         if not self.slider.isSliderDown():
@@ -505,6 +541,17 @@ class VideoPane(QWidget):
         self.slider.setRange(0, dur)
 
     # -- redaction ------------------------------------------------------------
+
+    def _notify(self, msg: str, ms: int = 4000) -> None:
+        """Status both to the main window bar and visibly in this pane."""
+        self.status.emit(msg, ms)
+        self.hint.setText(msg)
+        self.hint.show()
+        if ms:
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(
+                ms, lambda: self.hint.hide()
+                if self.hint.text() == msg else None)
 
     def active_redaction(self) -> Redaction | None:
         if 0 <= self.active_idx < len(self.redactions):
@@ -700,21 +747,28 @@ class VideoPane(QWidget):
             video_w=vs.width() if vs else 0,
             video_h=vs.height() if vs else 0)
         base, ext = os.path.splitext(os.path.basename(self.path))
-        out = unique_path(self.settings.library_dir, f"{base}-redacted{ext}")
+        # H.264 can't live in a WebM container (Spectacle records .webm) —
+        # render to mp4 unless the source is already mp4-family, and
+        # transcode audio when the container changes.
+        if ext.lower() in (".mp4", ".m4v", ".mov"):
+            out_ext, audio_opts = ext, ["-c:a", "copy"]
+        else:
+            out_ext, audio_opts = ".mp4", ["-c:a", "aac", "-b:a", "160k"]
+        out = unique_path(self.settings.library_dir,
+                          f"{base}-redacted{out_ext}")
         tmp = self._render_temp(out)
         enc = pick_encoder()
         enc_opts = (["-crf", "20", "-preset", "veryfast"]
                     if enc == "libx264" else ["-q:v", "4"])
-        if ext.lower() in (".mp4", ".m4v", ".mov"):
-            enc_opts += ["-movflags", "+faststart"]  # instant seeking
+        enc_opts += ["-movflags", "+faststart"]  # instant seeking
         args = ["-y", "-i", self.path, "-filter_complex", graph,
-                "-map", f"[{out_label}]", "-map", "0:a?", "-c:a", "copy",
+                "-map", f"[{out_label}]", "-map", "0:a?", *audio_opts,
                 "-c:v", enc, *enc_opts, tmp]
         self._blur_proc = QProcess(self)
         self._blur_proc.finished.connect(
             lambda code, _st: self._blur_done(code, tmp, out))
         self.apply_btn.setText("Rendering…")
-        self.status.emit("Rendering blurred video…", 0)
+        self._notify("Rendering blurred video…", 0)
         self._set_rendering(True)
         self._blur_proc.start("ffmpeg", args)
 
@@ -730,14 +784,14 @@ class VideoPane(QWidget):
             shutil.move(tmp, out)
             self._set_rendering(False)
             self._clear_redactions()
-            self.status.emit(f"Saved {os.path.basename(out)}", 4000)
+            self._notify(f"Saved {os.path.basename(out)}")
             self.file_ready.emit(out)
         else:
             self._set_rendering(False)
             self._rebuild_rows()
             self.refresh_overlays()
             tail = err.strip().splitlines()[-1] if err.strip() else "unknown"
-            self.status.emit(f"Blur render failed: {tail[:120]}", 6000)
+            self._notify(f"Blur render failed: {tail[:160]}", 10000)
             if os.path.exists(tmp):
                 os.unlink(tmp)
 
@@ -769,9 +823,9 @@ class VideoPane(QWidget):
         self.gif_btn.setText("Convert to GIF")
         if code == 0 and os.path.exists(tmp) and os.path.getsize(tmp) > 0:
             shutil.move(tmp, out)
-            self.status.emit(f"GIF saved: {os.path.basename(out)}", 4000)
+            self._notify(f"GIF saved: {os.path.basename(out)}")
             self.file_ready.emit(out)
         else:
-            self.status.emit("GIF conversion failed", 4000)
+            self._notify("GIF conversion failed", 6000)
             if os.path.exists(tmp):
                 os.unlink(tmp)
