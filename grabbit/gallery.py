@@ -31,6 +31,7 @@ from PySide6.QtGui import (
     QImage,
     QKeySequence,
     QPainter,
+    QPen,
     QPixmap,
     QStandardItem,
     QStandardItemModel,
@@ -68,13 +69,60 @@ def _timestamp_labels(mtime: float) -> tuple[str, str]:
 class _ThumbDelegate(QStyledItemDelegate):
     """Date/time overlay on each card: 'Today'/date bottom-left, time
     bottom-right. Painted live from mtime (not baked into the thumbnail)
-    so 'Today' rolls over correctly in a long-running session."""
+    so 'Today' rolls over correctly in a long-running session.
+    Hovered cards get an (x) top-right for one-click trash."""
+
+    CLOSE_SIZE = 20
+
+    def __init__(self, parent, on_delete=None):
+        super().__init__(parent)
+        self._on_delete = on_delete
+
+    def _close_rect(self, option):
+        from PySide6.QtCore import QRect
+        r = option.rect
+        pad_x = (r.width() - THUMB_SIZE.width()) // 2
+        pad_y = (r.height() - THUMB_SIZE.height()) // 2
+        s = self.CLOSE_SIZE
+        return QRect(r.right() - pad_x - s - 4, r.y() + pad_y + 4, s, s)
+
+    def editorEvent(self, event, model, option, index):  # noqa: N802
+        from PySide6.QtCore import QEvent
+        if (self._on_delete is not None
+                and event.type() in (QEvent.MouseButtonPress,
+                                     QEvent.MouseButtonRelease)
+                and event.button() == Qt.LeftButton
+                and self._close_rect(option).contains(
+                    event.position().toPoint())):
+            if event.type() == QEvent.MouseButtonRelease:
+                path = index.data(PATH_ROLE)
+                if path:
+                    self._on_delete(path)
+            return True  # swallow: no select/drag from the (x)
+        return super().editorEvent(event, model, option, index)
 
     def paint(self, p, option, index):  # noqa: N802
         super().paint(p, option, index)
         path = index.data(PATH_ROLE)
         if not path:
             return
+        from PySide6.QtWidgets import QStyle
+        if option.state & QStyle.State_MouseOver:
+            c = self._close_rect(option)
+            p.save()
+            p.setRenderHint(QPainter.Antialiasing)
+            p.setPen(Qt.NoPen)
+            p.setBrush(QColor(0, 0, 0, 170))
+            p.drawEllipse(c)
+            pen = QPen(QColor(235, 235, 235), 2)
+            pen.setCapStyle(Qt.RoundCap)
+            p.setPen(pen)
+            m = 6
+            p.drawLine(c.left() + m, c.top() + m,
+                       c.right() - m, c.bottom() - m)
+            p.drawLine(c.right() - m, c.top() + m,
+                       c.left() + m, c.bottom() - m)
+            p.restore()
         try:
             mtime = os.path.getmtime(path)
         except OSError:
@@ -338,7 +386,10 @@ class GalleryWindow(QMainWindow):
         self.strip.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.strip.setContextMenuPolicy(Qt.CustomContextMenu)
         self.strip.customContextMenuRequested.connect(self._context_menu)
-        self.strip.setItemDelegate(_ThumbDelegate(self.strip))
+        self.strip.setItemDelegate(_ThumbDelegate(
+            self.strip, on_delete=lambda p: self._trash_paths([p],
+                                                              confirm=False)))
+        self.strip.setMouseTracking(True)  # hover state for the (x)
         # Distinct shelf look: clearly darker background than the canvas,
         # thumbnails sit as raised cards with hover/selection chrome.
         self.strip.setStyleSheet("""
@@ -656,15 +707,18 @@ class GalleryWindow(QMainWindow):
         QDesktopServices.openUrl(QUrl.fromLocalFile(path))
 
     def _delete_selected(self) -> None:
-        paths = self._selected_paths()
+        self._trash_paths(self._selected_paths(), confirm=True)
+
+    def _trash_paths(self, paths: list[str], confirm: bool) -> None:
         if not paths:
             return
-        names = "\n".join(os.path.basename(p) for p in paths[:8])
-        more = f"\n… and {len(paths) - 8} more" if len(paths) > 8 else ""
-        if QMessageBox.question(
-            self, "grabbit", f"Move to trash?\n\n{names}{more}"
-        ) != QMessageBox.Yes:
-            return
+        if confirm:
+            names = "\n".join(os.path.basename(p) for p in paths[:8])
+            more = f"\n… and {len(paths) - 8} more" if len(paths) > 8 else ""
+            if QMessageBox.question(
+                self, "grabbit", f"Move to trash?\n\n{names}{more}"
+            ) != QMessageBox.Yes:
+                return
         from PySide6.QtCore import QFile
         for p in paths:
             QFile.moveToTrash(p)
