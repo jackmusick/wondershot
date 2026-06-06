@@ -38,13 +38,14 @@ class HotkeyManager(QObject):
         bus = QDBusConnection.sessionBus()
         if not bus.isConnected():
             return False
+        from PySide6.QtCore import SLOT
         ok = bus.connect(
             SERVICE,
             f"/component/{COMPONENT}",
             "org.kde.kglobalaccel.Component",
             "globalShortcutPressed",
             self,
-            "_on_pressed(QString,QString,qlonglong)",
+            SLOT("_on_pressed(QString,QString,qlonglong)"),
         )
         self.active = bool(ok)
         return self.active

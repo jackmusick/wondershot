@@ -118,13 +118,14 @@ class CaptureManager(QObject):
         sender = bus.baseService()[1:].replace(".", "_")
         token = f"grabbit{random.randint(0, 2**31)}"
         request_path = f"/org/freedesktop/portal/desktop/request/{sender}/{token}"
+        from PySide6.QtCore import SLOT
         ok = bus.connect(
             PORTAL_SERVICE,
             request_path,
             "org.freedesktop.portal.Request",
             "Response",
             self,
-            "_portal_response(uint, QVariantMap)",
+            SLOT("_portal_response(uint,QVariantMap)"),
         )
         if not ok:
             self.failed.emit("could not subscribe to portal response")

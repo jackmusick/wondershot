@@ -131,6 +131,27 @@ class FlattenCommand(QUndoCommand):
                 self.editor.scene.addItem(it)
 
 
+class GripCommand(QUndoCommand):
+    """Undo entry for a grip edit (resize / rotate / reshape)."""
+
+    def __init__(self, editor: "EditorWindow", item, before: dict, after: dict):
+        super().__init__("transform")
+        self.editor = editor
+        self.item = item
+        self.before = before
+        self.after = after
+        self._first = True
+
+    def redo(self):
+        if self._first:  # the live drag already applied the change
+            self._first = False
+            return
+        self.editor.apply_snapshot(self.item, self.after)
+
+    def undo(self):
+        self.editor.apply_snapshot(self.item, self.before)
+
+
 class CanvasView(QGraphicsView):
     def __init__(self, editor: "EditorWindow"):
         super().__init__(editor.scene)
@@ -692,7 +713,8 @@ class EditorWindow(QMainWindow):
             return
         t = sel[0]
         for role, pos in self._handle_positions(t).items():
-            h = HandleItem(t, role, self._handle_pressed, self._handle_moved)
+            h = HandleItem(t, role, self._handle_pressed, self._handle_moved,
+                           self._handle_released)
             h.place(pos)
             self._handles.append(h)
 
@@ -702,11 +724,73 @@ class EditorWindow(QMainWindow):
             if h.role in positions:
                 h.place(positions[h.role])
 
+    def snapshot(self, t) -> dict:
+        s = {"pos": QPointF(t.pos()), "rotation": t.rotation(),
+             "origin": QPointF(t.transformOriginPoint())}
+        if isinstance(t, (ArrowItem, LineItem)):
+            s["p1"], s["p2"] = t.endpoints()
+        elif hasattr(t, "rect"):
+            from PySide6.QtCore import QRectF as _R
+            s["rect"] = _R(t.rect())
+        if isinstance(t, TextItem):
+            s["font_size"] = t.font().pointSize()
+            s["text_width"] = t.textWidth()
+        if isinstance(t, StepItem):
+            s["radius"] = t.radius
+        return s
+
+    def apply_snapshot(self, t, s: dict) -> None:
+        t.setTransformOriginPoint(s["origin"])
+        t.setRotation(s["rotation"])
+        t.setPos(s["pos"])
+        if "p1" in s:
+            t.set_start(s["p1"])
+            t.set_end(s["p2"])
+        elif "rect" in s:
+            t.setRect(s["rect"])
+        if "font_size" in s and isinstance(t, TextItem):
+            f = t.font()
+            f.setPointSize(int(s["font_size"]))
+            t.setFont(f)
+            t.setTextWidth(s["text_width"])
+        if "radius" in s and isinstance(t, StepItem):
+            t.set_radius(s["radius"])
+        if t.isSelected():
+            self._place_handles(t)
+
+    @staticmethod
+    def _snapshots_differ(a: dict, b: dict) -> bool:
+        return any(a[k] != b[k] for k in a)
+
+    @staticmethod
+    def _set_origin_keeping_position(t, c: QPointF) -> None:
+        """Move the transform origin without the visual jump."""
+        if t.transformOriginPoint() == c:
+            return
+        old = t.mapToScene(c)
+        t.setTransformOriginPoint(c)
+        new = t.mapToScene(c)
+        t.setPos(t.pos() + old - new)
+
     def _handle_pressed(self, t, role: str) -> dict:
+        state = {"snapshot": self.snapshot(t)}
         if role == "font" and isinstance(t, TextItem):
-            return {"font0": t.font().pointSizeF(),
-                    "h0": max(1.0, t.boundingRect().height())}
-        return {}
+            state.update({"font0": t.font().pointSizeF(),
+                          "h0": max(1.0, t.boundingRect().height())})
+        elif role == "rotate":
+            c = (t.rect().center() if hasattr(t, "rect")
+                 else t.boundingRect().center())
+            self._set_origin_keeping_position(t, c)
+            state.update({"center_local": c, "rot0": t.rotation()})
+        return state
+
+    def _handle_released(self, t, role: str, state: dict) -> None:
+        before = state.get("snapshot")
+        if before is None:
+            return
+        after = self.snapshot(t)
+        if self._snapshots_differ(before, after):
+            self.undo_stack.push(GripCommand(self, t, before, after))
 
     def _handle_moved(self, t, role: str, pos: QPointF, state: dict) -> None:
         if self._adjusting:
@@ -731,20 +815,12 @@ class EditorWindow(QMainWindow):
             elif role == "width" and isinstance(t, TextItem):
                 t.setTextWidth(max(40.0, pos.x()))
             elif role == "rotate":
-                import math
-                c = (t.rect().center() if hasattr(t, "rect")
-                     else t.boundingRect().center())
-                t.setTransformOriginPoint(c)
-                # Handle pos arrives in the item's local (pre-rotation)
-                # frame, so its angle from straight-up IS the delta.
-                ang = math.degrees(math.atan2(pos.x() - c.x(),
-                                              c.y() - pos.y()))
-                t.setRotation((t.rotation() + ang) % 360)
+                pass  # HandleItem rotates the parent itself (scene-angle math)
             elif role == "radius" and isinstance(t, StepItem):
                 import math
                 t.set_radius(math.hypot(pos.x(), pos.y()))
-            self.undo_stack.resetClean()  # resizing counts as an edit
-            self._place_handles(t)
+            if role != "rotate":
+                self._place_handles(t)
         finally:
             self._adjusting = False
 

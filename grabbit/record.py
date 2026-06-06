@@ -106,9 +106,13 @@ class ScreenRecorder(QObject):
     def _listen(self, token: str) -> None:
         sender = self.bus.baseService()[1:].replace(".", "_")
         path = f"/org/freedesktop/portal/desktop/request/{sender}/{token}"
-        self.bus.connect(PORTAL_SERVICE, path,
-                         "org.freedesktop.portal.Request", "Response",
-                         self, "_response(uint, QVariantMap)")
+        from PySide6.QtCore import SLOT
+        ok = self.bus.connect(PORTAL_SERVICE, path,
+                              "org.freedesktop.portal.Request", "Response",
+                              self, SLOT("_response(uint,QVariantMap)"))
+        if not ok:
+            self._step = None
+            self.failed.emit("could not subscribe to portal response")
 
     @Slot("uint", "QVariantMap")
     def _response(self, code: int, results: dict) -> None:

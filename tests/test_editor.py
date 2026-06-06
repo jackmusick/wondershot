@@ -135,10 +135,14 @@ def test_resize_handles_lifecycle(qapp):
     ed.scene.addItem(rect)
     rect.setSelected(True)
     assert len(ed._handles) == 5  # 4 corners + rotate
-    # drag the bottom-right grip outward
-    ed._handle_moved(rect, "br", QPointF(200, 200), {})
+    # drag the bottom-right grip outward (press/move/release contract)
+    state = ed._handle_pressed(rect, "br")
+    ed._handle_moved(rect, "br", QPointF(200, 200), state)
+    ed._handle_released(rect, "br", state)
     assert rect.rect().bottomRight() == QPointF(200, 200)
-    assert not ed.undo_stack.isClean()
+    assert ed.undo_stack.count() == 1  # grip edit is undoable
+    ed.undo_stack.undo()
+    assert rect.rect().bottomRight() == QPointF(150, 130)
     rect.setSelected(False)
     assert len(ed._handles) == 0
 
@@ -169,19 +173,30 @@ def test_text_font_resize(qapp):
     assert t.font().pointSize() == 36
 
 
-def test_rotation_handle(qapp):
+def test_rotation_drag_and_undo(qapp):
     from grabbit.items import RectItem
-    from PySide6.QtCore import QRectF, QPointF
+    from PySide6.QtCore import QRectF, QPointF, Qt
+    from PySide6.QtTest import QTest
     ed = make_editor(qapp)
-    rect = RectItem(QRectF(100, 100, 100, 60), QColor("red"), 4)
+    ed.resize(900, 700)
+    ed.show()
+    rect = RectItem(QRectF(150, 150, 200, 120), QColor("red"), 4)
     ed.scene.addItem(rect)
     rect.setSelected(True)
-    roles = {h.role for h in ed._handles}
-    assert "rotate" in roles
-    # drag the rotate grip to the right of center -> ~90 degrees
-    c = rect.rect().center()
-    ed._handle_moved(rect, "rotate", QPointF(c.x() + 50, c.y()), {})
-    assert abs(rect.rotation() - 90) < 1
+    grip = [h for h in ed._handles if h.role == "rotate"][0]
+    vp = ed.view.viewport()
+    gp = ed.view.mapFromScene(grip.scenePos())
+    before_pos = rect.pos()
+    QTest.mousePress(vp, Qt.LeftButton, Qt.NoModifier, gp)
+    target = ed.view.mapFromScene(QPointF(330, 210))  # right of center
+    for i in range(1, 6):
+        QTest.mouseMove(vp, gp + (target - gp) * i / 5)
+    QTest.mouseRelease(vp, Qt.LeftButton, Qt.NoModifier, target)
+    assert 45 < rect.rotation() < 135      # rotated towards the cursor
+    assert rect.pos() == before_pos        # didn't drag the object
+    assert ed.undo_stack.count() == 1      # grip edit is undoable
+    ed.undo_stack.undo()
+    assert rect.rotation() == 0
 
 
 def test_save_emits_signal(qapp, tmp_path):

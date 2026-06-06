@@ -236,6 +236,36 @@ class StepItem(QGraphicsItem):
             painter.drawRect(self.boundingRect())
 
 
+_rotate_cursor_cache = None
+
+
+def rotate_cursor():
+    """Curved-arrow rotate cursor (Qt ships none)."""
+    global _rotate_cursor_cache
+    if _rotate_cursor_cache is None:
+        from PySide6.QtGui import QCursor, QPixmap
+        pm = QPixmap(24, 24)
+        pm.fill(Qt.transparent)
+        p = QPainter(pm)
+        p.setRenderHint(QPainter.Antialiasing)
+        rect = QRectF(5, 5, 14, 14)
+        for pen in (QPen(QColor(0, 0, 0, 220), 4.5),
+                    QPen(QColor(255, 255, 255), 2.2)):
+            pen.setCapStyle(Qt.RoundCap)
+            p.setPen(pen)
+            p.setBrush(Qt.NoBrush)
+            p.drawArc(rect, 30 * 16, 280 * 16)
+        # arrowhead at the arc's end (~30°)
+        head = QPolygonF([QPointF(21.5, 6.5), QPointF(14.5, 5.0),
+                          QPointF(19.5, 12.5)])
+        p.setPen(QPen(QColor(0, 0, 0, 220), 1.5))
+        p.setBrush(QColor(255, 255, 255))
+        p.drawPolygon(head)
+        p.end()
+        _rotate_cursor_cache = QCursor(pm, 12, 12)
+    return _rotate_cursor_cache
+
+
 class HandleItem(QGraphicsRectItem):
     """Resize grip attached to an annotation as a child item.
 
@@ -255,25 +285,29 @@ class HandleItem(QGraphicsRectItem):
         "font": Qt.SizeFDiagCursor,
     }
 
-    def __init__(self, target, role: str, on_pressed, on_moved):
+    def __init__(self, target, role: str, on_pressed, on_moved,
+                 on_released=None):
         s = self.SIZE
         super().__init__(-s / 2, -s / 2, s, s, target)
         self.role = role
         self._on_pressed = on_pressed
         self._on_moved = on_moved
+        self._on_released = on_released
         self.press_state: dict = {}
         self._notify = True
+        self._press_scene = None
         self.setFlag(QGraphicsItem.ItemIsMovable, True)
         self.setFlag(QGraphicsItem.ItemSendsGeometryChanges, True)
         self.setFlag(QGraphicsItem.ItemIgnoresTransformations, True)
         if role == "rotate":
             self.setBrush(QBrush(QColor("#3daee9")))
             self.setPen(QPen(QColor("white"), 1.5))
+            self.setCursor(rotate_cursor())
         else:
             self.setBrush(QBrush(QColor("white")))
             self.setPen(QPen(QColor("#3daee9"), 1.5))
+            self.setCursor(self.CURSORS.get(role, Qt.SizeAllCursor))
         self.setZValue(20000)
-        self.setCursor(self.CURSORS.get(role, Qt.SizeAllCursor))
 
     def paint(self, painter, option, widget=None):
         if self.role == "rotate":
@@ -292,6 +326,7 @@ class HandleItem(QGraphicsRectItem):
 
     def mousePressEvent(self, event):  # noqa: N802
         self.press_state = self._on_pressed(self.parentItem(), self.role)
+        self._press_scene = event.scenePos()
         # Qt's movable-drag moves ALL selected items along with the
         # grabber — the selected parent would follow the mouse and the
         # grip (parent-relative) would never move at all. Freeze the
@@ -303,11 +338,37 @@ class HandleItem(QGraphicsRectItem):
         super().mousePressEvent(event)
         event.accept()
 
+    def mouseMoveEvent(self, event):  # noqa: N802
+        if self.role != "rotate":
+            super().mouseMoveEvent(event)
+            return
+        # Smooth absolute rotation: track the cursor's angle around the
+        # object's center in SCENE coordinates — no movable-item feedback
+        # loop, no grip repositioning mid-drag.
+        import math
+        parent = self.parentItem()
+        state = self.press_state
+        if parent is None or "center_local" not in state:
+            return
+        center = parent.mapToScene(state["center_local"])
+        v0 = self._press_scene - center
+        v1 = event.scenePos() - center
+        a0 = math.degrees(math.atan2(v0.y(), v0.x()))
+        a1 = math.degrees(math.atan2(v1.y(), v1.x()))
+        rot = (state.get("rot0", 0.0) + (a1 - a0)) % 360
+        if event.modifiers() & Qt.ShiftModifier:
+            rot = round(rot / 15) * 15  # snap to 15° with Shift
+        parent.setRotation(rot)
+        self._on_moved(parent, "rotate", self.pos(), state)
+        event.accept()
+
     def mouseReleaseEvent(self, event):  # noqa: N802
         parent = self.parentItem()
         if parent is not None and getattr(self, "_restore_movable", False):
             parent.setFlag(QGraphicsItem.ItemIsMovable, True)
         super().mouseReleaseEvent(event)
+        if self._on_released is not None and parent is not None:
+            self._on_released(parent, self.role, self.press_state)
 
     def itemChange(self, change, value):  # noqa: N802
         if (change == QGraphicsItem.ItemPositionHasChanged and self._notify
