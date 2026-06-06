@@ -91,6 +91,48 @@ def test_pixelate_adds_patch_item(qapp):
     assert len(patches) == 1
 
 
+def test_resize_handles_lifecycle(qapp):
+    from grabbit.items import RectItem, HandleItem
+    from PySide6.QtCore import QRectF, QPointF
+    ed = make_editor(qapp)
+    rect = RectItem(QRectF(50, 50, 100, 80), QColor("red"), 4)
+    ed.scene.addItem(rect)
+    rect.setSelected(True)
+    assert len(ed._handles) == 4
+    # drag the bottom-right grip outward
+    ed._handle_moved(rect, "br", QPointF(200, 200), {})
+    assert rect.rect().bottomRight() == QPointF(200, 200)
+    assert not ed.undo_stack.isClean()
+    rect.setSelected(False)
+    assert len(ed._handles) == 0
+
+
+def test_arrow_endpoint_resize(qapp):
+    from grabbit.items import ArrowItem
+    from PySide6.QtCore import QPointF
+    ed = make_editor(qapp)
+    arrow = ArrowItem(QPointF(10, 10), QPointF(100, 100), QColor("red"), 6)
+    ed.scene.addItem(arrow)
+    arrow.setSelected(True)
+    assert len(ed._handles) == 2
+    ed._handle_moved(arrow, "p2", QPointF(300, 50), {})
+    p1, p2 = arrow.endpoints()
+    assert p2 == QPointF(300, 50)
+    assert p1 == QPointF(10, 10)
+
+
+def test_text_font_resize(qapp):
+    from grabbit.items import TextItem
+    from PySide6.QtCore import QPointF
+    ed = make_editor(qapp)
+    t = TextItem(QPointF(20, 20), QColor("white"), 18)
+    t.setPlainText("hello")
+    ed.scene.addItem(t)
+    h0 = t.boundingRect().height()
+    ed._handle_moved(t, "font", QPointF(0, h0 * 2), {"font0": 18.0, "h0": h0})
+    assert t.font().pointSize() == 36
+
+
 def test_save_emits_signal(qapp, tmp_path):
     ed = make_editor(qapp)
     target = str(tmp_path / "out.png")

@@ -56,6 +56,13 @@ class ArrowItem(QGraphicsPathItem):
         self._p2 = QPointF(p2)
         self._rebuild()
 
+    def set_start(self, p1: QPointF) -> None:
+        self._p1 = QPointF(p1)
+        self._rebuild()
+
+    def endpoints(self) -> tuple[QPointF, QPointF]:
+        return QPointF(self._p1), QPointF(self._p2)
+
     def set_style(self, color: QColor | None = None, width: int | None = None):
         if color is not None:
             self._color = QColor(color)
@@ -97,14 +104,26 @@ class LineItem(QGraphicsPathItem):
         super().__init__()
         _mark(self)
         self._p1 = QPointF(p1)
+        self._p2 = QPointF(p2)
         self.setPen(QPen(color, width, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
         self.setBrush(Qt.NoBrush)
         self.set_end(p2)
 
     def set_end(self, p2: QPointF) -> None:
+        self._p2 = QPointF(p2)
+        self._rebuild()
+
+    def set_start(self, p1: QPointF) -> None:
+        self._p1 = QPointF(p1)
+        self._rebuild()
+
+    def endpoints(self) -> tuple[QPointF, QPointF]:
+        return QPointF(self._p1), QPointF(self._p2)
+
+    def _rebuild(self) -> None:
         path = QPainterPath()
         path.moveTo(self._p1)
-        path.lineTo(p2)
+        path.lineTo(self._p2)
         self.setPath(path)
 
 
@@ -181,21 +200,26 @@ class TextItem(QGraphicsTextItem):
 class StepItem(QGraphicsItem):
     """Numbered circle stamp, Snagit-style step tool."""
 
-    RADIUS = 16.0
-
-    def __init__(self, pos: QPointF, number: int, color: QColor):
+    def __init__(self, pos: QPointF, number: int, color: QColor,
+                 radius: float = 16.0):
         super().__init__()
         _mark(self)
         self.number = number
         self._color = QColor(color)
+        self.radius = radius
         self.setPos(pos)
 
+    def set_radius(self, r: float) -> None:
+        self.prepareGeometryChange()
+        self.radius = max(8.0, min(80.0, r))
+        self.update()
+
     def boundingRect(self) -> QRectF:  # noqa: N802
-        r = self.RADIUS
+        r = self.radius
         return QRectF(-r - 2, -r - 2, 2 * r + 4, 2 * r + 4)
 
     def paint(self, painter: QPainter, option, widget=None):
-        r = self.RADIUS
+        r = self.radius
         painter.setRenderHint(QPainter.Antialiasing)
         painter.setPen(QPen(QColor(255, 255, 255, 230), 2))
         painter.setBrush(QBrush(self._color))
@@ -210,6 +234,49 @@ class StepItem(QGraphicsItem):
             painter.setPen(QPen(QColor(0, 0, 0, 180), 1, Qt.DashLine))
             painter.setBrush(Qt.NoBrush)
             painter.drawRect(self.boundingRect())
+
+
+class HandleItem(QGraphicsRectItem):
+    """Resize grip attached to an annotation as a child item.
+
+    Children follow their parent automatically when the object moves; the
+    grip stays a constant size on screen regardless of zoom.
+    """
+
+    SIZE = 10.0
+
+    def __init__(self, target, role: str, on_pressed, on_moved):
+        s = self.SIZE
+        super().__init__(-s / 2, -s / 2, s, s, target)
+        self.role = role
+        self._on_pressed = on_pressed
+        self._on_moved = on_moved
+        self.press_state: dict = {}
+        self._notify = True
+        self.setFlag(QGraphicsItem.ItemIsMovable, True)
+        self.setFlag(QGraphicsItem.ItemSendsGeometryChanges, True)
+        self.setFlag(QGraphicsItem.ItemIgnoresTransformations, True)
+        self.setBrush(QBrush(QColor("white")))
+        self.setPen(QPen(QColor("#3daee9"), 1.5))
+        self.setZValue(20000)
+        self.setCursor(Qt.SizeAllCursor)
+
+    def place(self, pos: QPointF) -> None:
+        """Reposition without firing the moved callback."""
+        self._notify = False
+        self.setPos(pos)
+        self._notify = True
+
+    def mousePressEvent(self, event):  # noqa: N802
+        self.press_state = self._on_pressed(self.parentItem(), self.role)
+        super().mousePressEvent(event)
+
+    def itemChange(self, change, value):  # noqa: N802
+        if (change == QGraphicsItem.ItemPositionHasChanged and self._notify
+                and self.parentItem() is not None):
+            self._on_moved(self.parentItem(), self.role, self.pos(),
+                           self.press_state)
+        return super().itemChange(change, value)
 
 
 def get_style(item) -> dict:

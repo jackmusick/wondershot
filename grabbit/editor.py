@@ -39,6 +39,7 @@ from .items import (
     ArrowItem,
     EllipseItem,
     FreehandItem,
+    HandleItem,
     HighlightItem,
     LineItem,
     PixelateItem,
@@ -138,6 +139,7 @@ class CanvasView(QGraphicsView):
         self.setBackgroundBrush(QColor(35, 35, 38))
         self.setDragMode(QGraphicsView.RubberBandDrag)
         self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
+        self._passthrough = False
 
     def event(self, ev):
         # Don't let single-letter tool shortcuts steal keys while typing text.
@@ -164,17 +166,31 @@ class CanvasView(QGraphicsView):
         if self.editor.tool == Tool.SELECT or ev.button() != Qt.LeftButton:
             super().mousePressEvent(ev)
             return
+        # Snagit behavior: clicking an existing object (or one of its resize
+        # grips) manipulates it no matter which tool is active.
+        from .items import HandleItem
+        item = self.itemAt(ev.position().toPoint())
+        if item is not None and (is_annotation(item)
+                                 or isinstance(item, HandleItem)):
+            self._passthrough = True
+            super().mousePressEvent(ev)
+            return
         self.editor.begin_draw(self.mapToScene(ev.position().toPoint()))
         ev.accept()
 
     def mouseMoveEvent(self, ev):  # noqa: N802
-        if self.editor.tool == Tool.SELECT or not self.editor.drawing:
+        if self._passthrough or self.editor.tool == Tool.SELECT \
+                or not self.editor.drawing:
             super().mouseMoveEvent(ev)
             return
         self.editor.update_draw(self.mapToScene(ev.position().toPoint()))
         ev.accept()
 
     def mouseReleaseEvent(self, ev):  # noqa: N802
+        if self._passthrough:
+            self._passthrough = False
+            super().mouseReleaseEvent(ev)
+            return
         if self.editor.tool == Tool.SELECT or ev.button() != Qt.LeftButton:
             super().mouseReleaseEvent(ev)
             return
@@ -222,6 +238,9 @@ class EditorWindow(QMainWindow):
         self._draw_item = None
         self._draw_origin = QPointF()
         self._overlay: QGraphicsRectItem | None = None
+        self._handles: list[HandleItem] = []
+        self._adjusting = False
+        self.scene.selectionChanged.connect(self._rebuild_handles)
 
         self._build_toolbar()
         self._build_panel()
@@ -616,6 +635,78 @@ class EditorWindow(QMainWindow):
             else:  # horizontal band, full width
                 r = QRectF(sr.left(), r.top(), sr.width(), r.height())
         return r
+
+    # -- resize handles ----------------------------------------------------
+
+    def _handle_positions(self, t) -> dict[str, QPointF]:
+        """Role → position (in the item's coordinates) for its grips."""
+        if isinstance(t, (ArrowItem, LineItem)):
+            p1, p2 = t.endpoints()
+            return {"p1": p1, "p2": p2}
+        if isinstance(t, (RectItem, EllipseItem, HighlightItem)):
+            r = t.rect()
+            return {"tl": r.topLeft(), "tr": r.topRight(),
+                    "bl": r.bottomLeft(), "br": r.bottomRight()}
+        if isinstance(t, TextItem):
+            return {"font": t.boundingRect().bottomRight()}
+        if isinstance(t, StepItem):
+            return {"radius": QPointF(t.radius, 0)}
+        return {}
+
+    def _rebuild_handles(self) -> None:
+        for h in self._handles:
+            h.setParentItem(None)  # detach or undo of a flatten revives them
+            if h.scene() is not None:
+                h.scene().removeItem(h)
+        self._handles = []
+        sel = self._selected_annotations()
+        if len(sel) != 1:
+            return
+        t = sel[0]
+        for role, pos in self._handle_positions(t).items():
+            h = HandleItem(t, role, self._handle_pressed, self._handle_moved)
+            h.place(pos)
+            self._handles.append(h)
+
+    def _place_handles(self, t) -> None:
+        positions = self._handle_positions(t)
+        for h in self._handles:
+            if h.role in positions:
+                h.place(positions[h.role])
+
+    def _handle_pressed(self, t, role: str) -> dict:
+        if role == "font" and isinstance(t, TextItem):
+            return {"font0": t.font().pointSizeF(),
+                    "h0": max(1.0, t.boundingRect().height())}
+        return {}
+
+    def _handle_moved(self, t, role: str, pos: QPointF, state: dict) -> None:
+        if self._adjusting:
+            return
+        self._adjusting = True
+        try:
+            if role == "p1":
+                t.set_start(pos)
+            elif role == "p2":
+                t.set_end(pos)
+            elif role in ("tl", "tr", "bl", "br"):
+                r = t.rect()
+                {"tl": r.setTopLeft, "tr": r.setTopRight,
+                 "bl": r.setBottomLeft, "br": r.setBottomRight}[role](pos)
+                t.setRect(r)
+            elif role == "font" and isinstance(t, TextItem):
+                factor = pos.y() / state.get("h0", 1.0)
+                size = max(6, min(96, round(state.get("font0", 18) * factor)))
+                f = t.font()
+                f.setPointSize(size)
+                t.setFont(f)
+            elif role == "radius" and isinstance(t, StepItem):
+                import math
+                t.set_radius(math.hypot(pos.x(), pos.y()))
+            self.undo_stack.resetClean()  # resizing counts as an edit
+            self._place_handles(t)
+        finally:
+            self._adjusting = False
 
     # -- destructive ops -------------------------------------------------------
 

@@ -661,6 +661,18 @@ class GalleryWindow(QMainWindow):
         else:
             super().keyPressEvent(ev)
 
+    def showEvent(self, ev):  # noqa: N802
+        super().showEvent(ev)
+        # The strip is populated before the window has a real size; force a
+        # fresh layout or the cards can come up blank until the next rescan.
+        QTimer.singleShot(0, self._relayout_strip)
+
+    def _relayout_strip(self) -> None:
+        self.strip.doItemsLayout()
+        self.strip.viewport().update()
+        if self._current_path:
+            self._select_silently(self._current_path)
+
 
 def with_signals_blocked(obj, fn):
     obj.blockSignals(True)
