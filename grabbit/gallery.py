@@ -188,6 +188,19 @@ class GalleryModel(QStandardItemModel):
         return Qt.CopyAction
 
 
+_placeholder_thumb_cache: QIcon | None = None
+
+
+def _placeholder_thumb() -> QIcon:
+    """Neutral skeleton card shown while a thumbnail loads."""
+    global _placeholder_thumb_cache
+    if _placeholder_thumb_cache is None:
+        pm = QPixmap(THUMB_SIZE)
+        pm.fill(QColor(31, 31, 35))
+        _placeholder_thumb_cache = QIcon(pm)
+    return _placeholder_thumb_cache
+
+
 def _placeholder_image() -> QImage:
     img = QImage(900, 520, QImage.Format_ARGB32_Premultiplied)
     img.fill(QColor(46, 46, 50))
@@ -383,9 +396,15 @@ class GalleryWindow(QMainWindow):
                 item.setData(path, PATH_ROLE)
                 item.setDragEnabled(True)
                 item.setToolTip(os.path.basename(path))
+                # Fixed size + placeholder icon: thumbnails load async, and
+                # the view must never measure a card while it's icon-less
+                # (uniformItemSizes caches the first measurement for all).
+                item.setSizeHint(QSize(THUMB_SIZE.width() + 8,
+                                       THUMB_SIZE.height() + 8))
                 if old_icon is not None and not old_icon.isNull():
                     item.setIcon(old_icon)
                 else:
+                    item.setIcon(_placeholder_thumb())
                     self._thumb_pool.start(_ThumbJob(path, self._thumb_emitter))
                 self.model.appendRow(item)
         finally:
