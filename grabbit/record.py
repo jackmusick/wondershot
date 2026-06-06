@@ -6,6 +6,11 @@ Start → OpenPipeWireRemote) hands us a PipeWire fd + node; a
 the microphone via pulsesrc. SIGINT triggers EOS so the mp4 finalizes
 cleanly. A portal restore token is persisted, so the screen-share picker
 only appears the first time.
+
+The portal D-Bus traffic uses Gio/GLib (PyGObject): the portal insists on
+uint32-typed options, which PySide6's QtDBus cannot produce. Qt's Linux
+event dispatcher is GLib-based, so Gio signal callbacks fire inside the
+Qt event loop with no extra plumbing.
 """
 
 from __future__ import annotations
@@ -16,14 +21,16 @@ import shutil
 import signal
 import subprocess
 
-from PySide6.QtCore import QObject, QTimer, Signal, Slot
-from PySide6.QtDBus import (
-    QDBusConnection,
-    QDBusMessage,
-    QDBusObjectPath,
-)
+from PySide6.QtCore import QObject, QTimer, Signal
 
-PORTAL_SERVICE = "org.freedesktop.portal.Desktop"
+try:
+    import gi
+    from gi.repository import Gio, GLib
+    _HAVE_GIO = True
+except ImportError:
+    _HAVE_GIO = False
+
+PORTAL_BUS = "org.freedesktop.portal.Desktop"
 PORTAL_PATH = "/org/freedesktop/portal/desktop"
 SCREENCAST_IFACE = "org.freedesktop.portal.ScreenCast"
 
@@ -58,35 +65,39 @@ class ScreenRecorder(QObject):
     def __init__(self, settings, parent=None):
         super().__init__(parent)
         self.settings = settings
-        self.bus = QDBusConnection.sessionBus()
         self.recording = False
+        self._busy = False
         self._proc: subprocess.Popen | None = None
         self._session: str | None = None
-        self._step = None
         self._tmp = self._out = None
         self._fd = -1
+        self._conn = None
+        self._subs: list[int] = []
 
     # -- public ------------------------------------------------------------
 
     def available(self) -> bool:
-        return (shutil.which("gst-launch-1.0") is not None
-                and self.bus.isConnected())
+        return _HAVE_GIO and shutil.which("gst-launch-1.0") is not None
 
     def start(self) -> None:
-        if self.recording or self._step is not None:
+        if self.recording or self._busy:
             return
         if not self.available():
-            self.failed.emit("recording needs gstreamer (gst-launch-1.0)")
+            self.failed.emit(
+                "recording needs python3-gobject and gst-launch-1.0")
             return
-        self._step = "create_session"
-        token = self._request_token()
-        self._listen(token)
-        msg = self._method("CreateSession")
-        msg.setArguments([{
-            "handle_token": token,
-            "session_handle_token": f"grabbit{random.randint(0, 2**31)}",
-        }])
-        self.bus.asyncCall(msg)
+        self._busy = True
+        try:
+            self._conn = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+            token = self._token()
+            session_token = self._token()
+            self._on_request(token, self._created)
+            self._call("CreateSession", GLib.Variant("(a{sv})", ({
+                "handle_token": GLib.Variant("s", token),
+                "session_handle_token": GLib.Variant("s", session_token),
+            },)))
+        except GLib.Error as e:
+            self._fail(f"portal unavailable: {e.message}")
 
     def stop(self) -> None:
         if self._proc is not None and self._proc.poll() is None:
@@ -94,106 +105,100 @@ class ScreenRecorder(QObject):
             self._proc.send_signal(signal.SIGINT)
             self._poll_exit(timeout_ms=15000)
 
-    # -- portal dance ---------------------------------------------------------
-
-    def _method(self, name: str) -> QDBusMessage:
-        return QDBusMessage.createMethodCall(
-            PORTAL_SERVICE, PORTAL_PATH, SCREENCAST_IFACE, name)
-
-    def _request_token(self) -> str:
-        return f"grabbit{random.randint(0, 2**31)}"
-
-    def _listen(self, token: str) -> None:
-        sender = self.bus.baseService()[1:].replace(".", "_")
-        path = f"/org/freedesktop/portal/desktop/request/{sender}/{token}"
-        from PySide6.QtCore import SLOT
-        ok = self.bus.connect(PORTAL_SERVICE, path,
-                              "org.freedesktop.portal.Request", "Response",
-                              self, SLOT("_response(uint,QVariantMap)"))
-        if not ok:
-            self._step = None
-            self.failed.emit("could not subscribe to portal response")
-
-    @Slot("uint", "QVariantMap")
-    def _response(self, code: int, results: dict) -> None:
-        if code != 0:
-            self._step = None
-            if code == 1:
-                self.failed.emit("screen share cancelled")
-            else:
-                self.failed.emit(f"portal error (code {code})")
-            return
-        step = self._step
-        if step == "create_session":
-            self._session = str(results.get("session_handle", ""))
-            self._step = "select_sources"
-            token = self._request_token()
-            self._listen(token)
-            options = {
-                "handle_token": token,
-                "types": 3,        # monitor | window
-                "multiple": False,
-                "cursor_mode": 2,  # embedded
-                "persist_mode": 2,  # remember across restarts
-            }
-            restore = self.settings.screencast_token
-            if restore:
-                options["restore_token"] = restore
-            msg = self._method("SelectSources")
-            msg.setArguments([QDBusObjectPath(self._session), options])
-            self.bus.asyncCall(msg)
-        elif step == "select_sources":
-            self._step = "start"
-            token = self._request_token()
-            self._listen(token)
-            msg = self._method("Start")
-            msg.setArguments([QDBusObjectPath(self._session), "",
-                              {"handle_token": token}])
-            self.bus.asyncCall(msg)
-        elif step == "start":
-            self._step = None
-            restore = results.get("restore_token")
-            if restore:
-                self.settings.screencast_token = str(restore)
-            streams = results.get("streams")
-            node = self._first_node(streams)
-            if node is None:
-                self.failed.emit("portal returned no stream")
-                return
-            self._open_pipewire(node)
+    # -- portal plumbing -------------------------------------------------------
 
     @staticmethod
-    def _first_node(streams) -> int | None:
-        # streams arrives as [(node_id, {props}), ...] in QtDBus' demarshaling
-        try:
-            from PySide6.QtDBus import QDBusArgument  # noqa: F401
-            if streams is None:
-                return None
-            for entry in streams:
-                # entry may be a QDBusArgument-wrapped struct or a sequence
-                if isinstance(entry, (list, tuple)) and entry:
-                    return int(entry[0])
-                value = getattr(entry, "variant", None)
-                if callable(value):
-                    inner = entry.variant()
-                    if isinstance(inner, (list, tuple)) and inner:
-                        return int(inner[0])
-        except (TypeError, ValueError):
-            pass
-        return None
+    def _token() -> str:
+        return f"grabbit{random.randint(0, 2**31)}"
 
-    def _open_pipewire(self, node: int) -> None:
-        msg = self._method("OpenPipeWireRemote")
-        msg.setArguments([QDBusObjectPath(self._session), {}])
-        reply = self.bus.call(msg)  # blocking; returns the fd
-        if reply.type() == QDBusMessage.ErrorMessage or not reply.arguments():
-            self.failed.emit(f"OpenPipeWireRemote failed: {reply.errorMessage()}")
+    def _sender_path(self, token: str) -> str:
+        sender = self._conn.get_unique_name()[1:].replace(".", "_")
+        return f"/org/freedesktop/portal/desktop/request/{sender}/{token}"
+
+    def _on_request(self, token: str, callback) -> None:
+        """Subscribe for the Response of the request named by token."""
+        def wrapper(_c, _s, _p, _i, _m, params, sub=[None]):
+            code, results = params.unpack()
+            self._unsubscribe()
+            if code != 0:
+                self._fail("screen share cancelled" if code == 1
+                           else f"portal error (code {code})")
+                return
+            try:
+                callback(results)
+            except GLib.Error as e:
+                self._fail(f"portal call failed: {e.message}")
+        sub_id = self._conn.signal_subscribe(
+            PORTAL_BUS, "org.freedesktop.portal.Request", "Response",
+            self._sender_path(token), None,
+            Gio.DBusSignalFlags.NONE, wrapper)
+        self._subs.append(sub_id)
+
+    def _unsubscribe(self) -> None:
+        for sub in self._subs:
+            self._conn.signal_unsubscribe(sub)
+        self._subs = []
+
+    def _call(self, method: str, args: GLib.Variant):
+        return self._conn.call_sync(
+            PORTAL_BUS, PORTAL_PATH, SCREENCAST_IFACE, method, args,
+            None, Gio.DBusCallFlags.NONE, 3000, None)
+
+    # -- the dance ---------------------------------------------------------------
+
+    def _created(self, results: dict) -> None:
+        self._session = results.get("session_handle", "")
+        if not self._session:
+            self._fail("portal returned no session")
             return
-        fd_wrapper = reply.arguments()[0]
-        fd = fd_wrapper.fileDescriptor() if hasattr(
-            fd_wrapper, "fileDescriptor") else int(fd_wrapper)
-        self._fd = os.dup(fd)
+        token = self._token()
+        options = {
+            "handle_token": GLib.Variant("s", token),
+            "types": GLib.Variant("u", 3),        # monitor | window
+            "multiple": GLib.Variant("b", False),
+            "cursor_mode": GLib.Variant("u", 2),  # embedded
+            "persist_mode": GLib.Variant("u", 2),  # remember permanently
+        }
+        restore = self.settings.screencast_token
+        if restore:
+            options["restore_token"] = GLib.Variant("s", restore)
+        self._on_request(token, self._sources_selected)
+        self._call("SelectSources",
+                   GLib.Variant("(oa{sv})", (self._session, options)))
+
+    def _sources_selected(self, _results: dict) -> None:
+        token = self._token()
+        self._on_request(token, self._started_cb)
+        self._call("Start", GLib.Variant("(osa{sv})", (
+            self._session, "",
+            {"handle_token": GLib.Variant("s", token)})))
+
+    def _started_cb(self, results: dict) -> None:
+        restore = results.get("restore_token")
+        if restore:
+            self.settings.screencast_token = str(restore)
+        streams = results.get("streams") or []
+        if not streams:
+            self._fail("portal returned no stream")
+            return
+        node = int(streams[0][0])
+        try:
+            reply, fd_list = self._conn.call_with_unix_fd_list_sync(
+                PORTAL_BUS, PORTAL_PATH, SCREENCAST_IFACE,
+                "OpenPipeWireRemote",
+                GLib.Variant("(oa{sv})", (self._session, {})),
+                None, Gio.DBusCallFlags.NONE, 3000, None, None)
+            fd_index = reply.unpack()[0]
+            self._fd = fd_list.get(fd_index)
+        except GLib.Error as e:
+            self._fail(f"OpenPipeWireRemote failed: {e.message}")
+            return
         self._launch_gst(self._fd, node)
+
+    def _fail(self, message: str) -> None:
+        self._busy = False
+        self._close_session()
+        self.failed.emit(message)
 
     # -- gstreamer ---------------------------------------------------------------
 
@@ -232,10 +237,11 @@ class ScreenRecorder(QObject):
                 args, pass_fds=[fd],
                 stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
         except OSError as e:
-            self.failed.emit(f"could not start gstreamer: {e}")
+            self._fail(f"could not start gstreamer: {e}")
             return
         # If the pipeline dies immediately (bad caps etc.), report it.
         QTimer.singleShot(1200, self._check_alive)
+        self._busy = False
         self.recording = True
         self.started.emit()
 
@@ -271,6 +277,17 @@ class ScreenRecorder(QObject):
                 os.unlink(tmp)
             self.failed.emit("recording did not finalize")
 
+    def _close_session(self) -> None:
+        if self._session and self._conn is not None:
+            try:
+                self._conn.call_sync(
+                    PORTAL_BUS, self._session,
+                    "org.freedesktop.portal.Session", "Close",
+                    None, None, Gio.DBusCallFlags.NONE, 1000, None)
+            except GLib.Error:
+                pass
+            self._session = None
+
     def _cleanup(self) -> None:
         if self._fd >= 0:
             try:
@@ -280,10 +297,4 @@ class ScreenRecorder(QObject):
             self._fd = -1
         self._proc = None
         self._tmp = self._out = None
-        if self._session:
-            # closing the session releases the portal/PipeWire stream
-            msg = QDBusMessage.createMethodCall(
-                PORTAL_SERVICE, self._session,
-                "org.freedesktop.portal.Session", "Close")
-            self.bus.asyncCall(msg)
-            self._session = None
+        self._close_session()
