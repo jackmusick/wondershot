@@ -181,6 +181,13 @@ class CanvasView(QGraphicsView):
         self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
         self._passthrough = False
 
+    def resizeEvent(self, ev):  # noqa: N802
+        super().resizeEvent(ev)
+        # Keep the image fitted as the window resizes (Snagit behavior),
+        # but only while the user is in fit mode.
+        if getattr(self.editor, "_fit_mode", False):
+            self.editor.zoom_fit()
+
     def event(self, ev):
         # Don't let single-letter tool shortcuts steal keys while typing text.
         if ev.type() == QEvent.ShortcutOverride:
@@ -282,6 +289,7 @@ class EditorWindow(QMainWindow):
         self.font_size = s.font_size if s else 24
         self.step_counter = 1
         self.preview_only = False
+        self._fit_mode = True  # fit-to-window until the user picks a zoom
         self._syncing_panel = False
 
         self.drawing = False
@@ -316,8 +324,7 @@ class EditorWindow(QMainWindow):
         self.undo_stack.clear()
         self.step_counter = 1
         self.set_base_image(image)
-        self.zoom_reset()
-        self._fit_if_large()
+        self._fit_if_large()  # fit-to-window by default
         self._update_title()
         return True
 
@@ -384,14 +391,10 @@ class EditorWindow(QMainWindow):
         self._reflow_scene()  # margin appears/disappears with the effects
 
     def _fit_if_large(self) -> None:
-        screen = QGuiApplication.primaryScreen()
-        if screen is None:
-            return
-        avail = screen.availableSize()
-        img = self.base_image
-        if img.width() > avail.width() * 0.8 or img.height() > avail.height() * 0.8:
-            self.view.fitInView(self.scene.sceneRect(), Qt.KeepAspectRatio)
-            self._update_status()
+        # Default to fit-to-window so images never overflow the viewport
+        # (no more scrolling just to see the whole shot). Small images
+        # stay at 100% because zoom_fit() caps upscaling.
+        self.zoom_fit()
 
     # -- UI ----------------------------------------------------------------
 
@@ -549,17 +552,58 @@ class EditorWindow(QMainWindow):
         self.share_status.emit(msg)
 
     def _build_statusbar(self) -> None:
+        from PySide6.QtWidgets import QComboBox, QToolButton
         self._status = QLabel(self)
         self.statusBar().addWidget(self._status)
         self._hint = QLabel(self)
         self.statusBar().addPermanentWidget(self._hint)
+
+        zoom_out = QToolButton(self)
+        zoom_out.setText("−")
+        zoom_out.setToolTip("Zoom out (Ctrl+-)")
+        zoom_out.clicked.connect(lambda: self.zoom_by(1 / 1.2))
+        self.zoom_combo = QComboBox(self)
+        self.zoom_combo.setEditable(True)
+        self.zoom_combo.setInsertPolicy(QComboBox.NoInsert)
+        self.zoom_combo.addItems(["Fit", "25%", "50%", "75%", "100%",
+                                  "150%", "200%", "400%"])
+        self.zoom_combo.setFixedWidth(74)
+        self.zoom_combo.lineEdit().setAlignment(Qt.AlignCenter)
+        self.zoom_combo.textActivated.connect(self._zoom_text)
+        zoom_in = QToolButton(self)
+        zoom_in.setText("+")
+        zoom_in.setToolTip("Zoom in (Ctrl++)")
+        zoom_in.clicked.connect(lambda: self.zoom_by(1.2))
+        fit_btn = QToolButton(self)
+        fit_btn.setText("Fit")
+        fit_btn.setToolTip("Fit to window (Ctrl+9)")
+        fit_btn.clicked.connect(self.zoom_fit)
+        for wdg in (zoom_out, self.zoom_combo, zoom_in, fit_btn):
+            self.statusBar().addPermanentWidget(wdg)
         self._update_status()
+
+    def _zoom_text(self, text: str) -> None:
+        t = text.strip().lower().rstrip("%").strip()
+        if t.startswith("fit"):
+            self.zoom_fit()
+            return
+        try:
+            self.set_zoom(float(t) / 100.0)
+        except ValueError:
+            self._update_status()  # revert the edit field
 
     def _update_status(self) -> None:
         if hasattr(self, "_status"):
             img = self.base_image
-            zoom = int(self.view.transform().m11() * 100) if hasattr(self, "view") else 100
-            self._status.setText(f"{img.width()} × {img.height()}  ·  {zoom}%")
+            self._status.setText(f"{img.width()} × {img.height()}")
+        if hasattr(self, "zoom_combo"):
+            self.zoom_combo.blockSignals(True)
+            if getattr(self, "_fit_mode", False):
+                self.zoom_combo.setEditText("Fit")
+            else:
+                zoom = int(self.view.transform().m11() * 100)
+                self.zoom_combo.setEditText(f"{zoom}%")
+            self.zoom_combo.blockSignals(False)
 
     def _update_title(self) -> None:
         name = os.path.basename(self.path) if self.path else "untitled"
@@ -752,16 +796,25 @@ class EditorWindow(QMainWindow):
 
     def zoom_by(self, factor: float) -> None:
         current = self.view.transform().m11()
-        if 0.05 < current * factor < 16:
-            self.view.scale(factor, factor)
+        target = max(0.05, min(16, current * factor))
+        self.set_zoom(target)
+
+    def set_zoom(self, scale: float) -> None:
+        self._fit_mode = False
+        self.view.resetTransform()
+        self.view.scale(scale, scale)
         self._update_status()
 
     def zoom_reset(self) -> None:
-        self.view.resetTransform()
-        self._update_status()
+        self.set_zoom(1.0)
 
     def zoom_fit(self) -> None:
+        """Fit the image in the viewport (never upscaling past 100%)."""
+        self._fit_mode = True
+        self.view.resetTransform()
         self.view.fitInView(self.scene.sceneRect(), Qt.KeepAspectRatio)
+        if self.view.transform().m11() > 1.0:
+            self.view.resetTransform()  # small images stay at actual size
         self._update_status()
 
     # -- drawing -------------------------------------------------------------
