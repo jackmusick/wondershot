@@ -230,7 +230,7 @@ def default_provider(settings) -> str:
 
 The bar is a plain frameless always-on-top `Qt.Tool` window (the `bubble.py` precedent — no self-positioning tricks). Copy and Save-as are handled inside the widget; Edit/Share/Trash emit signals carrying the file path for app.py to wire. The auto-dismiss timer starts on show, pauses while the mouse is over the bar, and Esc dismisses.
 
-- [ ] Write the failing test:
+- [x] Write the failing test:
 
 ```python
 # tests/test_quickbar.py
@@ -337,8 +337,8 @@ def test_rule_position_bottom_center():
     assert y2 == 1440 - 110 - 96
 ```
 
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_quickbar.py -q` — expect `ImportError: cannot import name 'QuickActionBar'`.
-- [ ] Implement — append to `wondershot/capture_window.py` (after line 108). Also extend the module's imports: the file currently imports from `PySide6.QtCore` (`Qt, Signal`) and `PySide6.QtWidgets`; add what's listed below.
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_quickbar.py -q` — expect `ImportError: cannot import name 'QuickActionBar'`.
+- [x] Implement — append to `wondershot/capture_window.py` (after line 108). Also extend the module's imports: the file currently imports from `PySide6.QtCore` (`Qt, Signal`) and `PySide6.QtWidgets`; add what's listed below.
 
 ```python
 # -- post-capture quick-action bar -------------------------------------------
@@ -531,9 +531,9 @@ class QuickActionBar(QWidget):
 
 Import notes for `capture_window.py`: the only new top-level import is `import os` (add it below `import shutil`, line 10). Everything else the bar needs at module level — `Qt`, `Signal`, `QHBoxLayout`, `QLabel`, `QWidget` — is already imported (lines 12–22); `QToolButton`, `QTimer`, `QIcon`, `QPixmap`, `QGuiApplication`, `QImage`, `QFileDialog` are imported lazily inside the methods above, so the existing `PySide6.QtWidgets` import block needs no change.
 
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_quickbar.py -q` — expect 6 passed.
-- [ ] Run the whole suite to catch import fallout: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q` — expect all green.
-- [ ] Commit: `git add wondershot/capture_window.py tests/test_quickbar.py && git commit -m "WS-C: QuickActionBar widget + KWin-rule placement helper"`
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_quickbar.py -q` — expect 6 passed.
+- [x] Run the whole suite to catch import fallout: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q` — expect all green.
+- [x] Commit: `git add wondershot/capture_window.py tests/test_quickbar.py && git commit -m "WS-C: QuickActionBar widget + KWin-rule placement helper"`
 
 ---
 

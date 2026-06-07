@@ -7,6 +7,7 @@ full-screen and record as smaller secondary actions.
 
 from __future__ import annotations
 
+import os
 import shutil
 
 from PySide6.QtCore import Qt, Signal
@@ -106,3 +107,191 @@ class CaptureWindow(QWidget):
     def _fire(self, mode: str) -> None:
         self.hide()  # never end up in the shot
         self.capture_requested.emit(mode)
+
+
+# -- post-capture quick-action bar -------------------------------------------
+
+QUICKBAR_TITLE = "wondershot quick actions"
+QUICKBAR_RULE_ID = "wondershotquickbar"
+
+
+def quickbar_rule_position(avail, bar_w: int = 480, bar_h: int = 110):
+    """Bottom-center placement for the KWin window rule.
+
+    Wayland gives no panel struts (availableGeometry == full screen), so
+    leave the same generous bottom clearance the bubble uses.
+    """
+    x = avail.x() + (avail.width() - bar_w) // 2
+    y = avail.y() + avail.height() - bar_h - 96
+    return x, y
+
+
+def ensure_quickbar_rule() -> None:
+    """KWin window rule placing the bar bottom-center on open.
+
+    Same mechanism as bubble.ensure_position_rule (see bubble.py:27):
+    Wayland clients can't position their own top-levels; rule policy 3 =
+    'apply initially'. No-op off KDE. GUI glue — not unit tested.
+    """
+    import shutil as _shutil
+    import subprocess
+
+    if not _shutil.which("kwriteconfig6"):
+        return
+    from PySide6.QtGui import QGuiApplication
+    screen = QGuiApplication.primaryScreen()
+    if screen is None:
+        return
+    x, y = quickbar_rule_position(screen.availableGeometry())
+
+    def kwrite(key, value):
+        subprocess.run(["kwriteconfig6", "--file", "kwinrulesrc",
+                        "--group", QUICKBAR_RULE_ID, "--key", key, value],
+                       capture_output=True, timeout=5)
+
+    try:
+        out = subprocess.run(
+            ["kreadconfig6", "--file", "kwinrulesrc",
+             "--group", "General", "--key", "rules"],
+            capture_output=True, text=True, timeout=5).stdout.strip()
+        rules = [r for r in out.split(",") if r]
+        kwrite("Description", "Wondershot quick-action bar")
+        kwrite("title", QUICKBAR_TITLE)
+        kwrite("titlematch", "1")  # exact
+        kwrite("position", f"{x},{y}")
+        kwrite("positionrule", "3")  # apply initially
+        if QUICKBAR_RULE_ID not in rules:
+            rules.append(QUICKBAR_RULE_ID)
+            subprocess.run(["kwriteconfig6", "--file", "kwinrulesrc",
+                            "--group", "General", "--key", "rules",
+                            ",".join(rules)],
+                           capture_output=True, timeout=5)
+        subprocess.run(["busctl", "--user", "call", "org.kde.KWin", "/KWin",
+                        "org.kde.KWin", "reconfigure"],
+                       capture_output=True, timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+
+
+class QuickActionBar(QWidget):
+    """Frameless always-on-top bar shown after a capture lands.
+
+    Acts on the just-captured file. Copy/Save-as are handled here;
+    Edit/Share/Trash are emitted for the app coordinator to wire into
+    the existing gallery/editor flows. Mouse-first; Esc dismisses;
+    auto-dismisses after settings.quick_bar_timeout seconds (paused
+    while hovered).
+    """
+
+    edit_requested = Signal(str)
+    share_requested = Signal(str)
+    trash_requested = Signal(str)
+    dismissed = Signal()
+
+    def __init__(self, settings, path: str, parent=None):
+        super().__init__(parent)
+        from PySide6.QtCore import QTimer
+        from PySide6.QtGui import QIcon, QPixmap
+        from PySide6.QtWidgets import QToolButton
+
+        self.settings = settings
+        self.path = path
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
+                            | Qt.Tool)
+        self.setWindowTitle(QUICKBAR_TITLE)
+
+        row = QHBoxLayout(self)
+        row.setContentsMargins(12, 8, 8, 8)
+        row.setSpacing(6)
+
+        self.thumb = QLabel(self)
+        pm = QPixmap(path)
+        if not pm.isNull():
+            self.thumb.setPixmap(
+                pm.scaledToHeight(56, Qt.SmoothTransformation))
+        row.addWidget(self.thumb)
+        row.addSpacing(8)
+
+        def btn(text, icon, slot):
+            b = QToolButton(self)
+            b.setText(text)
+            b.setIcon(QIcon.fromTheme(icon))
+            b.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
+            b.setAutoRaise(True)
+            b.clicked.connect(slot)
+            row.addWidget(b)
+            return b
+
+        self.edit_btn = btn("Edit", "document-edit",
+                            lambda: self._act(self.edit_requested))
+        self.copy_btn = btn("Copy", "edit-copy", self._copy)
+        self.save_btn = btn("Save as", "document-save-as", self._save_as)
+        self.share_btn = btn("Share", "document-send",
+                             lambda: self._act(self.share_requested))
+        self.trash_btn = btn("Trash", "user-trash",
+                             lambda: self._act(self.trash_requested))
+
+        self.close_btn = QToolButton(self)
+        self.close_btn.setText("✕")
+        self.close_btn.setAutoRaise(True)
+        self.close_btn.setToolTip("Dismiss (Esc)")
+        self.close_btn.clicked.connect(self.dismiss)
+        row.addWidget(self.close_btn)
+
+        self._timer = QTimer(self)
+        self._timer.setSingleShot(True)
+        self._timer.setInterval(max(2, int(settings.quick_bar_timeout)) * 1000)
+        self._timer.timeout.connect(self.dismiss)
+
+    # -- behavior ---------------------------------------------------------
+
+    def _act(self, sig) -> None:
+        sig.emit(self.path)
+        self.dismiss()
+
+    def _copy(self) -> None:
+        from PySide6.QtGui import QGuiApplication, QImage
+        img = QImage(self.path)
+        if not img.isNull():
+            QGuiApplication.clipboard().setImage(img)
+        self.dismiss()
+
+    def _save_as(self) -> None:  # GUI glue — file dialog, not unit tested
+        import shutil as _shutil
+        from PySide6.QtWidgets import QFileDialog
+        self._timer.stop()  # don't vanish under the dialog
+        dest, _ = QFileDialog.getSaveFileName(
+            self, "Save copy", os.path.join(
+                os.path.expanduser("~"), os.path.basename(self.path)),
+            "Images (*.png *.jpg *.webp)")
+        if dest:
+            try:
+                _shutil.copy2(self.path, dest)
+            except OSError:
+                pass
+        self.dismiss()
+
+    def dismiss(self) -> None:
+        self._timer.stop()
+        self.dismissed.emit()
+        self.close()
+
+    # -- events -------------------------------------------------------------
+
+    def showEvent(self, ev):  # noqa: N802
+        self._timer.start()
+        super().showEvent(ev)
+
+    def enterEvent(self, ev):  # noqa: N802 — hover pauses auto-dismiss
+        self._timer.stop()
+        super().enterEvent(ev)
+
+    def leaveEvent(self, ev):  # noqa: N802
+        self._timer.start()
+        super().leaveEvent(ev)
+
+    def keyPressEvent(self, ev):  # noqa: N802
+        if ev.key() == Qt.Key_Escape:
+            self.dismiss()
+        else:
+            super().keyPressEvent(ev)
