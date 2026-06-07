@@ -179,6 +179,33 @@ class SetBaseImageCommand(QUndoCommand):
         self.editor.set_base_image(self.old_image)
 
 
+class HistoryBaseCommand(QUndoCommand):
+    """Revisit-undo for a persisted destructive op (sidecar base stack).
+
+    Pushed at load time, one per stack transition; the first redo is a
+    no-op because the editor already shows the post-op base (same
+    pattern as GripCommand). Ctrl+Z then walks the base stack down to
+    the original capture; redo walks it back up.
+    """
+
+    def __init__(self, editor: "EditorWindow", old_image: QImage,
+                 new_image: QImage):
+        super().__init__("destructive edit (previous session)")
+        self.editor = editor
+        self.old_image = old_image
+        self.new_image = new_image
+        self._first = True
+
+    def redo(self):
+        if self._first:
+            self._first = False
+            return
+        self.editor.set_base_image(self.new_image)
+
+    def undo(self):
+        self.editor.set_base_image(self.old_image)
+
+
 class GripCommand(QUndoCommand):
     """Undo entry for a grip edit (resize / rotate / reshape)."""
 
@@ -285,6 +312,8 @@ class EditorWindow(QMainWindow):
         super().__init__(parent)
         self.path = path
         self.settings = settings
+        self._sidecar_boot = image is None and bool(path) \
+            and sidecar.load(path) is not None
         if image is None and path:
             image = QImage(path)
         if image is None or image.isNull():
@@ -342,13 +371,28 @@ class EditorWindow(QMainWindow):
         self._update_title()
         self.resize(1100, 750)
         self._fit_if_large()
+        if self._sidecar_boot:
+            self.load(path)  # reconstruct items + arm revisit-undo
 
     # -- base image -------------------------------------------------------
 
     def load(self, path: str | None, image: QImage | None = None) -> bool:
-        """Swap the editor to a different image, dropping edit history."""
+        """Swap the editor to a different image, dropping edit history.
+
+        When `path` has a sidecar, the top-of-stack base is loaded and
+        the annotations come back as live objects; otherwise the file
+        opens flat exactly as before (pre-sidecar migration path)."""
+        data = None
         if image is None and path:
-            image = QImage(path)
+            data = sidecar.load(path)
+            if data and data.get("bases"):
+                image = QImage(sidecar.base_path(path,
+                                                 int(data["bases"]) - 1))
+                if image.isNull():  # bases missing/deleted: fall back
+                    image, data = QImage(path), None
+            else:
+                data = None
+                image = QImage(path)
         if image is None or image.isNull():
             return False
         self.scene.clearSelection()
@@ -360,9 +404,13 @@ class EditorWindow(QMainWindow):
         self.undo_stack.clear()
         self.step_counter = 1
         self._loaded_original = image.copy()
-        self._base_stack_count = 0
+        self._base_stack_count = int(data["bases"]) if data else 0
         self._pending_base_pushes = []
         self.set_base_image(image)
+        if data:
+            self._restore_items(data)
+            self._push_base_history(path, int(data["bases"]))
+            self.undo_stack.setClean()
         self._fit_if_large()  # fit-to-window by default
         self._update_title()
         return True
@@ -376,6 +424,30 @@ class EditorWindow(QMainWindow):
         self.preview_only = True
         self._update_title()
         return True
+
+    def _restore_items(self, data: dict) -> None:
+        """Reconstruct serialized annotations as live scene objects.
+
+        Items come back in bottom-to-top order (how they were saved), so
+        plain addItem reproduces the stacking. Unknown future item types
+        deserialize to None and are skipped, never crash."""
+        from .items import item_from_dict
+        for d in data.get("items", []):
+            it = item_from_dict(d, base_provider=lambda: self.base_image)
+            if it is None:
+                continue
+            self.scene.addItem(it)
+            if isinstance(it, StepItem):
+                self.step_counter = max(self.step_counter, it.number + 1)
+
+    def _push_base_history(self, path: str, count: int) -> None:
+        """Arm revisit-undo: one no-op-first command per stack step."""
+        for k in range(1, count):
+            old = QImage(sidecar.base_path(path, k - 1))
+            new = QImage(sidecar.base_path(path, k))
+            if old.isNull() or new.isNull():
+                continue
+            self.undo_stack.push(HistoryBaseCommand(self, old, new))
 
     def maybe_save(self) -> bool:
         """Save pending changes. Library files autosave silently (Jack's

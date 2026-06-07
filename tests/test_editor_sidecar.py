@@ -181,3 +181,121 @@ def test_resave_without_changes_does_not_grow_stack(qapp, tmp_path):
     ed.undo_stack.resetClean()     # mark dirty without touching the base
     ed.save()
     assert read_sidecar(ed.path)["bases"] == 1
+
+
+def reopen(ed, tmp_path):
+    from wondershot.editor import EditorWindow
+    return EditorWindow(ed.path, settings=_Settings(str(tmp_path)))
+
+
+def test_reopen_restores_live_items(qapp, tmp_path):
+    from wondershot.items import RectItem, StepItem, is_annotation
+    ed = make_library_editor(qapp, tmp_path)
+    add_rect(ed)
+    # stamp two steps via the real tool path (numbers 1 and 2)
+    from wondershot.editor import Tool
+    ed.set_tool(Tool.STEP)
+    ed.begin_draw(QPointF(30, 30))
+    ed.begin_draw(QPointF(60, 60))
+    ed.save()
+    ed2 = reopen(ed, tmp_path)
+    live = [i for i in ed2.scene.items() if is_annotation(i)]
+    assert len(live) == 3
+    assert len([i for i in live if isinstance(i, RectItem)]) == 1
+    steps = sorted(i.number for i in live if isinstance(i, StepItem))
+    assert steps == [1, 2]
+    assert ed2.step_counter == 3, "next stamp continues the numbering"
+    # the canvas shows the CLEAN base — annotations are objects, not pixels
+    assert ed2.base_image.pixelColor(12, 10) == QColor("white")
+    # nothing dirty right after open
+    assert ed2.undo_stack.isClean()
+
+
+def test_reopen_without_sidecar_behaves_like_today(qapp, tmp_path):
+    """Migration: pre-sidecar library images open flat, no errors; the
+    sidecar appears on their first save."""
+    from wondershot import sidecar
+    from wondershot.editor import EditorWindow
+    path = os.path.join(str(tmp_path), "legacy.png")
+    write_image(path)
+    ed = EditorWindow(path, settings=_Settings(str(tmp_path)))
+    assert not os.path.exists(sidecar.sidecar_path(path))
+    assert ed.base_image.width() == 200
+    add_rect(ed)
+    ed.save()
+    assert os.path.exists(sidecar.sidecar_path(path))
+
+
+def test_reopen_pixelate_is_live(qapp, tmp_path):
+    from wondershot.items import PixelateItem
+    ed = make_library_editor(qapp, tmp_path)
+    ed._apply_pixelate(QRect(20, 20, 60, 40))
+    ed.save()
+    ed2 = reopen(ed, tmp_path)
+    items = [i for i in ed2.scene.items() if isinstance(i, PixelateItem)]
+    assert len(items) == 1
+    item = items[0]
+    assert item._patch is not None, "provider wired to the live base"
+    item.setRect(QRectF(20, 20, 80, 50))   # still resizable like new
+    assert item.rect().width() == 80
+
+
+def test_crop_is_undoable_on_revisit(qapp, tmp_path):
+    """Jack's bar: destructive ops undo across sessions via the stack."""
+    ed = make_library_editor(qapp, tmp_path, w=200, h=150)
+    ed._apply_crop(QRect(0, 0, 100, 75))
+    ed.save()
+    ed2 = reopen(ed, tmp_path)
+    assert ed2.base_image.width() == 100      # top of stack
+    assert ed2.undo_stack.canUndo()
+    ed2.undo_stack.undo()
+    assert ed2.base_image.width() == 200      # original capture is back
+    ed2.undo_stack.redo()
+    assert ed2.base_image.width() == 100
+
+
+def test_revisit_undo_then_save_truncates_stack(qapp, tmp_path):
+    from wondershot import sidecar
+    ed = make_library_editor(qapp, tmp_path, w=200, h=150)
+    ed._apply_crop(QRect(0, 0, 100, 75))
+    ed.save()
+    ed2 = reopen(ed, tmp_path)
+    ed2.undo_stack.undo()
+    ed2.save()
+    data = read_sidecar(ed2.path)
+    assert data["bases"] == 1
+    assert not os.path.exists(sidecar.base_path(ed2.path, 1))
+    # and the flattened library PNG reflects the un-cropped state
+    assert QImage(ed2.path).width() == 200
+
+
+def test_full_cycle_annotations_and_crop(qapp, tmp_path):
+    """Annotate -> crop -> autosave-close -> reopen -> items live, crop
+    undoable, then redo + new annotation persists again."""
+    from wondershot.items import RectItem, is_annotation
+    ed = make_library_editor(qapp, tmp_path, w=200, h=150)
+    ed._apply_crop(QRect(0, 0, 120, 100))
+    add_rect(ed, QRectF(5, 5, 30, 20))     # drawn AFTER the crop
+    assert ed.maybe_save() is True          # the autosave close path
+    ed2 = reopen(ed, tmp_path)
+    live = [i for i in ed2.scene.items() if is_annotation(i)]
+    assert len(live) == 1 and isinstance(live[0], RectItem)
+    assert ed2.base_image.width() == 120
+    ed2.undo_stack.undo()                   # revisit-undo the crop
+    assert ed2.base_image.width() == 200
+    # the post-crop rect is still on the scene (live object, untouched)
+    assert [i for i in ed2.scene.items() if is_annotation(i)]
+
+
+def test_corrupt_sidecar_falls_back_to_flat_open(qapp, tmp_path):
+    from wondershot import sidecar
+    ed = make_library_editor(qapp, tmp_path)
+    add_rect(ed)
+    ed.save()
+    with open(sidecar.sidecar_path(ed.path), "w") as f:
+        f.write("{broken")
+    ed2 = reopen(ed, tmp_path)
+    # opens the flattened PNG; no live items, but no crash either
+    from wondershot.items import is_annotation
+    assert not [i for i in ed2.scene.items() if is_annotation(i)]
+    assert ed2.base_image.width() == 200

@@ -1282,7 +1282,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - `tests/test_editor_sidecar.py` (extend)
 - `wondershot/editor.py` (modify)
 
-- [ ] **Step 5.1 — failing tests.** Append to `tests/test_editor_sidecar.py`:
+- [x] **Step 5.1 — failing tests.** Append to `tests/test_editor_sidecar.py`:
 
 ```python
 def reopen(ed, tmp_path):
@@ -1403,7 +1403,7 @@ def test_corrupt_sidecar_falls_back_to_flat_open(qapp, tmp_path):
     assert ed2.base_image.width() == 200
 ```
 
-- [ ] **Step 5.2 — run, expect failure:**
+- [x] **Step 5.2 — run, expect failure:**
 
 ```bash
 QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_editor_sidecar.py -x -q
@@ -1411,7 +1411,7 @@ QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_editor_sidecar.p
 
 Expected: `test_reopen_restores_live_items` fails — reopened editor has 0 live annotations (it opened the flattened PNG).
 
-- [ ] **Step 5.3 — implement.** All edits in `wondershot/editor.py`:
+- [x] **Step 5.3 — implement.** All edits in `wondershot/editor.py`:
 
 (a) `HistoryBaseCommand`, placed directly after `SetBaseImageCommand` (line ~170):
 
@@ -1543,7 +1543,7 @@ Then at the very end of `__init__`, after `self._fit_if_large()`:
 
 (The double `QImage(path)` read only happens when a sidecar exists, and `load()` immediately replaces it with the stack base — cheap and keeps one canonical code path.)
 
-- [ ] **Step 5.4 — run, expect pass**, then full suite:
+- [x] **Step 5.4 — run, expect pass**, then full suite:
 
 ```bash
 QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_editor_sidecar.py -x -q
@@ -1552,7 +1552,7 @@ QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q
 
 Watch for: `tests/test_editor.py` and `test_editor_ai.py` construct editors with `settings=None` or raw images — those must stay green untouched.
 
-- [ ] **Step 5.5 — commit:**
+- [x] **Step 5.5 — commit:**
 
 ```bash
 git add wondershot/editor.py tests/test_editor_sidecar.py
