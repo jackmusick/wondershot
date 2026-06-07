@@ -242,8 +242,31 @@ class GrabbitApp(QObject):
             self._begin_recording()
 
     def _begin_recording(self) -> None:
-        # Task 5 puts the countdown gate here; until then, start directly.
+        cd = getattr(self, "_countdown", None)
+        if cd is not None:
+            try:
+                cd.cancel()  # pressing Record again during the countdown
+            except RuntimeError:
+                pass  # already deleted (WA_DeleteOnClose)
+            self._countdown = None
+            return
+        secs = int(getattr(self.settings, "record_countdown", 0) or 0)
+        if secs <= 0:
+            self.recorder.start()
+            return
+        from .countdown import CountdownOverlay
+        cd = CountdownOverlay(secs)
+        cd.finished.connect(self._countdown_finished)
+        cd.cancelled.connect(self._countdown_cancelled)
+        self._countdown = cd
+        cd.show()
+
+    def _countdown_finished(self) -> None:
+        self._countdown = None
         self.recorder.start()
+
+    def _countdown_cancelled(self) -> None:
+        self._countdown = None
 
     def _on_recording_stopping(self) -> None:
         # The gallery toolbar resets itself via its own stopping

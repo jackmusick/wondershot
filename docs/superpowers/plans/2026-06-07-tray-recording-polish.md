@@ -743,7 +743,7 @@ def test_apply_writes_record_countdown(qapp, tmp_path):
 
 ### Step 5.1: Failing tests
 
-- [ ] Create `tests/test_countdown.py`:
+- [x] Create `tests/test_countdown.py`:
 
 ```python
 """CountdownOverlay: ticks to finished; Esc/click/close cancels.
@@ -886,12 +886,12 @@ def test_second_press_cancels_countdown(qapp, tmp_path, monkeypatch):
     assert a._countdown is None
 ```
 
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_countdown.py -q`
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_countdown.py -q`
       Expected: FAIL — `ModuleNotFoundError: No module named 'wondershot.countdown'`, and the wiring tests fail on `_countdown` behavior.
 
 ### Step 5.2: Implementation
 
-- [ ] Create `wondershot/countdown.py`:
+- [x] Create `wondershot/countdown.py`:
 
 ```python
 """Frameless on-screen countdown shown before a recording starts.
@@ -975,7 +975,7 @@ class CountdownOverlay(QWidget):
         super().closeEvent(event)
 ```
 
-- [ ] `wondershot/app.py` — replace `_begin_recording` (added in Task 2) with the countdown gate, and add the two handlers:
+- [x] `wondershot/app.py` — replace `_begin_recording` (added in Task 2) with the countdown gate, and add the two handlers:
 
 ```python
     def _begin_recording(self) -> None:
@@ -1008,13 +1008,13 @@ class CountdownOverlay(QWidget):
 
   Gotcha: `cancel()` emits `cancelled` synchronously, which sets `self._countdown = None` via `_countdown_cancelled` — the explicit `self._countdown = None` after the `try` is belt-and-braces for the already-deleted case.
 
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_countdown.py tests/test_record_sync.py -q`
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_countdown.py tests/test_record_sync.py -q`
       Expected: all pass (`test_record_sync.py`'s start-routing test still passes because `_Settings.record_countdown` resolves falsy there).
 
-- [ ] Run the full suite: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q`
+- [x] Run the full suite: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q`
       Expected: green.
 
-- [ ] Commit: `git add -A && git commit -m "recording: optional on-screen countdown before start (Esc/click cancels)"`
+- [x] Commit: `git add -A && git commit -m "recording: optional on-screen countdown before start (Esc/click cancels)"`
 
 ---
 
