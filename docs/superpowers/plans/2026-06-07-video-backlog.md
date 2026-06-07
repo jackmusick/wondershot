@@ -525,7 +525,7 @@ def preview_blur(img, radius: int):
 - Modify: `wondershot/video.py` (new module-level function after `build_trim_args`, line 120)
 - Modify: `tests/test_video_filter.py` (append)
 
-- [ ] **Write the failing tests** — append to `tests/test_video_filter.py`:
+- [x] **Write the failing tests** — append to `tests/test_video_filter.py`:
 
 ```python
 def test_gif_args_defaults():
@@ -561,9 +561,9 @@ def test_gif_args_no_partial_range():
     assert "-ss" not in args and "-to" not in args
 ```
 
-- [ ] **Run, expect failure:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_video_filter.py -q` → 4 failures, `ImportError: cannot import name 'build_gif_args'`.
+- [x] **Run, expect failure:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_video_filter.py -q` → 4 failures, `ImportError: cannot import name 'build_gif_args'`.
 
-- [ ] **Implement** — in `wondershot/video.py`, insert after `build_trim_args` (after line 120, before the `_encoder_cache` line):
+- [x] **Implement** — in `wondershot/video.py`, insert after `build_trim_args` (after line 120, before the `_encoder_cache` line):
 
 ```python
 def build_gif_args(src: str, out: str, fps: int = 12, max_width: int = 720,
@@ -584,9 +584,9 @@ def build_gif_args(src: str, out: str, fps: int = 12, max_width: int = 720,
     return [*args, "-i", src, "-vf", vf, out]
 ```
 
-- [ ] **Run:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_video_filter.py -q` → 19 passed (14 existing + 1 from Task 2 + these 4).
-- [ ] **Full suite:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q` → 205 passed.
-- [ ] **Commit:** `git add wondershot/video.py tests/test_video_filter.py && git commit -m "Video: build_gif_args with fps/width/range (trim-style input seek)"`
+- [x] **Run:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_video_filter.py -q` → 19 passed (14 existing + 1 from Task 2 + these 4).
+- [x] **Full suite:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q` → 205 passed.
+- [x] **Commit:** `git add wondershot/video.py tests/test_video_filter.py && git commit -m "Video: build_gif_args with fps/width/range (trim-style input seek)"`
 
 ---
 

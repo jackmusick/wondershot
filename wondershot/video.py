@@ -140,6 +140,24 @@ def build_trim_args(src: str, start_s: float, end_s: float, out: str,
     return [*args, out]
 
 
+def build_gif_args(src: str, out: str, fps: int = 12, max_width: int = 720,
+                   start_s: float | None = None,
+                   end_s: float | None = None) -> list[str]:
+    """ffmpeg args for the two-pass palette GIF convert.
+
+    -ss/-to are INPUT options (before -i): absolute source timestamps,
+    the exact pattern build_trim_args uses. scale never upsizes
+    (min(max_width, iw)) and lanczos keeps screen text legible. The
+    range is applied only when both ends are given.
+    """
+    args = ["-y"]
+    if start_s is not None and end_s is not None:
+        args += ["-ss", f"{start_s:.3f}", "-to", f"{end_s:.3f}"]
+    vf = (f"fps={fps},scale='min({max_width},iw)':-1:flags=lanczos,"
+          "split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse")
+    return [*args, "-i", src, "-vf", vf, out]
+
+
 _encoder_cache: str | None = None
 
 
