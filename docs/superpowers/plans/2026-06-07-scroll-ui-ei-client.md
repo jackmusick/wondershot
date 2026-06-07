@@ -512,7 +512,7 @@ class ScrollStopPill(QWidget):
 
 ### Step 3.1: Failing tests
 
-- [ ] Append to `tests/test_capture_window_mode.py`:
+- [x] Append to `tests/test_capture_window_mode.py`:
 
 ```python
 def _scroll_buttons(w):
@@ -537,12 +537,12 @@ def test_scroll_button_hidden_without_probe(qapp):
     assert not _scroll_buttons(w)
 ```
 
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_capture_window_mode.py -x -q`
-- [ ] Expected failure: `TypeError: CaptureWindow.__init__() got an unexpected keyword argument 'scroll_mode'`
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_capture_window_mode.py -x -q`
+- [x] Expected failure: `TypeError: CaptureWindow.__init__() got an unexpected keyword argument 'scroll_mode'`
 
 ### Step 3.2: Implement
 
-- [ ] `wondershot/capture_window.py` — `CaptureWindow.__init__` signature:
+- [x] `wondershot/capture_window.py` — `CaptureWindow.__init__` signature:
 
 ```python
     def __init__(self, settings, parent=None, window_mode: bool = False,
@@ -552,7 +552,7 @@ def test_scroll_button_hidden_without_probe(qapp):
   and update the docstring comment on the signal:
   `capture_requested = Signal(str)  # "region" | "fullscreen" | "window-auto" | "scroll" | "record"`
 
-- [ ] In the secondary-buttons block, insert the Scrolling entry between
+- [x] In the secondary-buttons block, insert the Scrolling entry between
   Window and Record:
 
 ```python
@@ -564,7 +564,7 @@ def test_scroll_button_hidden_without_probe(qapp):
         secondary.append(("Record", "record"))
 ```
 
-- [ ] `wondershot/gallery.py` — in `_open_capture_window`, pass the gate
+- [x] `wondershot/gallery.py` — in `_open_capture_window`, pass the gate
   (mirrors `kwin_ok`, which `app.py` sets after construction):
 
 ```python
@@ -577,10 +577,10 @@ def test_scroll_button_hidden_without_probe(qapp):
   mode through `capture_requested` → `app.trigger_capture`, which is exactly
   the hide-our-windows-first routing scroll needs (study note: this is the
   same path `"window-auto"` rides).
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_capture_window_mode.py tests/test_hide_for_capture.py -x -q`
-- [ ] Expected: pass (hide_for_capture tests prove the panel construction
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_capture_window_mode.py tests/test_hide_for_capture.py -x -q`
+- [x] Expected: pass (hide_for_capture tests prove the panel construction
   still works with the duck-typed `_Settings` stub — no new settings reads).
-- [ ] Commit: `git add -A && git commit -m "Capture panel: Scrolling button gated on scroll availability"`
+- [x] Commit: `git add -A && git commit -m "Capture panel: Scrolling button gated on scroll availability"`
 
 ---
 

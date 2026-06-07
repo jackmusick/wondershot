@@ -24,9 +24,10 @@ from PySide6.QtWidgets import (
 
 
 class CaptureWindow(QWidget):
-    capture_requested = Signal(str)  # "region" | "fullscreen" | "window-auto" | "record"
+    capture_requested = Signal(str)  # "region" | "fullscreen" | "window-auto" | "scroll" | "record"
 
-    def __init__(self, settings, parent=None, window_mode: bool = False):
+    def __init__(self, settings, parent=None, window_mode: bool = False,
+                 scroll_mode: bool = False):
         super().__init__(parent)
         self.settings = settings
         self.setWindowTitle("Wondershot capture")
@@ -95,6 +96,8 @@ class CaptureWindow(QWidget):
         secondary = [("Full screen", "fullscreen")]
         if window_mode:
             secondary.append(("Window", "window-auto"))
+        if scroll_mode:
+            secondary.append(("Scrolling", "scroll"))
         secondary.append(("Record", "record"))
         for label, mode in secondary:
             b = QPushButton(label)

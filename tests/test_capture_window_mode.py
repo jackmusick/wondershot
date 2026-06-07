@@ -38,3 +38,24 @@ def test_window_button_hidden_without_probe(qapp):
     from wondershot.capture_window import CaptureWindow
     w = CaptureWindow(_Settings())  # default: no window mode
     assert not _window_buttons(w)
+
+def _scroll_buttons(w):
+    return [b for b in w.findChildren(QPushButton)
+            if b.text() == "Scrolling"]
+
+
+def test_scroll_button_present_and_fires_mode(qapp):
+    from wondershot.capture_window import CaptureWindow
+    w = CaptureWindow(_Settings(), scroll_mode=True)
+    btns = _scroll_buttons(w)
+    assert len(btns) == 1
+    fired = []
+    w.capture_requested.connect(fired.append)
+    btns[0].click()
+    assert fired == ["scroll"]
+
+
+def test_scroll_button_hidden_without_probe(qapp):
+    from wondershot.capture_window import CaptureWindow
+    w = CaptureWindow(_Settings())  # default: gi/Gst/numpy not probed OK
+    assert not _scroll_buttons(w)

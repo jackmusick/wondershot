@@ -728,7 +728,8 @@ class GalleryWindow(QMainWindow):
         if getattr(self, "_capture_window", None) is None:
             from .capture_window import CaptureWindow
             self._capture_window = CaptureWindow(
-                self.settings, window_mode=getattr(self, "kwin_ok", False))
+                self.settings, window_mode=getattr(self, "kwin_ok", False),
+                scroll_mode=getattr(self, "scroll_ok", False))
             self._capture_window.capture_requested.connect(
                 self._capture_mode)
         self._capture_window.show()
