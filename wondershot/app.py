@@ -20,7 +20,10 @@ from .settings import Settings
 
 
 def server_name() -> str:
-    return f"wondershot-{os.getuid()}"
+    # Windows has no os.getuid; the username scopes the socket the same way.
+    uid = os.getuid() if hasattr(os, "getuid") else os.environ.get(
+        "USERNAME", "user")
+    return f"wondershot-{uid}"
 
 
 def send_to_running(command: dict) -> bool:
