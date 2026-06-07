@@ -117,3 +117,196 @@ def pick_audio_device(devices: list[str], preferred: str) -> str:
     if preferred and preferred in devices:
         return preferred
     return devices[0] if devices else ""
+
+
+class WinScreenRecorder(QObject):
+    """ffmpeg-based Windows recorder with ScreenRecorder's contract."""
+
+    started = Signal()
+    stopping = Signal()  # a stop transition began (whichever control asked)
+    finished = Signal(str)  # final file path
+    failed = Signal(str)
+    tick = Signal(str)  # elapsed time ("1:05"), once a second
+
+    # Escalation ladder, mirroring record.py: 'q' (graceful mp4
+    # finalize) -> terminate() -> kill(). A killed pipeline's partial
+    # file is salvaged, never deleted.
+    GRACE_MS = 5000
+    KILL_MS = 10000
+    FPS = 30
+
+    def __init__(self, settings, parent=None, program=None,
+                 args_builder=None):
+        super().__init__(parent)
+        self.settings = settings
+        self.recording = False
+        self._busy = False
+        self._proc: QProcess | None = None
+        self._tmp = self._out = None
+        self._stopping = False
+        self._watchdog: QTimer | None = None
+        self._started_at: float | None = None
+        self.log_path = ""
+        self._program = program            # test seam; None = ffmpeg_path()
+        self._args_builder = args_builder  # test seam; None = probe
+
+    # -- public ------------------------------------------------------------
+
+    def available(self) -> bool:
+        from .ffmpegutil import have_ffmpeg
+        return have_ffmpeg()
+
+    def start(self) -> None:
+        if self.recording or self._busy:
+            return
+        self._busy = True
+        try:
+            program = self._program or ffmpeg_path()
+        except FfmpegMissing as e:
+            self._busy = False
+            self.failed.emit(str(e))
+            return
+        from .capture import timestamp_name, unique_path
+        out = unique_path(self.settings.library_dir,
+                          timestamp_name("Recording").replace(".png", ".mp4"))
+        tmp_dir = os.path.join(self.settings.library_dir, ".rendering")
+        os.makedirs(tmp_dir, exist_ok=True)
+        sweep_stale_tmp(tmp_dir)
+        tmp = os.path.join(tmp_dir, os.path.basename(out))
+        self._tmp, self._out = tmp, out
+
+        audio = ""
+        if getattr(self.settings, "mic_enabled", False):
+            audio = pick_audio_device(
+                list_dshow_audio_devices(),
+                getattr(self.settings, "mic_device", ""))
+        builder = self._args_builder or (
+            ddagrab_args if have_ddagrab() else gdigrab_args)
+        args = builder(tmp, fps=self.FPS, audio_device=audio)
+
+        logs = log_dir()
+        os.makedirs(logs, exist_ok=True)
+        self.log_path = os.path.join(logs, "recorder.log")
+        try:
+            with open(self.log_path, "w") as f:
+                f.write(program + " " + " ".join(args) + "\n\n")
+        except OSError:
+            pass
+        proc = QProcess(self)
+        proc.setProcessChannelMode(QProcess.MergedChannels)
+        proc.setStandardOutputFile(self.log_path, QProcess.Append)
+        proc.start(program, args)
+        if not proc.waitForStarted(5000):
+            self._busy = False
+            self._tmp = self._out = None
+            self.failed.emit(f"could not start ffmpeg: {program}")
+            return
+        self._proc = proc
+        self._start_watchdog()
+        self._busy = False
+        self.recording = True
+        self._started_at = time.monotonic()
+        self.started.emit()
+
+    def stop(self) -> None:
+        if self._stopping:
+            return  # double-stop (tray + toolbar) must not double-finalize
+        if self._proc is None:
+            return
+        self._stopping = True
+        self.stopping.emit()
+        if self._proc.state() != QProcess.NotRunning:
+            # ffmpeg's interactive quit: finalizes the mp4 moov, exit 0 —
+            # the SIGINT-as-EOS analog (no SIGINT across consoles on
+            # Windows).
+            self._proc.write(b"q")
+        # Even if ffmpeg already died, finalize so finished/failed always
+        # fires — the UI must never stay "Stopping".
+        self._poll_exit(elapsed_ms=0)
+
+    # -- internals ---------------------------------------------------------
+
+    def elapsed_str(self) -> str:
+        if not self.recording or self._started_at is None:
+            return ""
+        s = int(time.monotonic() - self._started_at)
+        return f"{s // 60}:{s % 60:02d}"
+
+    def _start_watchdog(self) -> None:
+        self._watchdog = QTimer(self)
+        self._watchdog.setInterval(1000)
+        self._watchdog.timeout.connect(self._check_alive)
+        self._watchdog.start()
+
+    def _check_alive(self) -> None:
+        if self._stopping:
+            return  # _poll_exit owns the exit path now
+        if (self._proc is not None
+                and self._proc.state() == QProcess.NotRunning):
+            self.recording = False
+            tmp, out = self._tmp, self._out
+            self._cleanup()
+            partial = self._salvage_partial(tmp, out)
+            self.failed.emit(
+                f"recorder died: {self._log_tail()[:160]} "
+                f"(full log: {self.log_path}){partial}")
+            return
+        self.tick.emit(self.elapsed_str())
+
+    def _log_tail(self) -> str:
+        try:
+            with open(self.log_path, errors="replace") as f:
+                lines = [ln for ln in f.read().strip().splitlines()
+                         if "rror" in ln or "Invalid" in ln] or ["unknown"]
+            return lines[-1]
+        except OSError:
+            return "unknown"
+
+    @staticmethod
+    def _salvage_partial(tmp, out) -> str:
+        """KEEP whatever was written (record.py's salvage mandate)."""
+        if not tmp or not os.path.exists(tmp):
+            return ""
+        if out and os.path.getsize(tmp) > 0:
+            shutil.move(tmp, out)
+            return f"; partial recording kept: {os.path.basename(out)}"
+        os.unlink(tmp)  # zero bytes: nothing to salvage
+        return ""
+
+    def _poll_exit(self, elapsed_ms: int = 0, nudged: bool = False) -> None:
+        if self._proc is None:
+            return
+        if self._proc.state() != QProcess.NotRunning:
+            if elapsed_ms >= self.KILL_MS:
+                self._proc.kill()
+            elif elapsed_ms >= self.GRACE_MS and not nudged:
+                self._proc.terminate()  # WM_CLOSE; some builds ignore it
+                nudged = True
+            QTimer.singleShot(
+                200, lambda: self._poll_exit(elapsed_ms + 200, nudged))
+            return
+        self.recording = False
+        ok = (self._proc.exitStatus() == QProcess.NormalExit
+              and self._proc.exitCode() == 0 and self._tmp
+              and os.path.exists(self._tmp)
+              and os.path.getsize(self._tmp) > 0)
+        tmp, out = self._tmp, self._out
+        self._cleanup()
+        if ok:
+            shutil.move(tmp, out)
+            self.finished.emit(out)
+            return
+        partial = self._salvage_partial(tmp, out)
+        self.failed.emit(
+            f"recording did not finalize: {self._log_tail()[:160]} "
+            f"(log: {self.log_path}){partial}")
+
+    def _cleanup(self) -> None:
+        self._stopping = False
+        if self._watchdog is not None:
+            self._watchdog.stop()
+            self._watchdog = None
+        if self._proc is not None:
+            self._proc.deleteLater()
+        self._proc = None
+        self._tmp = self._out = None

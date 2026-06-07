@@ -1548,7 +1548,7 @@ The lifecycle is tested on Linux against a **Python stub child** (QProcess runs 
 - Modify: `wondershot/winrecord.py` (append the class)
 - Test: `tests/test_winrecord.py` (append)
 
-- [ ] **Step 1: Write the failing tests** (append to `tests/test_winrecord.py`)
+- [x] **Step 1: Write the failing tests** (append to `tests/test_winrecord.py`)
 
 ```python
 # -- WinScreenRecorder lifecycle (Python stub child, runs anywhere) ------------
@@ -1744,7 +1744,7 @@ def test_start_without_ffmpeg_emits_failed(qapp, monkeypatch, tmp_path):
     ffmpegutil.reset_cache()
 ```
 
-- [ ] **Step 2: Run — verify failure**
+- [x] **Step 2: Run — verify failure**
 
 ```bash
 /home/jack/GitHub/grabbit/.venv/bin/python -m pytest tests/test_winrecord.py -v
@@ -1752,7 +1752,7 @@ def test_start_without_ffmpeg_emits_failed(qapp, monkeypatch, tmp_path):
 
 Expected: new tests FAIL with `ImportError: cannot import name 'WinScreenRecorder'`.
 
-- [ ] **Step 3: Implement** (append to `wondershot/winrecord.py`)
+- [x] **Step 3: Implement** (append to `wondershot/winrecord.py`)
 
 ```python
 class WinScreenRecorder(QObject):
@@ -1948,7 +1948,7 @@ class WinScreenRecorder(QObject):
         self._tmp = self._out = None
 ```
 
-- [ ] **Step 4: Run tests + suite**
+- [x] **Step 4: Run tests + suite**
 
 ```bash
 /home/jack/GitHub/grabbit/.venv/bin/python -m pytest tests/test_winrecord.py -v && /home/jack/GitHub/grabbit/.venv/bin/python -m pytest tests/ -q
@@ -1956,7 +1956,7 @@ class WinScreenRecorder(QObject):
 
 Expected: all PASS. The escalation test takes ~2 s (ladder timers shrunk); if `terminate()` on Linux kills the SIGTERM-ignoring stub anyway, the test still passes — the assertion is salvage+finalize, not which rung fired.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add wondershot/winrecord.py tests/test_winrecord.py && git commit -m "feat: WinScreenRecorder — QProcess lifecycle with q-stop, escalation, watchdog, salvage"

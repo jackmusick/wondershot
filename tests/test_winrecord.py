@@ -123,3 +123,196 @@ def test_have_ddagrab_false_when_ffmpeg_missing(monkeypatch):
 
     monkeypatch.setattr(winrecord, "run_ffmpeg", boom)
     assert winrecord.have_ddagrab() is False
+
+
+# -- WinScreenRecorder lifecycle (Python stub child, runs anywhere) ------------
+
+import sys
+import time
+
+
+class FakeSettings:
+    def __init__(self, library_dir):
+        self.library_dir = library_dir
+        self.mic_enabled = False
+        self.mic_device = ""
+        self.screencast_token = ""
+
+
+GRACEFUL_STUB = """\
+import sys
+out = sys.argv[-1]
+with open(out, "wb") as f:
+    f.write(b"mp4-header")
+    f.flush()
+    while True:
+        ch = sys.stdin.read(1)
+        if ch in ("q", ""):
+            f.write(b"-finalized")
+            break
+sys.exit(0)
+"""
+
+WEDGED_STUB = """\
+import signal, sys, time
+signal.signal(signal.SIGTERM, signal.SIG_IGN)  # ignore terminate()
+out = sys.argv[-1]
+with open(out, "wb") as f:
+    f.write(b"partial-footage")
+    f.flush()
+    while True:
+        time.sleep(1)  # never reads stdin, never exits
+"""
+
+DYING_STUB = """\
+import sys
+out = sys.argv[-1]
+with open(out, "wb") as f:
+    f.write(b"partial-footage")
+sys.exit(3)  # immediate death, like a mid-recording encoder error
+"""
+
+
+def _recorder(tmp_path, stub_src):
+    from wondershot.winrecord import WinScreenRecorder
+    stub = tmp_path / "stub.py"
+    stub.write_text(stub_src)
+    rec = WinScreenRecorder(
+        FakeSettings(str(tmp_path)),
+        program=sys.executable,
+        args_builder=lambda tmp, fps=30, audio_device="":
+            ["-u", str(stub), tmp])
+    return rec
+
+
+def wait_until(qapp, cond, timeout_s):
+    deadline = time.monotonic() + timeout_s
+    while not cond() and time.monotonic() < deadline:
+        qapp.processEvents()
+        time.sleep(0.01)
+    return cond()
+
+
+def test_start_emits_started_and_creates_tmp(qapp, tmp_path):
+    rec = _recorder(tmp_path, GRACEFUL_STUB)
+    events = []
+    rec.started.connect(lambda: events.append("started"))
+    rec.failed.connect(lambda m: events.append(("failed", m)))
+    rec.start()
+    assert wait_until(qapp, lambda: events, 5)
+    assert events[0] == "started"
+    assert rec.recording is True
+    assert os.path.dirname(rec._tmp).endswith(".rendering")
+    rec.stop()
+    wait_until(qapp, lambda: not rec.recording, 5)
+
+
+def test_q_on_stdin_finalizes_and_emits_finished(qapp, tmp_path):
+    """The 'q' graceful path is the SIGINT-as-EOS analog: exit 0, the
+    finalized file moves out of .rendering into the library."""
+    rec = _recorder(tmp_path, GRACEFUL_STUB)
+    done = []
+    rec.finished.connect(done.append)
+    rec.failed.connect(lambda m: done.append(("failed", m)))
+    rec.start()
+    assert wait_until(qapp, lambda: rec.recording, 5)
+    rec.stop()
+    assert wait_until(qapp, lambda: done, 10)
+    path = done[0]
+    assert isinstance(path, str) and path.endswith(".mp4")
+    assert os.path.dirname(path) == str(tmp_path)  # out of .rendering
+    with open(path, "rb") as f:
+        assert f.read() == b"mp4-header-finalized"
+    assert rec.recording is False and rec._proc is None
+
+
+def test_stop_emits_stopping_exactly_once(qapp, tmp_path):
+    rec = _recorder(tmp_path, GRACEFUL_STUB)
+    rec.start()
+    assert wait_until(qapp, lambda: rec.recording, 5)
+    stops, done = [], []
+    rec.stopping.connect(lambda: stops.append(1))
+    rec.finished.connect(done.append)
+    rec.failed.connect(done.append)
+    rec.stop()
+    rec.stop()  # tray after toolbar: silent no-op
+    assert stops == [1]
+    assert wait_until(qapp, lambda: done, 10)
+
+
+def test_escalation_kills_wedged_pipeline_and_keeps_partial(qapp, tmp_path):
+    """ffmpeg can wedge ignoring 'q' (and SIGTERM in the stub, mirroring
+    record.py's wedged-EOS forensics): the ladder must end in kill() and
+    the partial recording must be KEPT."""
+    rec = _recorder(tmp_path, WEDGED_STUB)
+    rec.GRACE_MS = 400
+    rec.KILL_MS = 900
+    results = []
+    rec.failed.connect(results.append)
+    rec.finished.connect(results.append)
+    rec.start()
+    assert wait_until(qapp, lambda: rec.recording, 5)
+    out_expected = rec._out
+    rec.stop()
+    assert wait_until(qapp, lambda: results, 10), \
+        "escalation must finalize a stop-ignoring pipeline"
+    assert rec.recording is False and rec._proc is None
+    assert os.path.exists(out_expected)
+    with open(out_expected, "rb") as f:
+        assert f.read() == b"partial-footage"
+    assert "partial" in results[0]
+
+
+def test_watchdog_detects_death_and_salvages(qapp, tmp_path):
+    """Encoder dies minutes in: failed fires without a stop click and
+    the partial footage moves to the library (record.py mandate)."""
+    rec = _recorder(tmp_path, DYING_STUB)
+    failures = []
+    rec.failed.connect(failures.append)
+    rec.start()
+    started = wait_until(qapp, lambda: rec.recording, 5)
+    assert started
+    out_expected = rec._out
+    assert wait_until(qapp, lambda: failures, 5), \
+        "watchdog must emit failed when the pipeline dies"
+    assert rec.recording is False
+    assert os.path.exists(out_expected)
+    assert "partial" in failures[0]
+
+
+def test_tick_emits_elapsed_while_recording(qapp, tmp_path):
+    rec = _recorder(tmp_path, GRACEFUL_STUB)
+    rec.start()
+    assert wait_until(qapp, lambda: rec.recording, 5)
+    rec._started_at = time.monotonic() - 65
+    assert rec.elapsed_str() == "1:05"
+    ticks = []
+    rec.tick.connect(ticks.append)
+    assert wait_until(qapp, lambda: ticks, 3)
+    assert ticks[0].startswith("1:0")
+    rec.stop()
+    wait_until(qapp, lambda: not rec.recording, 5)
+
+
+def test_available_tracks_ffmpeg(monkeypatch, tmp_path):
+    from wondershot import ffmpegutil, winrecord
+    ffmpegutil.reset_cache()
+    monkeypatch.setattr("shutil.which", lambda name: None)
+    rec = winrecord.WinScreenRecorder(FakeSettings(str(tmp_path)))
+    assert rec.available() is False
+    ffmpegutil.reset_cache()
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/ffmpeg")
+    assert rec.available() is True
+    ffmpegutil.reset_cache()
+
+
+def test_start_without_ffmpeg_emits_failed(qapp, monkeypatch, tmp_path):
+    from wondershot import ffmpegutil, winrecord
+    ffmpegutil.reset_cache()
+    monkeypatch.setattr("shutil.which", lambda name: None)
+    rec = winrecord.WinScreenRecorder(FakeSettings(str(tmp_path)))
+    fails = []
+    rec.failed.connect(fails.append)
+    rec.start()
+    assert fails and "ffmpeg" in fails[0]
+    ffmpegutil.reset_cache()
