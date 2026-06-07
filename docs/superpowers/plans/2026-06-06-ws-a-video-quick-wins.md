@@ -49,7 +49,7 @@
 - Create: `wondershot/ffmpegutil.py`
 - Test: `tests/test_ffmpegutil.py` (create)
 
-- [ ] **Step 1.1 — Write the failing tests.** Create `tests/test_ffmpegutil.py`:
+- [x] **Step 1.1 — Write the failing tests.** Create `tests/test_ffmpegutil.py`:
 
 ```python
 import subprocess
@@ -120,9 +120,9 @@ def test_run_ffmpeg_prepends_binary(monkeypatch):
     assert r.returncode == 0
 ```
 
-- [ ] **Step 1.2 — Run it, expect failure.** `python -m pytest tests/test_ffmpegutil.py -q` → fails with `ModuleNotFoundError: No module named 'wondershot.ffmpegutil'`.
+- [x] **Step 1.2 — Run it, expect failure.** `python -m pytest tests/test_ffmpegutil.py -q` → fails with `ModuleNotFoundError: No module named 'wondershot.ffmpegutil'`.
 
-- [ ] **Step 1.3 — Implement.** Create `wondershot/ffmpegutil.py`:
+- [x] **Step 1.3 — Implement.** Create `wondershot/ffmpegutil.py`:
 
 ```python
 """Single chokepoint for invoking ffmpeg.
@@ -187,9 +187,9 @@ def run_ffmpeg(args: list[str],
                           text=True, timeout=timeout)
 ```
 
-- [ ] **Step 1.4 — Run tests.** `python -m pytest tests/test_ffmpegutil.py -q` → 5 passed. Then full suite: `python -m pytest tests/ -q` → all pass (no regressions possible yet, nothing imports the new module).
+- [x] **Step 1.4 — Run tests.** `python -m pytest tests/test_ffmpegutil.py -q` → 5 passed. Then full suite: `python -m pytest tests/ -q` → all pass (no regressions possible yet, nothing imports the new module).
 
-- [ ] **Step 1.5 — Commit.**
+- [x] **Step 1.5 — Commit.**
 ```
 git add wondershot/ffmpegutil.py tests/test_ffmpegutil.py
 git commit -m "Add ffmpegutil: single ffmpeg discovery/invocation seam for WS-E"
