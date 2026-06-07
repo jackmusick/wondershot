@@ -96,9 +96,7 @@ class GrabbitApp(QObject):
         # the editor's status bar is hidden while a video plays — toast too
         self.gallery.editor.share_status.connect(
             lambda m: self.tray.showMessage("Wondershot", m, self.icon, 3000))
-        self.recorder.tick.connect(
-            lambda t: self.record_action.setText(
-                f"Stop recording ({t})" if t else "Stop recording"))
+        self.recorder.tick.connect(self._on_recording_tick)
 
         self.hotkey = create_hotkey_backend(self)
         self.hotkey.pressed.connect(lambda: self.trigger_capture("region"))
@@ -253,6 +251,13 @@ class GrabbitApp(QObject):
         self.record_action.setText("Stopping…")
         self.record_action.setEnabled(False)
 
+    def _on_recording_tick(self, t: str) -> None:
+        self.record_action.setText(
+            f"Stop recording ({t})" if t else "Stop recording")
+        self.tray.setToolTip(
+            f"Wondershot — recording {t}" if t
+            else "Wondershot — screenshots")
+
     def _on_recording_started(self) -> None:
         self.record_action.setText("Stop recording")
         self.gallery.set_recording(True)
@@ -265,6 +270,7 @@ class GrabbitApp(QObject):
         self.record_action.setText("Record screen…")
         self.record_action.setEnabled(True)
         self.gallery.set_recording(False)
+        self.tray.setToolTip("Wondershot — screenshots")
         self.gallery.rescan()
         self.gallery.select_path(path)
         self.show_gallery()
@@ -275,6 +281,7 @@ class GrabbitApp(QObject):
         self.record_action.setText("Record screen…")
         self.record_action.setEnabled(True)
         self.gallery.set_recording(False)
+        self.tray.setToolTip("Wondershot — screenshots")
         self.tray.showMessage("Wondershot — recording failed", message,
                               self.icon, 5000)
 

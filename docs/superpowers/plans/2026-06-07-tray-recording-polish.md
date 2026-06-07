@@ -505,7 +505,7 @@ class GalleryWindow(QMainWindow):
 
 ### Step 3.1: Failing test
 
-- [ ] Create `tests/test_tray_tooltip.py` (the `make_app` fixture is repeated verbatim from `tests/test_record_sync.py` — same `_Settings`, `_counter`, `qapp`; copy lines 1-60 of that file's helpers, then add):
+- [x] Create `tests/test_tray_tooltip.py` (the `make_app` fixture is repeated verbatim from `tests/test_record_sync.py` — same `_Settings`, `_counter`, `qapp`; copy lines 1-60 of that file's helpers, then add):
 
 ```python
 """The tray tooltip mirrors the recording duration (recorder.tick)."""
@@ -575,12 +575,12 @@ def test_tooltip_resets_when_recording_ends(qapp, tmp_path, monkeypatch):
     assert a.tray.toolTip() == "Wondershot — screenshots"
 ```
 
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_tray_tooltip.py -q`
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_tray_tooltip.py -q`
       Expected: both FAIL — tooltip stays "Wondershot — screenshots" during ticks (first test's first assert).
 
 ### Step 3.2: Implementation
 
-- [ ] `wondershot/app.py` — replace the tick lambda (lines 97-99):
+- [x] `wondershot/app.py` — replace the tick lambda (lines 97-99):
 
 ```python
         self.recorder.tick.connect(self._on_recording_tick)
@@ -597,16 +597,16 @@ def test_tooltip_resets_when_recording_ends(qapp, tmp_path, monkeypatch):
             else "Wondershot — screenshots")
 ```
 
-- [ ] `wondershot/app.py` — reset the tooltip in both end states. In `_on_recording_finished` (after line 258 `self.gallery.set_recording(False)`) and in `_on_recording_failed` (after line 268 `self.gallery.set_recording(False)`) add:
+- [x] `wondershot/app.py` — reset the tooltip in both end states. In `_on_recording_finished` (after line 258 `self.gallery.set_recording(False)`) and in `_on_recording_failed` (after line 268 `self.gallery.set_recording(False)`) add:
 
 ```python
         self.tray.setToolTip("Wondershot — screenshots")
 ```
 
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_tray_tooltip.py tests/test_record_sync.py -q`
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_tray_tooltip.py tests/test_record_sync.py -q`
       Expected: all pass.
 
-- [ ] Commit: `git add -A && git commit -m "tray: show recording duration in the tooltip; reset on finish/fail"`
+- [x] Commit: `git add -A && git commit -m "tray: show recording duration in the tooltip; reset on finish/fail"`
 
 ---
 
