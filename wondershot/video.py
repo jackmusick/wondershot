@@ -21,6 +21,7 @@ from PySide6.QtGui import QColor, QIcon, QPainter, QPen
 from PySide6.QtMultimedia import QAudioOutput, QMediaDevices, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
+    QCheckBox,
     QDoubleSpinBox,
     QHBoxLayout,
     QLabel,
@@ -325,13 +326,14 @@ class RangeBar(QWidget):
 
     def _hit(self, x: float) -> tuple | None:
         """Edge/inside hit-test, active band first."""
+        spans = self.pane.spans()
+        active = 0 if self.pane.trim is not None else self.pane.active_idx
         order = []
-        if 0 <= self.pane.active_idx < len(self.pane.redactions):
-            order.append(self.pane.active_idx)
-        order += [i for i in range(len(self.pane.redactions))
-                  if i not in order]
+        if 0 <= active < len(spans):
+            order.append(active)
+        order += [i for i in range(len(spans)) if i not in order]
         for i in order:
-            red = self.pane.redactions[i]
+            red = spans[i]
             x1, x2 = self._x_of(red.start), self._x_of(red.end)
             if abs(x - x1) <= self.EDGE_PX:
                 return ("start", i)
@@ -352,10 +354,10 @@ class RangeBar(QWidget):
         if hit is not None:
             self._mode = hit
             self.pane.set_active(hit[1])
-            red = self.pane.redactions[hit[1]]
+            red = self.pane.spans()[hit[1]]
             self._scrub({"start": red.start, "end": red.end,
                          "move": red.start}[hit[0]])
-        elif self.pane.redactions:
+        elif self.pane.spans():
             self._mode = ("new", t)
             self._scrub(t)
         else:
@@ -412,11 +414,14 @@ class RangeBar(QWidget):
         p.setBrush(QColor(24, 24, 27))
         p.drawRoundedRect(0, 4, w, h - 8, 4, 4)
         dur = max(1, self.pane.player.duration())
-        for i, red in enumerate(self.pane.redactions):
+        spans = self.pane.spans()
+        active_i = 0 if self.pane.trim is not None else self.pane.active_idx
+        for i, red in enumerate(spans):
             x1 = red.start * 1000 / dur * w
             x2 = red.end * 1000 / dur * w
-            color = QColor(PALETTE[i % len(PALETTE)])
-            active = i == self.pane.active_idx
+            color = (QColor("#3daee9") if self.pane.trim is not None
+                     else QColor(PALETTE[i % len(PALETTE)]))
+            active = i == active_i
             color.setAlpha(230 if active else 130)
             p.setBrush(color)
             p.drawRoundedRect(QRectF(x1, 2 if active else 5,
@@ -443,6 +448,8 @@ class VideoPane(QWidget):
         self._blur_proc: QProcess | None = None
         self._frame_proc: QProcess | None = None
         self.redactions: list[Redaction] = []
+        self.trim: Redaction | None = None   # rect unused; start/end = kept span
+        self._trim_proc: QProcess | None = None
         self.active_idx = -1
         self._row_spins: list[tuple[QDoubleSpinBox, QDoubleSpinBox]] = []
         self._pause_on_load = False
@@ -489,6 +496,23 @@ class VideoPane(QWidget):
         self.apply_btn.clicked.connect(self._apply_blurs)
         self.apply_btn.hide()
 
+        self.trim_btn = QPushButton("Trim", self)
+        self.trim_btn.setIcon(QIcon.fromTheme("edit-cut"))
+        self.trim_btn.setCheckable(True)
+        self.trim_btn.toggled.connect(self._trim_mode)
+        self.trim_btn.setEnabled(ffmpegutil.have_ffmpeg())
+
+        self.trim_accurate = QCheckBox("Frame-accurate (re-encode)", self)
+        self.trim_accurate.setToolTip(
+            "Default trim is instant but snaps the start to the previous "
+            "keyframe; re-encoding cuts exactly but takes longer")
+        self.trim_accurate.hide()
+
+        self.trim_apply_btn = QPushButton("Save trim", self)
+        self.trim_apply_btn.setIcon(QIcon.fromTheme("dialog-ok-apply"))
+        self.trim_apply_btn.clicked.connect(self._apply_trim)
+        self.trim_apply_btn.hide()
+
         self.gif_btn = QPushButton("Convert to GIF", self)
         self.gif_btn.setIcon(QIcon.fromTheme("video-x-generic"))
         self.gif_btn.clicked.connect(self._convert_gif)
@@ -509,6 +533,9 @@ class VideoPane(QWidget):
         controls.addSpacing(12)
         controls.addWidget(self.blur_btn)
         controls.addWidget(self.apply_btn)
+        controls.addWidget(self.trim_btn)
+        controls.addWidget(self.trim_accurate)
+        controls.addWidget(self.trim_apply_btn)
         controls.addWidget(self.gif_btn)
         controls.addWidget(self.frame_btn)
 
@@ -547,6 +574,7 @@ class VideoPane(QWidget):
         self._clear_redactions()
         is_gif = path.lower().endswith(".gif")
         self.blur_btn.setVisible(not is_gif)
+        self.trim_btn.setVisible(not is_gif)
         self.player.setSource(QUrl.fromLocalFile(path))
         # GIFs: autoplay and loop forever; videos: show the first frame
         # paused and wait for the user to hit play.
@@ -594,7 +622,8 @@ class VideoPane(QWidget):
         native Wayland subsurface that sits above ALL widget painting, so
         while decorating we hide it and paint the frame ourselves."""
         return (self.player.playbackState() != QMediaPlayer.PlayingState
-                and (self.overlay.active or bool(self.redactions))
+                and (self.overlay.active or bool(self.redactions)
+                     or self.trim is not None)
                 and self._last_frame is not None)
 
     def _sync_video_surface(self) -> None:
@@ -612,7 +641,7 @@ class VideoPane(QWidget):
             self.slider.setValue(pos)
         self.time_label.setText(
             f"{_fmt_ms(pos)} / {_fmt_ms(self.player.duration())}")
-        if self.redactions:
+        if self.redactions or self.trim is not None:
             self.overlay.update()
             self.range_bar.update()
 
@@ -633,18 +662,28 @@ class VideoPane(QWidget):
                 if self.hint.text() == msg else None)
 
     def active_redaction(self) -> Redaction | None:
+        if self.trim is not None:
+            return self.trim
         if 0 <= self.active_idx < len(self.redactions):
             return self.redactions[self.active_idx]
         return None
 
     def set_active(self, idx: int) -> None:
+        if self.trim is not None:
+            return
         if idx != self.active_idx and 0 <= idx < len(self.redactions):
             self.active_idx = idx
             self._rebuild_rows()
             self.range_bar.update()
 
+    def spans(self) -> list[Redaction]:
+        """What the timeline bar edits: the trim span while trimming,
+        otherwise the blur redactions."""
+        return [self.trim] if self.trim is not None else self.redactions
+
     def _blur_mode(self, on: bool) -> None:
         if on:
+            self.trim_btn.setChecked(False)
             self.player.pause()
             self.hint.setText(
                 "Drag a box over the part of the video to blur")
@@ -652,6 +691,28 @@ class VideoPane(QWidget):
         else:
             self.hint.hide()
         self.overlay.set_active(on)
+        self._sync_video_surface()
+
+    def _trim_mode(self, on: bool) -> None:
+        if on and self.redactions:
+            self.trim_btn.setChecked(False)
+            self._notify("Apply or remove the pending blurs before trimming")
+            return
+        if on:
+            self.player.pause()
+            dur = self.player.duration() / 1000.0
+            self.trim = Redaction(QRect(), 0.0, round(max(dur, 0.1), 2))
+            self._notify("Drag the timeline edges to choose the section to "
+                         "keep, then Save trim — the video scrubs as you "
+                         "drag", 0)
+        else:
+            self.trim = None
+            self.hint.hide()
+        self.trim_accurate.setVisible(on)
+        self.trim_apply_btn.setVisible(on)
+        self.blur_btn.setEnabled(not on and ffmpegutil.have_ffmpeg())
+        self.range_bar.setVisible(on or bool(self.redactions))
+        self.range_bar.update()
         self._sync_video_surface()
 
     def _region_drawn(self, video_rect: QRect) -> None:
@@ -673,13 +734,14 @@ class VideoPane(QWidget):
         self.redactions.clear()
         self.active_idx = -1
         self.blur_btn.setChecked(False)
+        self.trim_btn.setChecked(False)
         self.hint.hide()
         self._rebuild_rows()
         self.refresh_overlays()
 
     def refresh_overlays(self) -> None:
         self._sync_video_surface()
-        self.range_bar.setVisible(bool(self.redactions))
+        self.range_bar.setVisible(bool(self.redactions) or self.trim is not None)
         self.range_bar.update()
 
     # -- rows -------------------------------------------------------------------
@@ -700,6 +762,8 @@ class VideoPane(QWidget):
             self.range_bar.hide()
 
     def sync_active_row(self) -> None:
+        if self.trim is not None:
+            return
         red = self.active_redaction()
         if red is None or self.active_idx >= len(self._row_spins):
             return
@@ -907,6 +971,52 @@ class VideoPane(QWidget):
             self.file_ready.emit(out)
         else:
             self._notify("GIF conversion failed", 6000)
+            if os.path.exists(tmp):
+                os.unlink(tmp)
+
+    # -- trim ----------------------------------------------------------------
+
+    def _apply_trim(self) -> None:
+        if not self.path or self.trim is None or self._trim_proc is not None:
+            return
+        if self.trim.end <= self.trim.start:
+            self.status.emit("Trim: end must be after start", 4000)
+            return
+        from .capture import unique_path
+        reencode = self.trim_accurate.isChecked()
+        out = unique_path(
+            self.settings.library_dir,
+            trim_output_name(os.path.basename(self.path), reencode))
+        tmp = self._render_temp(out)
+        enc = pick_encoder() if reencode else "libx264"
+        args = build_trim_args(self.path, self.trim.start, self.trim.end,
+                               tmp, reencode, encoder=enc)
+        self._trim_proc = QProcess(self)
+        self._trim_proc.finished.connect(
+            lambda code, _st: self._trim_done(code, tmp, out))
+        self.trim_apply_btn.setEnabled(False)
+        self.trim_apply_btn.setText("Trimming…")
+        self._notify("Trimming — the result will appear in the gallery "
+                     "when done", 0)
+        self._trim_proc.start(ffmpegutil.ffmpeg_path(), args)
+
+    def _trim_done(self, code: int, tmp: str, out: str) -> None:
+        proc, self._trim_proc = self._trim_proc, None
+        if proc is not None:
+            err = bytes(proc.readAllStandardError()).decode(errors="replace")
+            proc.deleteLater()
+        else:
+            err = ""
+        self.trim_apply_btn.setEnabled(True)
+        self.trim_apply_btn.setText("Save trim")
+        if code == 0 and os.path.exists(tmp) and os.path.getsize(tmp) > 0:
+            shutil.move(tmp, out)
+            self.trim_btn.setChecked(False)  # exits trim mode
+            self._notify(f"Saved {os.path.basename(out)}")
+            self.file_ready.emit(out)
+        else:
+            tail = err.strip().splitlines()[-1] if err.strip() else "unknown"
+            self._notify(f"Trim failed: {tail[:160]}", 10000)
             if os.path.exists(tmp):
                 os.unlink(tmp)
 

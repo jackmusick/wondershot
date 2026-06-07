@@ -567,7 +567,7 @@ git commit -m "Trim: pure ffmpeg arg builder (copy vs frame-accurate) + naming"
 - Modify: `wondershot/gallery.py` — `keyPressEvent` (~line 1000, Esc exits trim mode)
 - Test: none new — RangeBar/VideoPane require a live `QMediaPlayer`/video widget stack, which is GUI-only glue not exercisable headless without a media backend; explicitly skipping the failing-test step. All command construction and naming was tested in Task 5; the timeline span-drag math is the existing, shipped RangeBar code operating on a `Redaction` object unchanged.
 
-- [ ] **Step 6.1 — VideoPane state + spans indirection.** In `VideoPane.__init__`, next to `self.redactions = []`:
+- [x] **Step 6.1 — VideoPane state + spans indirection.** In `VideoPane.__init__`, next to `self.redactions = []`:
 
 ```python
         self.trim: Redaction | None = None   # rect unused; start/end = kept span
@@ -596,7 +596,7 @@ Replace `active_redaction` with:
 
 Guard `set_active` (first line): `if self.trim is not None: return` (the trim span is always "active"; there are no rows to rebuild). Guard `sync_active_row` (first line): `if self.trim is not None: return` (no spin rows exist in trim mode; without this, `self._row_spins[self.active_idx]` IndexErrors).
 
-- [ ] **Step 6.2 — RangeBar reads spans().** In `RangeBar`:
+- [x] **Step 6.2 — RangeBar reads spans().** In `RangeBar`:
   - `_hit` (~line 276): replace both `self.pane.redactions` with `self.pane.spans()`, and replace the active-first ordering head with:
 
 ```python
@@ -625,7 +625,7 @@ Guard `set_active` (first line): `if self.trim is not None: return` (the trim sp
 ```
   (the alpha/drawRoundedRect lines below stay as they are; the playhead block is untouched). The existing edge-grab logic (`EDGE_PX = 7`, `SplitHCursor`) IS the in/out handle interaction — no new handle code needed.
 
-- [ ] **Step 6.3 — Trim widgets.** Add `QCheckBox` to the `PySide6.QtWidgets` import list at the top of video.py. In `VideoPane.__init__` after the `self.apply_btn` block (~line 439):
+- [x] **Step 6.3 — Trim widgets.** Add `QCheckBox` to the `PySide6.QtWidgets` import list at the top of video.py. In `VideoPane.__init__` after the `self.apply_btn` block (~line 439):
 
 ```python
         self.trim_btn = QPushButton("Trim", self)
@@ -654,7 +654,7 @@ Insert into the controls row after `controls.addWidget(self.apply_btn)`:
         controls.addWidget(self.trim_apply_btn)
 ```
 
-- [ ] **Step 6.4 — Mode toggle + integration points.** Add after `_blur_mode` (~line 596):
+- [x] **Step 6.4 — Mode toggle + integration points.** Add after `_blur_mode` (~line 596):
 
 ```python
     def _trim_mode(self, on: bool) -> None:
@@ -688,7 +688,7 @@ Integration edits (each is one line):
   - `load` (~line 489): add `self.trim_btn.setVisible(not is_gif)` next to `self.blur_btn.setVisible(not is_gif)`.
   - `_blur_mode` (~line 587): first line of the `if on:` branch, add `self.trim_btn.setChecked(False)` (blur and trim modes are mutually exclusive both ways).
 
-- [ ] **Step 6.5 — Render flow.** Add after `_trim_mode`:
+- [x] **Step 6.5 — Render flow.** Add after `_trim_mode`:
 
 ```python
     def _apply_trim(self) -> None:
@@ -738,7 +738,7 @@ Integration edits (each is one line):
 
 Note `tmp` (not `out`) is passed to `build_trim_args` as the output — same basename/extension, so the `-movflags` extension check behaves identically, and the half-written file stays hidden in `.rendering/` like every other render.
 
-- [ ] **Step 6.6 — Esc exits trim mode.** In `wondershot/gallery.py` `keyPressEvent` (~line 1000), extend the Esc branch:
+- [x] **Step 6.6 — Esc exits trim mode.** In `wondershot/gallery.py` `keyPressEvent` (~line 1000), extend the Esc branch:
 
 ```python
         if ev.key() == Qt.Key_Escape:
@@ -753,9 +753,9 @@ Note `tmp` (not `out`) is passed to `build_trim_args` as the output — same bas
                 self.editor.scene.clearSelection()
 ```
 
-- [ ] **Step 6.7 — Run the suite + manual smoke.** `python -m pytest tests/ -q` → all pass (the RangeBar refactor must not break the blur tests — `build_blur_filter` is untouched). Manual check (desktop session): open a recording → Trim → drag in/out edges (video scrubs) → Save trim with checkbox off (near-instant, `<stem>-trimmed.<ext>`) and on (re-encodes to `.mp4`); verify blur mode still works after exiting trim mode, and Esc exits trim.
+- [x] **Step 6.7 — Run the suite + manual smoke.** `python -m pytest tests/ -q` → all pass (the RangeBar refactor must not break the blur tests — `build_blur_filter` is untouched). Manual check (desktop session): open a recording → Trim → drag in/out edges (video scrubs) → Save trim with checkbox off (near-instant, `<stem>-trimmed.<ext>`) and on (re-encodes to `.mp4`); verify blur mode still works after exiting trim mode, and Esc exits trim.
 
-- [ ] **Step 6.8 — Commit.**
+- [x] **Step 6.8 — Commit.**
 ```
 git add wondershot/video.py wondershot/gallery.py
 git commit -m "Trim mode: in/out handles on the range timeline, stream-copy default, frame-accurate re-encode option"

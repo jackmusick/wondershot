@@ -1005,6 +1005,9 @@ class GalleryWindow(QMainWindow):
             if (self.video_pane is not None
                     and self.video_pane.blur_btn.isChecked()):
                 self.video_pane.blur_btn.setChecked(False)
+            elif (self.video_pane is not None
+                    and self.video_pane.trim_btn.isChecked()):
+                self.video_pane.trim_btn.setChecked(False)
             else:
                 self.editor.scene.clearSelection()
         else:
