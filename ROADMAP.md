@@ -93,6 +93,59 @@ _Last updated: 2026-06-06_
 - Arrows/lines show endpoint grips only (no dashed box); properties
   panel rows follow the selection; "Camera" replaces "Bubble"
 
+## Snagit-parity workstreams (2026-06-06)
+
+Full design: `docs/superpowers/specs/2026-06-06-snagit-parity-design.md`.
+A/B/C are mutually independent; D gates scroll/step capture; E comes
+after Linux is feature-complete.
+
+**WS-A — Video quick wins** _(in progress)_
+- Capture frame from video (S): ffmpeg single-frame extract — avoids
+  the QVideoSink/Wayland subsurface landmine
+- Trim (S/M): reuse the blur range timeline; stream-copy default,
+  frame-accurate re-encode checkbox; middle-cut/concat → backlog
+- Cursor halo (M): portal cursor-mode *metadata* + composite in our
+  gst pipeline. Static halo only — click *animation* gated on WS-D input
+
+**WS-B — AI foundation** _(in progress)_
+- BYO OpenAI-compatible endpoint: `ai_endpoint`/`ai_api_key`/`ai_model`
+  settings, AI tab, stdlib-HTTP `aiclient.py`, QRunnable jobs
+- AI redaction (M): tesseract word boxes (optional dep) + LLM picks
+  *which* text is sensitive → PixelateItems, non-destructive
+- Background remover (M): local ONNX (rembg) as `wondershot[ai-local]`
+  extra — chat endpoints can't return alpha mattes, so never the LLM
+- Image simplifier (L): later; reuses redaction's vision→regions pipeline
+
+**WS-C — Capture UX**
+- Post-capture quick-action toolbar (M): scoped *post*-capture only —
+  selection UI belongs to Spectacle and Wayland windows can't
+  self-position (LayerShellQt on KDE when we own the picker)
+- Auto-size-to-window (M): KDE-only via KWin scripting D-Bus; trivial
+  on X11/Win/mac later; GNOME needs an extension — documented, not built
+
+**WS-D — Capture engine** _(spike in progress)_
+- Scroll capture (XL): user scrolls, we stitch — frames from the
+  existing ScreenCast pipeline through a portable FrameSource seam,
+  numpy overlap-matching stitcher. No input injection needed.
+- Step capture (XL): blocked on global click observation. Linux path:
+  xdg InputCapture portal (spike running; findings below). If the
+  spike fails, step capture ships Windows-first under WS-E.
+  AI halves (auto-crop around click, write instructions) are S each
+  once WS-B's client exists.
+- Click animation in video (M): same input gate as step capture
+
+**WS-E — Cross-platform (Windows, then macOS)**
+- Qt UI ports free; per-OS work = CaptureManager/ScreenRecorder
+  backends, hotkeys, packaging. Windows first (Snagit-refugee
+  audience; step capture trivial via SetWindowsHookEx).
+- Windows dev/test against the win11 VM over SSH — no separate box
+- Deferred decisions: packaging tool (PyInstaller vs briefcase),
+  GStreamer-on-Windows vs native encode, code signing, keyring
+
+### InputCapture portal probe findings
+
+_(pending — filled in by the WS-D spike)_
+
 ## Next up (in order)
 
 1. **Sidecar persistence** — annotations stay editable objects when you
@@ -106,8 +159,9 @@ _Last updated: 2026-06-06_
 3. **Editor backlog** — text alignment + edge snapping in boxes
    (Snagit), style-change undo, blur-tool variant, step renumbering,
    custom rotate cursor polish.
-4. **Video backlog** — blur strength setting, trim/cut ranges, GIF
-   options (fps/scale/range), true blur preview in the frost.
+4. **Video backlog** — blur strength setting, GIF options
+   (fps/scale/range), true blur preview in the frost.
+   (trim/cut moved to WS-A)
 
 ## Cross-platform position
 
@@ -116,7 +170,10 @@ is quarantined in CaptureManager + ScreenRecorder backends; Windows
 (native APIs) and macOS (ScreenCaptureKit) become additional backends,
 not rewrites. Electron evaluated and rejected: would forfeit native
 drag-out, GPU video path, and tray-app footprint without reducing the
-per-OS capture work.
+per-OS capture work. Prep rules while building A–D: OS-specific code
+stays behind seams (CaptureManager/ScreenRecorder/FrameSource), one
+ffmpeg helper with PATH discovery, binary discovery for tesseract,
+HotkeyBackend interface, CI matrix on all three OSes.
 
 ## Platform landmines (hard-won, do not relearn)
 
