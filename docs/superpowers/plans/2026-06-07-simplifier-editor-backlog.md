@@ -987,7 +987,7 @@ Counterpart of `pixelated_patch`: a gaussian-blurred copy of just `rect`. Implem
 - Modify: `wondershot/imageops.py`
 - Test: `tests/test_imageops.py`
 
-- [ ] **Step 1: Upgrade the file's app fixture.** `tests/test_imageops.py` has an autouse session fixture that creates a `QGuiApplication` — but `blurred_patch` renders through `QGraphicsScene`, which needs a full **`QApplication`** (a `QGuiApplication` subclass, so existing tests are unaffected; when other suites already created a `QApplication`, `instance()` returns it either way). Replace the existing fixture body in `tests/test_imageops.py`:
+- [x] **Step 1: Upgrade the file's app fixture.** `tests/test_imageops.py` has an autouse session fixture that creates a `QGuiApplication` — but `blurred_patch` renders through `QGraphicsScene`, which needs a full **`QApplication`** (a `QGuiApplication` subclass, so existing tests are unaffected; when other suites already created a `QApplication`, `instance()` returns it either way). Replace the existing fixture body in `tests/test_imageops.py`:
 
 ```python
 @pytest.fixture(scope="session", autouse=True)
@@ -1001,7 +1001,7 @@ def qapp():
 
 Run: `QT_QPA_PLATFORM=offscreen .venv/bin/pytest tests/test_imageops.py -v` — Expected: ALL PASS (pure fixture widening, no behavior change).
 
-- [ ] **Step 2: Write the failing tests** — append to `tests/test_imageops.py` (it already imports `pytest`, `QRect`, `QColor`, `QImage` at the top):
+- [x] **Step 2: Write the failing tests** — append to `tests/test_imageops.py` (it already imports `pytest`, `QRect`, `QColor`, `QImage` at the top):
 
 ```python
 def _half_and_half(w=120, h=80):
@@ -1035,12 +1035,12 @@ def test_blurred_patch_clamps_and_empty(qapp):
         img.rect()).size()
 ```
 
-- [ ] **Step 3: Run to verify failure**
+- [x] **Step 3: Run to verify failure**
 
 Run: `QT_QPA_PLATFORM=offscreen .venv/bin/pytest tests/test_imageops.py -v -k blurred`
 Expected: FAIL — `ImportError: cannot import name 'blurred_patch'`
 
-- [ ] **Step 4: Implement** — append to `wondershot/imageops.py`:
+- [x] **Step 4: Implement** — append to `wondershot/imageops.py`:
 
 ```python
 def blurred_patch(image: QImage, rect: QRect, radius: int = 12) -> QImage:
@@ -1078,12 +1078,12 @@ def blurred_patch(image: QImage, rect: QRect, radius: int = 12) -> QImage:
     return out.copy(r.x() - pr.x(), r.y() - pr.y(), r.width(), r.height())
 ```
 
-- [ ] **Step 5: Run to verify pass**
+- [x] **Step 5: Run to verify pass**
 
 Run: `QT_QPA_PLATFORM=offscreen .venv/bin/pytest tests/test_imageops.py -v`
 Expected: ALL PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add wondershot/imageops.py tests/test_imageops.py

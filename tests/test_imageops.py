@@ -9,8 +9,8 @@ from wondershot import imageops
 def qapp():
     import os
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    from PySide6.QtGui import QGuiApplication
-    app = QGuiApplication.instance() or QGuiApplication([])
+    from PySide6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication([])
     yield app
 
 
@@ -125,3 +125,34 @@ def test_bottom_fade_gradient():
     assert out.pixelColor(30, 99).alpha() < 20, "bottom row ~transparent"
     mid = out.pixelColor(30, 80).alpha()
     assert 50 < mid < 220, f"midway through fade should be partial: {mid}"
+
+
+def _half_and_half(w=120, h=80):
+    from PySide6.QtGui import QPainter
+    img = QImage(w, h, QImage.Format_ARGB32_Premultiplied)
+    img.fill(QColor("black"))
+    p = QPainter(img)
+    p.fillRect(w // 2, 0, w // 2, h, QColor("white"))
+    p.end()
+    return img
+
+
+def test_blurred_patch_softens_the_boundary(qapp):
+    from wondershot.imageops import blurred_patch
+    img = _half_and_half()
+    r = QRect(30, 10, 60, 60)            # straddles the black/white edge
+    patch = blurred_patch(img, r, radius=10)
+    assert patch.size() == r.size()
+    edge = patch.pixelColor(30, 30)      # on the boundary (x=60 in image)
+    assert 40 < edge.red() < 215         # blended, neither pure b nor w
+    far = patch.pixelColor(2, 30)        # deep in the black half
+    assert far.red() < 40                # interior barely affected
+
+
+def test_blurred_patch_clamps_and_empty(qapp):
+    from wondershot.imageops import blurred_patch
+    img = _half_and_half()
+    assert blurred_patch(img, QRect(500, 500, 10, 10)).isNull()
+    patch = blurred_patch(img, QRect(110, 70, 50, 50), radius=6)
+    assert patch.size() == QRect(110, 70, 50, 50).intersected(
+        img.rect()).size()
