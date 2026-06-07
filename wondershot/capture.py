@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import random
 import shutil
+import sys
 import time
 
 from PySide6.QtCore import QObject, QProcess, Signal, Slot
@@ -206,3 +207,28 @@ class CaptureManager(QObject):
             self.failed.emit(f"could not move screenshot: {e}")
             return
         self._finish(dest)
+
+
+# -- platform factory (WS-E seam) --------------------------------------------
+
+def window_capture_available() -> bool:
+    """Is no-picker active-window capture possible on this platform?
+
+    Windows: always (ctypes GetForegroundWindow). Linux: KDE only
+    (KWin scripting — see kwin.py).
+    """
+    if sys.platform == "win32":
+        return True
+    from . import kwin
+    return kwin.kwin_available()
+
+
+def create_capture_manager(settings, parent=None):
+    """sys.platform factory mirroring hotkey.create_hotkey_backend.
+
+    Linux behavior is byte-identical: same class, same constructor.
+    """
+    if sys.platform == "win32":
+        from .wincapture import WinCaptureManager
+        return WinCaptureManager(settings, parent)
+    return CaptureManager(settings, parent)

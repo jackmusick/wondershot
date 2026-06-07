@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import sys
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
@@ -55,7 +56,12 @@ class CaptureWindow(QWidget):
         toggle("Copy to clipboard", "copy_after_capture")
         cursor = toggle("Capture cursor", "capture_cursor",
                         "Include the pointer (Spectacle backend)")
-        if not shutil.which("spectacle"):
+        if sys.platform == "win32":
+            # mss grabs via BitBlt and cannot composite the cursor
+            cursor.setEnabled(False)
+            cursor.setToolTip("Not available on Windows (the capture "
+                              "backend cannot include the pointer)")
+        elif not shutil.which("spectacle"):
             cursor.setEnabled(False)
             cursor.setToolTip("Needs the Spectacle backend")
 

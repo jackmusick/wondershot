@@ -11,7 +11,7 @@ from PySide6.QtGui import QAction, QGuiApplication, QIcon, QImage, QPainter, QPi
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
-from .capture import CaptureManager, unique_path, timestamp_name
+from .capture import create_capture_manager, unique_path, timestamp_name, window_capture_available
 from .editor import EditorWindow
 from .gallery import GalleryWindow
 from .hotkey import create_hotkey_backend
@@ -70,7 +70,7 @@ class GrabbitApp(QObject):
         super().__init__(parent)
         self.qapp = qapp
         self.settings = Settings()
-        self.capture = CaptureManager(self.settings, self)
+        self.capture = create_capture_manager(self.settings, self)
         self.capture.captured.connect(self._on_captured)
         self.capture.failed.connect(self._on_capture_failed)
 
@@ -90,8 +90,9 @@ class GrabbitApp(QObject):
         self._editors: list[EditorWindow] = []
         self._gallery_was_visible = False
 
-        from .kwin import kwin_available
-        self.kwin_ok = kwin_available()
+        # "Window" capture works on KDE (KWin scripting) and on Windows
+        # (GetForegroundWindow); the attribute keeps its historical name.
+        self.kwin_ok = window_capture_available()
         self.gallery.kwin_ok = self.kwin_ok  # gates the CaptureWindow button
 
         self.scroll_ok = scroll_capture_available()

@@ -998,7 +998,7 @@ git add wondershot/wincapture.py tests/test_winoverlay.py && git commit -m "feat
 - Modify: `wondershot/capture_window.py:56-60` (cursor toggle on Windows)
 - Test: `tests/test_win_factories.py` (create)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/test_win_factories.py
@@ -1065,7 +1065,7 @@ def test_window_capture_available_linux_delegates_to_kwin(monkeypatch):
     assert capture.window_capture_available() is True
 ```
 
-- [ ] **Step 2: Run — verify failure**
+- [x] **Step 2: Run — verify failure**
 
 ```bash
 /home/jack/GitHub/grabbit/.venv/bin/python -m pytest tests/test_win_factories.py -v
@@ -1073,7 +1073,7 @@ def test_window_capture_available_linux_delegates_to_kwin(monkeypatch):
 
 Expected: FAIL with `AttributeError: module 'wondershot.capture' has no attribute 'create_capture_manager'`.
 
-- [ ] **Step 3: Implement the factory** — in `wondershot/capture.py`, add `import sys` to the imports block and append at the end of the file:
+- [x] **Step 3: Implement the factory** — in `wondershot/capture.py`, add `import sys` to the imports block and append at the end of the file:
 
 ```python
 # -- platform factory (WS-E seam) --------------------------------------------
@@ -1103,7 +1103,7 @@ def create_capture_manager(settings, parent=None):
 
 (Note `from . import kwin` + `kwin.kwin_available()` — attribute access, not `from .kwin import kwin_available` — so the test's monkeypatch of `wondershot.kwin.kwin_available` takes effect.)
 
-- [ ] **Step 4: Wire app.py**
+- [x] **Step 4: Wire app.py**
 
 In `wondershot/app.py` change the import (line 14):
 
@@ -1134,7 +1134,7 @@ with:
         self.gallery.kwin_ok = self.kwin_ok  # gates the CaptureWindow button
 ```
 
-- [ ] **Step 5: Disable the cursor toggle on Windows** — in `wondershot/capture_window.py`, add `import sys` to the imports and replace lines 56-60:
+- [x] **Step 5: Disable the cursor toggle on Windows** — in `wondershot/capture_window.py`, add `import sys` to the imports and replace lines 56-60:
 
 ```python
         cursor = toggle("Capture cursor", "capture_cursor",
@@ -1149,7 +1149,7 @@ with:
             cursor.setToolTip("Needs the Spectacle backend")
 ```
 
-- [ ] **Step 6: Run tests + full suite (the Linux-identity pin)**
+- [x] **Step 6: Run tests + full suite (the Linux-identity pin)**
 
 ```bash
 /home/jack/GitHub/grabbit/.venv/bin/python -m pytest tests/test_win_factories.py -v && /home/jack/GitHub/grabbit/.venv/bin/python -m pytest tests/ -q
@@ -1157,7 +1157,7 @@ with:
 
 Expected: all PASS — especially `test_capture_crop.py`, `test_capture_window_mode.py`, `test_hide_for_capture.py` untouched.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add wondershot/capture.py wondershot/app.py wondershot/capture_window.py tests/test_win_factories.py && git commit -m "feat: platform factory for capture; window-mode gate; cursor toggle honest on Windows"
