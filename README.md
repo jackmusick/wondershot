@@ -135,4 +135,5 @@ they're cheap to bind to keys.
 
 ## License
 
-MIT
+[AGPL-3.0-or-later](LICENSE) — free to use, modify, and redistribute;
+derivatives must stay open source.

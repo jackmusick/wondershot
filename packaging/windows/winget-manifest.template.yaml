@@ -10,7 +10,7 @@ PackageVersion: "VERSION"
 PackageLocale: en-US
 Publisher: Jack Musick
 PackageName: Wondershot
-License: MIT
+License: AGPL-3.0-or-later
 ShortDescription: Snagit-style screenshot and screen-recording tool
 Moniker: wondershot
 Installers:
