@@ -56,7 +56,12 @@ fi
 
 say "installing latest wondershot"
 "$VENV/bin/pip" install --quiet --upgrade pip >/dev/null 2>&1 || true
+# Two passes: the first resolves any new dependencies; the second
+# force-reinstalls the app itself — main moves without version bumps,
+# and pip treats a same-version direct URL as already satisfied.
 "$VENV/bin/pip" install --quiet --upgrade "wondershot @ $REPO_TARBALL"
+"$VENV/bin/pip" install --quiet --force-reinstall --no-deps \
+    "wondershot @ $REPO_TARBALL"
 
 ln -sf "$VENV/bin/wondershot" "$BIN_DIR/wondershot"
 "$VENV/bin/wondershot" --install-desktop >/dev/null 2>&1 || true
