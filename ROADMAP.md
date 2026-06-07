@@ -42,7 +42,9 @@ _Last updated: 2026-06-06_
 
 **Recorder (native, no Spectacle)**
 - Portal ScreenCast → PipeWire → gst-launch: x264 + AAC mp4 into the
-  library; share dialog only on first use (restore token persisted)
+  library; source picker shown on every recording (fresh pick — a
+  stored restore_token used to skip it after first use, which meant
+  you could never change the recorded screen/window; fixed 2026-06-07)
 - Microphone with measured tuning: webrtcdsp NS very-high, AGC off
   (ambient floor −43dB vs −21dB raw); device picker + toggles in
   Settings; full log at ~/.cache/wondershot/recorder.log

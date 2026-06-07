@@ -467,11 +467,14 @@ class ScreenRecorder(QObject):
             # at all — strictly worse. Stay on EMBEDDED until the source
             # works; flip to `4 if self._halo else 2` then.
             "cursor_mode": GLib.Variant("u", 2),
-            "persist_mode": GLib.Variant("u", 2),  # remember permanently
+            # 0 = do not persist. We deliberately DON'T replay a saved
+            # restore_token: with persist_mode=2 + token the portal skips
+            # its picker after the first-ever recording, so you could never
+            # change the screen/window again (Jack's bug, 2026-06-07). A
+            # screenshot tool must let you pick the source every time —
+            # same reasoning as scroll capture's fresh-pick.
+            "persist_mode": GLib.Variant("u", 0),
         }
-        restore = self._restore_token()
-        if restore:
-            options["restore_token"] = GLib.Variant("s", restore)
         self._on_request(token, self._sources_selected)
         self._call("SelectSources",
                    GLib.Variant("(oa{sv})", (self._session, options)))

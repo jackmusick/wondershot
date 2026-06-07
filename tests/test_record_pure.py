@@ -160,3 +160,28 @@ def test_format_elapsed():
 def test_pts_offset_ns():
     assert pts_offset_ns(0) == 0
     assert pts_offset_ns(2.5) == 2_500_000_000
+
+
+def test_recording_always_shows_picker_never_replays_token():
+    """Bug (Jack 2026-06-07): recording reused a saved restore_token, so
+    the portal picker appeared only on the first-ever recording and you
+    could never change the screen/window after. The recorder must NOT
+    replay a stored token — every recording shows the source picker."""
+    from tests.test_record import FakeSettings
+    from wondershot.record import ScreenRecorder
+    s = FakeSettings("/tmp")
+    s.screencast_token = "stale-grant-from-last-time"  # must be ignored
+    rec = ScreenRecorder(s)
+    captured = {}
+
+    def fake_call(method, args):
+        if method == "SelectSources":
+            _session, options = args.unpack()
+            captured.update(options)
+
+    rec._call = fake_call
+    rec._on_request = lambda token, cb: None
+    rec._created({"session_handle": "/s"})
+    assert "restore_token" not in captured, \
+        "a stored token must not be replayed — the picker has to appear"
+    assert captured["persist_mode"] == 0
