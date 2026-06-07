@@ -14,12 +14,38 @@ def test_factory_picks_kglobalaccel_on_linux(monkeypatch):
     assert isinstance(b, hotkey.HotkeyBackend)
 
 
-@pytest.mark.parametrize("platform", ["win32", "darwin"])
-def test_factory_picks_null_elsewhere(monkeypatch, platform):
+def test_factory_picks_null_on_darwin(monkeypatch):
     from wondershot import hotkey
-    monkeypatch.setattr(sys, "platform", platform)
+    monkeypatch.setattr(sys, "platform", "darwin")
     b = hotkey.create_hotkey_backend()
     assert isinstance(b, hotkey.NullHotkeyBackend)
+
+
+def test_factory_picks_win_backend_on_windows(monkeypatch):
+    from wondershot import hotkey
+    monkeypatch.setattr(sys, "platform", "win32")
+    b = hotkey.create_hotkey_backend()
+    assert isinstance(b, hotkey.WinHotkeyBackend)
+    assert isinstance(b, hotkey.HotkeyBackend)
+    assert hasattr(b, "pressed")
+
+
+def test_win_backend_constructs_without_windows(monkeypatch):
+    """Constructing (NOT registering) must never touch ctypes.windll —
+    the factory runs at app startup on every platform under test."""
+    from wondershot import hotkey
+    b = hotkey.WinHotkeyBackend()
+    assert b.active is False
+
+
+def test_win_hotkey_constants():
+    """The documented default binding: Ctrl+Shift+PrintScreen."""
+    from wondershot import hotkey
+    assert hotkey.MOD_CONTROL == 0x0002
+    assert hotkey.MOD_SHIFT == 0x0004
+    assert hotkey.MOD_NOREPEAT == 0x4000
+    assert hotkey.VK_SNAPSHOT == 0x2C
+    assert hotkey.WM_HOTKEY == 0x0312
 
 
 def test_null_backend_register_is_inert():

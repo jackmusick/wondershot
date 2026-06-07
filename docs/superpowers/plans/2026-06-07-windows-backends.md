@@ -2170,7 +2170,7 @@ Default binding: **Ctrl+Shift+PrintScreen** (`MOD_CONTROL|MOD_SHIFT` + `VK_SNAPS
 - Modify: `wondershot/hotkey.py`
 - Test: `tests/test_hotkey.py` (modify + append)
 
-- [ ] **Step 1: Update/extend the tests** — in `tests/test_hotkey.py`, replace `test_factory_picks_null_elsewhere` and append:
+- [x] **Step 1: Update/extend the tests** — in `tests/test_hotkey.py`, replace `test_factory_picks_null_elsewhere` and append:
 
 ```python
 def test_factory_picks_null_on_darwin(monkeypatch):
@@ -2207,7 +2207,7 @@ def test_win_hotkey_constants():
     assert hotkey.WM_HOTKEY == 0x0312
 ```
 
-- [ ] **Step 2: Run — verify failure**
+- [x] **Step 2: Run — verify failure**
 
 ```bash
 /home/jack/GitHub/grabbit/.venv/bin/python -m pytest tests/test_hotkey.py -v
@@ -2215,7 +2215,7 @@ def test_win_hotkey_constants():
 
 Expected: new tests FAIL (`no attribute 'WinHotkeyBackend'`); the old win32→Null test was replaced.
 
-- [ ] **Step 3: Implement** — first adjust the imports at the top of `wondershot/hotkey.py`: change the QtCore import to `from PySide6.QtCore import QObject, QThread, Signal, Slot` and add `import ctypes` and `import threading` to the stdlib imports. Then append to the module:
+- [x] **Step 3: Implement** — first adjust the imports at the top of `wondershot/hotkey.py`: change the QtCore import to `from PySide6.QtCore import QObject, QThread, Signal, Slot` and add `import ctypes` and `import threading` to the stdlib imports. Then append to the module:
 
 ```python
 # -- Windows: RegisterHotKey message loop (WS-E) ------------------------------
@@ -2315,7 +2315,7 @@ def create_hotkey_backend(parent=None) -> HotkeyBackend:
 
 Also extend the module docstring's first paragraph with one line: `On Windows: WinHotkeyBackend — RegisterHotKey, default Ctrl+Shift+PrintScreen.`
 
-- [ ] **Step 4: Run tests + suite**
+- [x] **Step 4: Run tests + suite**
 
 ```bash
 /home/jack/GitHub/grabbit/.venv/bin/python -m pytest tests/test_hotkey.py -v && /home/jack/GitHub/grabbit/.venv/bin/python -m pytest tests/ -q
