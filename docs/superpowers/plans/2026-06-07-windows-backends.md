@@ -1262,7 +1262,7 @@ vssh "schtasks /delete /tn wsprobe /f"
 - Create: `wondershot/winrecord.py`
 - Test: `tests/test_winrecord.py` (create)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/test_winrecord.py
@@ -1392,7 +1392,7 @@ def test_have_ddagrab_false_when_ffmpeg_missing(monkeypatch):
     assert winrecord.have_ddagrab() is False
 ```
 
-- [ ] **Step 2: Run — verify failure**
+- [x] **Step 2: Run — verify failure**
 
 ```bash
 /home/jack/GitHub/grabbit/.venv/bin/python -m pytest tests/test_winrecord.py -v
@@ -1400,7 +1400,7 @@ def test_have_ddagrab_false_when_ffmpeg_missing(monkeypatch):
 
 Expected: FAIL with `ModuleNotFoundError: No module named 'wondershot.winrecord'`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```python
 # wondershot/winrecord.py
@@ -1524,7 +1524,7 @@ def pick_audio_device(devices: list[str], preferred: str) -> str:
     return devices[0] if devices else ""
 ```
 
-- [ ] **Step 4: Run tests + suite**
+- [x] **Step 4: Run tests + suite**
 
 ```bash
 /home/jack/GitHub/grabbit/.venv/bin/python -m pytest tests/test_winrecord.py -v && /home/jack/GitHub/grabbit/.venv/bin/python -m pytest tests/ -q
