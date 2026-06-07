@@ -68,8 +68,9 @@ _Last updated: 2026-06-06_
 **Wondershot rename (2026-06-06)**
 - Package/CLI/config renamed; settings auto-migrate from grabbit;
   `grabbit` CLI alias kept so existing KDE hotkeys still fire
-- Old `~/.local/share/grabbit/venv` is orphaned; safe to delete once the
-  new install is confirmed good
+- Old `~/.local/share/grabbit/venv` deleted 2026-06-07 (Jack's call),
+  along with `~/.config/grabbit` (settings were migrated at first
+  wondershot run)
 - 2026-06-07: Jack's Alt+% capture shortcut was still bound to the
   pre-rename `net.local.grabbit.desktop` service id — the deleted file's
   cached entry launched the ORPHANED venv's old binary, whose
