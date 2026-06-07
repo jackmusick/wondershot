@@ -316,3 +316,63 @@ def test_start_without_ffmpeg_emits_failed(qapp, monkeypatch, tmp_path):
     rec.start()
     assert fails and "ffmpeg" in fails[0]
     ffmpegutil.reset_cache()
+
+
+def test_early_death_falls_back_to_next_builder(qapp, tmp_path):
+    """ddagrab with no D3D11 (VMs/RDP) dies ~instantly; the recorder must
+    transparently relaunch the gdigrab candidate instead of emitting
+    failed. Proven here with a dying first builder + graceful second."""
+    from wondershot.winrecord import WinScreenRecorder
+    dying = tmp_path / "dying.py"
+    dying.write_text(DYING_STUB)
+    graceful = tmp_path / "graceful.py"
+    graceful.write_text(GRACEFUL_STUB)
+    rec = WinScreenRecorder(
+        FakeSettings(str(tmp_path)),
+        program=sys.executable,
+        args_builder=lambda tmp, fps=30, audio_device="": ["-u", str(dying), tmp],
+        fallback_builder=lambda tmp, fps=30, audio_device="": ["-u", str(graceful), tmp])
+    failures = []
+    rec.failed.connect(failures.append)
+    rec.start()
+    # it should settle on the graceful (second) candidate and stay up
+    assert wait_until(qapp, lambda: rec._cand_idx == 1 and rec.recording, 6), \
+        "recorder must fall back to the second builder and keep recording"
+    assert not failures
+    out_expected = rec._out
+    rec.stop()
+    assert wait_until(qapp, lambda: not rec.recording, 6)
+    finished = wait_until(qapp, lambda: os.path.exists(out_expected), 2)
+    assert finished and not failures
+
+
+def test_no_fallback_when_single_builder_dies(qapp, tmp_path):
+    """A lone candidate that dies still fails (no phantom fallback)."""
+    rec = _recorder(tmp_path, DYING_STUB)  # no fallback_builder
+    failures = []
+    rec.failed.connect(failures.append)
+    rec.start()
+    assert wait_until(qapp, lambda: failures, 6)
+    assert rec._cand_idx == 0
+
+
+def test_late_death_does_not_fall_back(qapp, tmp_path):
+    """A builder that ran a while then died is a real failure, not a
+    fallback trigger — we must not discard footage and restart."""
+    from wondershot.winrecord import WinScreenRecorder
+    dying = tmp_path / "dying.py"
+    dying.write_text(DYING_STUB)
+    graceful = tmp_path / "graceful.py"
+    graceful.write_text(GRACEFUL_STUB)
+    rec = WinScreenRecorder(
+        FakeSettings(str(tmp_path)),
+        program=sys.executable,
+        args_builder=lambda tmp, fps=30, audio_device="": ["-u", str(dying), tmp],
+        fallback_builder=lambda tmp, fps=30, audio_device="": ["-u", str(graceful), tmp])
+    rec.start()
+    assert wait_until(qapp, lambda: rec.recording, 5)
+    rec._started_at = time.monotonic() - 30  # pretend it ran 30s before dying
+    failures = []
+    rec.failed.connect(failures.append)
+    assert wait_until(qapp, lambda: failures, 6), "late death is a real failure"
+    assert rec._cand_idx == 0  # never fell back

@@ -134,9 +134,14 @@ class WinScreenRecorder(QObject):
     GRACE_MS = 5000
     KILL_MS = 10000
     FPS = 30
+    # A candidate that dies within this window never produced footage —
+    # treat it as "couldn't initialize" (e.g. ddagrab with no D3D11 on a
+    # VM/RDP) and transparently try the next builder. A later death is a
+    # real failure: we salvage and report instead of restarting.
+    FALLBACK_WINDOW_S = 3.0
 
     def __init__(self, settings, parent=None, program=None,
-                 args_builder=None):
+                 args_builder=None, fallback_builder=None):
         super().__init__(parent)
         self.settings = settings
         self.recording = False
@@ -149,6 +154,10 @@ class WinScreenRecorder(QObject):
         self.log_path = ""
         self._program = program            # test seam; None = ffmpeg_path()
         self._args_builder = args_builder  # test seam; None = probe
+        self._fallback_builder = fallback_builder  # test seam
+        self._candidates: list = []        # ordered builders to try
+        self._cand_idx = 0
+        self._audio = ""
 
     # -- public ------------------------------------------------------------
 
@@ -175,20 +184,45 @@ class WinScreenRecorder(QObject):
         tmp = os.path.join(tmp_dir, os.path.basename(out))
         self._tmp, self._out = tmp, out
 
-        audio = ""
+        self._audio = ""
         if getattr(self.settings, "mic_enabled", False):
-            audio = pick_audio_device(
+            self._audio = pick_audio_device(
                 list_dshow_audio_devices(),
                 getattr(self.settings, "mic_device", ""))
-        builder = self._args_builder or (
-            ddagrab_args if have_ddagrab() else gdigrab_args)
-        args = builder(tmp, fps=self.FPS, audio_device=audio)
+
+        # Ordered builders to attempt. Probe path prefers ddagrab (hw
+        # Desktop Duplication) with gdigrab as the runtime fallback; the
+        # filter-presence probe can't tell whether ddagrab will actually
+        # open a D3D11 device, so the real fallback is death-triggered.
+        if self._args_builder is not None:
+            self._candidates = [self._args_builder]
+            if self._fallback_builder is not None:
+                self._candidates.append(self._fallback_builder)
+        else:
+            self._candidates = ([ddagrab_args, gdigrab_args]
+                                if have_ddagrab() else [gdigrab_args])
+        self._cand_idx = 0
+        self._program_resolved = program
+        if not self._launch_current():
+            return
+        self._busy = False
+        self.recording = True
+        self._started_at = time.monotonic()
+        self.started.emit()
+
+    def _launch_current(self) -> bool:
+        """Start ffmpeg with the current candidate. Returns False (and
+        emits failed) only if even spawning the process fails."""
+        builder = self._candidates[self._cand_idx]
+        args = builder(self._tmp, fps=self.FPS, audio_device=self._audio)
+        program = self._program_resolved
 
         logs = log_dir()
         os.makedirs(logs, exist_ok=True)
         self.log_path = os.path.join(logs, "recorder.log")
         try:
-            with open(self.log_path, "w") as f:
+            mode = "a" if self._cand_idx else "w"
+            with open(self.log_path, mode) as f:
                 f.write(program + " " + " ".join(args) + "\n\n")
         except OSError:
             pass
@@ -200,13 +234,11 @@ class WinScreenRecorder(QObject):
             self._busy = False
             self._tmp = self._out = None
             self.failed.emit(f"could not start ffmpeg: {program}")
-            return
+            return False
         self._proc = proc
-        self._start_watchdog()
-        self._busy = False
-        self.recording = True
-        self._started_at = time.monotonic()
-        self.started.emit()
+        if self._watchdog is None:
+            self._start_watchdog()
+        return True
 
     def stop(self) -> None:
         if self._stopping:
@@ -243,6 +275,19 @@ class WinScreenRecorder(QObject):
             return  # _poll_exit owns the exit path now
         if (self._proc is not None
                 and self._proc.state() == QProcess.NotRunning):
+            # A candidate that died almost immediately never produced
+            # footage — try the next builder (ddagrab -> gdigrab) rather
+            # than failing. A later death is a genuine pipeline failure.
+            early = (self._started_at is not None
+                     and time.monotonic() - self._started_at
+                     < self.FALLBACK_WINDOW_S)
+            if early and self._cand_idx + 1 < len(self._candidates):
+                self._proc.deleteLater()
+                self._proc = None
+                self._cand_idx += 1
+                if self._launch_current():
+                    self._started_at = time.monotonic()
+                return
             self.recording = False
             tmp, out = self._tmp, self._out
             self._cleanup()
