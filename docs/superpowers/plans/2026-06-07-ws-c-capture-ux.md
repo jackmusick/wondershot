@@ -1020,7 +1020,7 @@ The query object: register ourselves on the bus (so KWin's script can call us ba
 - Modify: `wondershot/kwin.py` (append)
 - Modify: `tests/test_kwin.py` (append)
 
-- [ ] Write the failing tests (append to `tests/test_kwin.py`):
+- [x] Write the failing tests (append to `tests/test_kwin.py`):
 
 ```python
 # -- ActiveWindowQuery against a fake transport -------------------------------
@@ -1142,8 +1142,8 @@ def test_late_reply_after_failure_is_ignored(qapp):
     assert fails and not got
 ```
 
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_kwin.py -q` — expect the new tests failing with `ImportError: cannot import name 'ActiveWindowQuery'`.
-- [ ] Implement — append to `wondershot/kwin.py`:
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_kwin.py -q` — expect the new tests failing with `ImportError: cannot import name 'ActiveWindowQuery'`.
+- [x] Implement — append to `wondershot/kwin.py`:
 
 ```python
 # -- the query object ---------------------------------------------------------
@@ -1277,8 +1277,8 @@ class ActiveWindowQuery(QObject):
 
 Note for the implementer: `test_query_load_failure` expects cleanup (`unregistered`) even though `loadScript` failed — `_fail` with default `registered=True` runs `_cleanup`, which calls `unloadScript` again (harmless, idempotent on KWin's side) and unregisters. `test_query_register_failure` passes `registered=False` so `_cleanup` is skipped — there is nothing to clean and `loadScript` was never called.
 
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_kwin.py -q` — expect all passed (Task 6 + Task 7 tests).
-- [ ] Commit: `git add wondershot/kwin.py tests/test_kwin.py && git commit -m "WS-C: ActiveWindowQuery — KWin script round-trip with injectable transport"`
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_kwin.py -q` — expect all passed (Task 6 + Task 7 tests).
+- [x] Commit: `git add wondershot/kwin.py tests/test_kwin.py && git commit -m "WS-C: ActiveWindowQuery — KWin script round-trip with injectable transport"`
 
 ---
 

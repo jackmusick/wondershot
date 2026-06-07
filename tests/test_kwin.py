@@ -156,3 +156,122 @@ def test_crop_file_failure_paths(qapp, tmp_path):
     assert not crop_file_to_global_rect(p, QRect(500, 500, 10, 10),
                                         QRect(0, 0, 50, 50))
     assert QImage(p).width() == 50
+
+
+# -- ActiveWindowQuery against a fake transport -------------------------------
+
+class FakeTransport:
+    """Records calls; scriptable replies. service_name mimics a unique bus name."""
+
+    def __init__(self, load_reply=5, run_ok=True, register_ok=True):
+        self.calls = []
+        self.registered = None
+        self.unregistered = False
+        self.load_reply = load_reply
+        self.run_ok = run_ok
+        self.register_ok = register_ok
+
+    def service_name(self):
+        return ":1.99"
+
+    def register(self, path, obj):
+        self.registered = (path, obj)
+        return self.register_ok
+
+    def unregister(self, path):
+        self.unregistered = True
+
+    def call(self, service, path, iface, method, args):
+        self.calls.append((service, path, iface, method, list(args)))
+        if method == "loadScript":
+            return self.load_reply
+        if method == "run":
+            return True if self.run_ok else None
+        return True  # stop / unloadScript
+
+
+def test_query_happy_path(qapp):
+    from wondershot.kwin import ActiveWindowQuery, PLUGIN_NAME
+    t = FakeTransport()
+    q = ActiveWindowQuery(transport=t, timeout_ms=5000)
+    got, fails = [], []
+    q.finished.connect(lambda x, y, w, h: got.append((x, y, w, h)))
+    q.failed.connect(fails.append)
+    q.start()
+    # loadScript called with [tmpfile, plugin]; run on the returned id
+    load = [c for c in t.calls if c[3] == "loadScript"]
+    assert load and load[0][4][1] == PLUGIN_NAME
+    assert load[0][4][0].endswith(".js")
+    assert any(c[1] == "/Scripting/Script5" and c[3] == "run"
+               for c in t.calls)
+    # KWin's script calls back into our registered slot
+    q.geometry("100,200,800,600")
+    assert got == [(100, 200, 800, 600)]
+    assert not fails
+    # cleanup happened: stop + unloadScript + unregister + temp file gone
+    assert any(c[3] == "stop" for c in t.calls)
+    assert any(c[3] == "unloadScript" for c in t.calls)
+    assert t.unregistered
+    assert not q._timer.isActive()
+
+
+def test_query_no_active_window(qapp):
+    from wondershot.kwin import ActiveWindowQuery
+    t = FakeTransport()
+    q = ActiveWindowQuery(transport=t, timeout_ms=5000)
+    fails = []
+    q.failed.connect(fails.append)
+    q.start()
+    q.geometry("")  # script found no window
+    assert fails and "active window" in fails[0]
+
+
+def test_query_load_failure(qapp):
+    from wondershot.kwin import ActiveWindowQuery
+    t = FakeTransport(load_reply=None)
+    q = ActiveWindowQuery(transport=t, timeout_ms=5000)
+    fails = []
+    q.failed.connect(fails.append)
+    q.start()
+    assert fails  # immediate failure, no hang
+    assert t.unregistered  # cleanup still ran
+
+
+def test_query_register_failure(qapp):
+    from wondershot.kwin import ActiveWindowQuery
+    t = FakeTransport(register_ok=False)
+    q = ActiveWindowQuery(transport=t, timeout_ms=5000)
+    fails = []
+    q.failed.connect(fails.append)
+    q.start()
+    assert fails
+    # never touched KWin if we couldn't even receive the answer
+    assert not any(c[3] == "loadScript" for c in t.calls)
+
+
+def test_query_timeout(qapp):
+    from PySide6.QtCore import QCoreApplication, QEventLoop, QTimer
+    from wondershot.kwin import ActiveWindowQuery
+    t = FakeTransport()
+    q = ActiveWindowQuery(transport=t, timeout_ms=30)
+    fails = []
+    q.failed.connect(fails.append)
+    q.start()
+    loop = QEventLoop()
+    q.failed.connect(lambda *_: loop.quit())
+    QTimer.singleShot(2000, loop.quit)  # safety
+    loop.exec()
+    assert fails and "timeout" in fails[0].lower()
+    assert any(c[3] == "unloadScript" for c in t.calls)  # cleaned up
+
+
+def test_late_reply_after_failure_is_ignored(qapp):
+    from wondershot.kwin import ActiveWindowQuery
+    t = FakeTransport(load_reply=None)
+    q = ActiveWindowQuery(transport=t, timeout_ms=5000)
+    got, fails = [], []
+    q.finished.connect(lambda *a: got.append(a))
+    q.failed.connect(fails.append)
+    q.start()           # fails at loadScript
+    q.geometry("1,2,3,4")  # straggler — must not emit finished
+    assert fails and not got
