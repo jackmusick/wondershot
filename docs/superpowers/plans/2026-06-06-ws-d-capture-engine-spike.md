@@ -295,7 +295,7 @@
 - Modify: `wondershot/stitch.py` (append)
 - Modify: `tests/test_stitch.py` (append)
 
-- [ ] Write the failing tests. Append to `tests/test_stitch.py`:
+- [x] Write the failing tests. Append to `tests/test_stitch.py`:
   ```python
   def _frame_with_chrome(content: np.ndarray, header: np.ndarray,
                          footer: np.ndarray) -> np.ndarray:
@@ -326,11 +326,11 @@
       g = to_gray(make_rgb(height=200, width=40, seed=9))
       assert static_bands(g, g) == (0, 0)
   ```
-- [ ] Run — must fail with `ImportError: cannot import name 'static_bands'`:
+- [x] Run — must fail with `ImportError: cannot import name 'static_bands'`:
   ```bash
   .venv/bin/python -m pytest tests/test_stitch.py -q
   ```
-- [ ] Implement. Append to `wondershot/stitch.py`:
+- [x] Implement. Append to `wondershot/stitch.py`:
   ```python
   # -- fixed header/footer heuristic (best effort for the spike) ------------
 
@@ -356,11 +356,11 @@
           return (0, 0)
       return (header, footer)
   ```
-- [ ] Run tests, expected pass:
+- [x] Run tests, expected pass:
   ```bash
   .venv/bin/python -m pytest tests/test_stitch.py -q
   ```
-- [ ] Commit:
+- [x] Commit:
   ```bash
   git add wondershot/stitch.py tests/test_stitch.py
   git commit -m "WS-D: static header/footer band heuristic (TDD)"

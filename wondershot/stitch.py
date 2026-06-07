@@ -86,3 +86,28 @@ def detect_offset(prev: np.ndarray, cur: np.ndarray,
         if score < best_score:  # strict: ties keep the smallest d
             best_d, best_score = d, score
     return best_d
+
+
+# -- fixed header/footer heuristic (best effort for the spike) ------------
+
+def static_bands(prev: np.ndarray, cur: np.ndarray,
+                 tolerance: float = 4.0) -> tuple[int, int]:
+    """(header_height, footer_height): contiguous edge rows that are
+    identical at the SAME y across a scrolled pair — i.e. window
+    chrome / sticky headers that don't move while content scrolls.
+
+    Best effort: scrolled content that coincidentally matches itself
+    can inflate the bands; real pages rarely do. If the 'static'
+    region covers the whole frame (frames identical), returns (0, 0).
+    """
+    row_same = np.abs(prev - cur).mean(axis=1) < tolerance
+    h = len(row_same)
+    header = 0
+    while header < h and row_same[header]:
+        header += 1
+    footer = 0
+    while footer < h and row_same[h - 1 - footer]:
+        footer += 1
+    if header + footer >= h:
+        return (0, 0)
+    return (header, footer)

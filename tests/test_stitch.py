@@ -73,3 +73,33 @@ def test_detect_offset_unrelated_frames_is_none():
     a = to_gray(make_rgb(height=200, width=40, seed=3))
     b = to_gray(make_rgb(height=200, width=40, seed=4))
     assert detect_offset(a, b) is None
+
+
+def _frame_with_chrome(content: np.ndarray, header: np.ndarray,
+                       footer: np.ndarray) -> np.ndarray:
+    return np.vstack([header, content, footer])
+
+
+def test_static_bands_detects_header_and_footer():
+    from wondershot.stitch import static_bands, to_gray
+    tall = make_rgb(height=400, width=40, seed=5)
+    header = make_rgb(height=15, width=40, seed=6)
+    footer = make_rgb(height=25, width=40, seed=7)
+    prev = to_gray(_frame_with_chrome(tall[0:200], header, footer))
+    cur = to_gray(_frame_with_chrome(tall[50:250], header, footer))
+    assert static_bands(prev, cur) == (15, 25)
+
+
+def test_static_bands_none_when_everything_scrolls():
+    from wondershot.stitch import static_bands, to_gray
+    tall = make_rgb(height=400, width=40, seed=8)
+    prev = to_gray(tall[0:200])
+    cur = to_gray(tall[50:250])
+    assert static_bands(prev, cur) == (0, 0)
+
+
+def test_static_bands_identical_frames_returns_zero():
+    """Whole frame 'static' is meaningless — refuse, don't crop all."""
+    from wondershot.stitch import static_bands, to_gray
+    g = to_gray(make_rgb(height=200, width=40, seed=9))
+    assert static_bands(g, g) == (0, 0)
