@@ -25,8 +25,9 @@ def test_ffmpeg_path_missing_raises_clear_error(monkeypatch):
         ffmpegutil.ffmpeg_path()
     msg = str(exc.value)
     assert "ffmpeg" in msg
-    assert "Install it" in msg  # actionable, user-facing (no toolchain)
-    assert "Install" in msg
+    # Actionable, user-facing, no toolchain: install hint on Linux
+    # (from-source platform), reinstall hint on bundled platforms.
+    assert "Install it" in msg or "Reinstall" in msg
 
 
 def test_have_ffmpeg_false_then_true(monkeypatch):
