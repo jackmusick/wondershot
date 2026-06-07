@@ -44,30 +44,30 @@
 - Modify: `pyproject.toml` (insert after line 13 `dependencies = ["PySide6>=6.6"]`)
 - Test: existing suite (baseline)
 
-- [ ] Create the venv in the worktree root (system-site-packages is REQUIRED so `gi` is importable — ROADMAP landmine):
+- [x] Create the venv in the worktree root (system-site-packages is REQUIRED so `gi` is importable — ROADMAP landmine):
   ```bash
   python3 -m venv --system-site-packages .venv
   .venv/bin/pip install -e . pytest
   ```
-- [ ] Run the existing suite to establish a green baseline:
+- [x] Run the existing suite to establish a green baseline:
   ```bash
   .venv/bin/python -m pytest tests/ -q
   ```
   Expected: all tests pass (8 test files). If anything fails here, stop — the baseline is broken, not your work.
-- [ ] Edit `pyproject.toml`: after the `dependencies = ["PySide6>=6.6"]` line and before `keywords`, add:
+- [x] Edit `pyproject.toml`: after the `dependencies = ["PySide6>=6.6"]` line and before `keywords`, add:
   ```toml
   [project.optional-dependencies]
   spike = ["numpy"]  # WS-D scroll-stitch spike only; not a runtime dep
   ```
   Note: TOML tables can't nest mid-table — place this block AFTER the entire `[project]` table's simple keys but it must still belong to project. Concretely, put it between the `keywords = [...]` line and `[project.scripts]`.
-- [ ] Install the extra:
+- [x] Install the extra:
   ```bash
   .venv/bin/pip install -e ".[spike]"
   .venv/bin/python -c "import numpy; print(numpy.__version__)"
   ```
   Expected: a version prints.
-- [ ] Re-run the suite (`.venv/bin/python -m pytest tests/ -q`), expected: still green.
-- [ ] Commit:
+- [x] Re-run the suite (`.venv/bin/python -m pytest tests/ -q`), expected: still green.
+- [x] Commit:
   ```bash
   git add pyproject.toml && git commit -m "WS-D: add wondershot[spike] extra (numpy) for scroll-stitch spike"
   ```

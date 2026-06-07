@@ -13,6 +13,9 @@ authors = [{ name = "Jack Musick" }]
 dependencies = ["PySide6>=6.6"]
 keywords = ["screenshot", "wayland", "kde", "snagit", "annotation"]
 
+[project.optional-dependencies]
+spike = ["numpy"]  # WS-D scroll-stitch spike only; not a runtime dep
+
 [project.scripts]
 wondershot = "wondershot.cli:main"
 grabbit = "wondershot.cli:main"  # legacy alias (existing hotkeys)
