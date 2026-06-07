@@ -48,7 +48,8 @@ _Last updated: 2026-06-06_
       add fixed makeup gain, not AGC)
 - [ ] Bubble lands above the taskbar on first open (96px clearance,
       300ms rule-reload delay)
-- [ ] Stop button sync (tray + toolbar both reset after either stops)
+- [x] Stop button sync — **CONFIRMED BROKEN 2026-06-07**: clicking Stop
+      in the tray does not stop the recording. Moved to bug backlog below.
 - [ ] Recording survives past the first seconds (videorate fix for the
       pipewiresrc no-PTS mux abort) and stop always resolves — the
       watchdog now reports pipeline death instead of "Stopping" forever
@@ -121,7 +122,7 @@ after Linux is feature-complete.
   blocking WS-A. Until then, recordings keep cursor-mode *embedded* (2).
   Click *animation* remains gated on WS-D input capture.
 
-**WS-B — AI foundation** _(in progress)_
+**WS-B — AI foundation** _(shipped; Jack verified 2026-06-07: "they work okay")_
 - BYO OpenAI-compatible endpoint: `ai_endpoint`/`ai_api_key`/`ai_model`
   settings, AI tab, stdlib-HTTP `aiclient.py`, QRunnable jobs
 - AI redaction (M): tesseract word boxes (optional dep) + LLM picks
@@ -163,10 +164,19 @@ _(pending — filled in by the WS-D spike)_
 ## Next up (in order)
 
 1. **Sidecar persistence** — annotations stay editable objects when you
-   revisit an image (Jack's "can't go back and edit objects").
+   revisit an image (Jack's "can't go back and edit objects";
+   re-raised 2026-06-07: "still not seeing layers persist side-by-side
+   with images/videos").
    Design: library file stays the flattened share-ready PNG; sidecar
    `.wondershot/<name>.json` + original base copy; editor reconstructs
    objects on load.
+   Jack's bar (Snagit parity): do everything — including destructive-
+   looking ops like background removal — with **no save prompts**, and
+   undo them when you come back to the picture later. A dedicated
+   own-format file is acceptable if needed ("not critical if we have
+   to do that"). Implies: destructive ops (bg remove, flatten, AI
+   redact once flattened) must store the pre-op base in the sidecar so
+   revisit-undo works, and autosave replaces the save prompt.
 2. **Recording polish** — countdown before start, region-only
    recording (portal already asks, but in-app choice), pause/resume,
    recording duration in tray tooltip.
@@ -176,6 +186,18 @@ _(pending — filled in by the WS-D spike)_
 4. **Video backlog** — blur strength setting, GIF options
    (fps/scale/range), true blur preview in the frost.
    (trim/cut moved to WS-A)
+
+## Bugs & small UX (from Jack, 2026-06-07 — end of list per Jack)
+
+- **Tray Stop doesn't stop the recording.** Toolbar stop works; the
+  tray-menu Stop does nothing. Likely the tray action isn't wired to
+  the same stop path post-refactor — reproduce, then fix both-ways
+  sync (either control stops + both reset).
+- **Minimize/hide our windows when capturing.** Capture should not
+  have the editor or capture window sitting in the shot: hide/minimize
+  editor + capture window (gallery already has a hide flow in app.py)
+  before the screenshot fires, restore after. Wayland: minimize via
+  Qt showMinimized is allowed even though positioning isn't.
 
 ## Cross-platform position
 
