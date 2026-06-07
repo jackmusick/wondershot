@@ -131,7 +131,7 @@ def test_ai_settings_roundtrip(tmp_path):
 - Create: `wondershot/aiclient.py`
 - Test: `tests/test_aiclient.py` (create)
 
-- [ ] Write the failing tests (pure functions first — no network, no job yet):
+- [x] Write the failing tests (pure functions first — no network, no job yet):
 
 ```python
 # tests/test_aiclient.py
@@ -286,8 +286,8 @@ def test_ai_configured():
     assert ai_configured(s)              # key optional (local servers)
 ```
 
-- [ ] Run them and confirm the failure: `python -m pytest tests/test_aiclient.py -q` — expect `ModuleNotFoundError: No module named 'wondershot.aiclient'`.
-- [ ] Implement `wondershot/aiclient.py`:
+- [x] Run them and confirm the failure: `python -m pytest tests/test_aiclient.py -q` — expect `ModuleNotFoundError: No module named 'wondershot.aiclient'`.
+- [x] Implement `wondershot/aiclient.py`:
 
 ```python
 """OpenAI-compatible chat client for AI features — stdlib HTTP only.
@@ -397,8 +397,8 @@ def ai_configured(settings) -> bool:
                 and getattr(settings, "ai_model", ""))
 ```
 
-- [ ] Run tests: `python -m pytest tests/test_aiclient.py -q` — expect 10 passed.
-- [ ] Commit: `git add wondershot/aiclient.py tests/test_aiclient.py && git commit -m "WS-B: aiclient — stdlib OpenAI-compatible chat with vision content"`
+- [x] Run tests: `python -m pytest tests/test_aiclient.py -q` — expect 10 passed.
+- [x] Commit: `git add wondershot/aiclient.py tests/test_aiclient.py && git commit -m "WS-B: aiclient — stdlib OpenAI-compatible chat with vision content"`
 
 ---
 
