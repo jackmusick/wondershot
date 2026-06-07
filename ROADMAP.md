@@ -280,9 +280,27 @@ KWin directly; worst case is a failed portal request. Copy the
   execution; no session was created)_
 - SupportedCapabilities: 7 (KEYBOARD|POINTER|TOUCHSCREEN) _(pre-filled,
   same property read)_
-- CreateSession: OK / FAILED (code/message): ____
-- GetZones: ____
-- ConnectToEIS fd obtained: YES / NO
-- Pointer button events observed: YES / NO — via (snegg / raw / n.a.): ____
-- Blocking gaps (e.g. need libei bindings, need Enable+barriers): ____
-- **Verdict: step capture LINUX-VIABLE / WINDOWS-FIRST**: ____
+- CreateSession: OK (granted capabilities=3 = KEYBOARD|POINTER;
+  touchscreen not granted) _(run 2026-06-06)_
+- GetZones: OK — zones=[(2560,1440,3440,0), (3440,1440,0,0)]
+  (both monitors reported)
+- ConnectToEIS fd obtained: YES (fd=8)
+- Pointer button events observed: NOT YET — no python libei bindings
+  (snegg) installed, so the EI protocol handshake couldn't be spoken;
+  raw read returned 20 bytes without a handshake (the EIS server
+  talking first — expected for EI, the probe's "unexpected" warning is
+  just its own conservatism)
+- Blocking gaps: (1) need an EI client — snegg (python libei bindings)
+  or ctypes against libei — to handshake and decode button events;
+  (2) must verify capture *semantics*: InputCapture is designed to
+  intercept (input stops reaching apps while a capture is active,
+  normally triggered via pointer barriers + Enable). Step capture
+  needs observe-without-stealing — either confirm events flow without
+  Enable/barriers, or re-emit captured input instantly via the
+  RemoteDesktop portal. This is the next spike question.
+- **Verdict: step capture LINUX-VIABLE (provisional)** — every portal
+  step succeeds end to end on Fedora 43/KDE: session granted,
+  zones reported, EIS fd handed over. Remaining work is client-side
+  (EI protocol library) plus the interception-semantics question
+  above, not platform capability. Keep Windows-first as fallback only
+  if the semantics check fails.
