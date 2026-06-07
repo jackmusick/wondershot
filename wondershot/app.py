@@ -287,7 +287,8 @@ class GrabbitApp(QObject):
         pill, self._scroll_pill = self._scroll_pill, None
         if pill is not None:
             try:
-                pill.close()
+                pill._fired = True  # disarm: app-initiated close must not
+                pill.close()        # re-enter the finish path via closeEvent
             except RuntimeError:
                 pass  # already deleted (WA_DeleteOnClose)
 
