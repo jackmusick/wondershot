@@ -1870,7 +1870,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 GUI-only/doc-only glue — no failing-test step (nothing executable changes).
 
-- [ ] **Step 7.1 — ROADMAP updates.** In `ROADMAP.md`:
+- [x] **Step 7.1 — ROADMAP updates.** In `ROADMAP.md`:
 
 (a) Under the `**Editor**` bullet list in "Working today", append:
 
@@ -1890,7 +1890,7 @@ GUI-only/doc-only glue — no failing-test step (nothing executable changes).
   video annotation objects.
 ```
 
-- [ ] **Step 7.2 — full suite, twice (second run catches sidecar leakage between tests):**
+- [x] **Step 7.2 — full suite, twice (second run catches sidecar leakage between tests):**
 
 ```bash
 QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q
@@ -1899,7 +1899,7 @@ QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q
 
 Expected: all green — 186 pre-existing + the new serialization/sidecar/editor/gallery tests, 0 failures.
 
-- [ ] **Step 7.3 — commit:**
+- [x] **Step 7.3 — commit:**
 
 ```bash
 git add ROADMAP.md

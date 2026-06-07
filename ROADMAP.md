@@ -21,6 +21,11 @@ _Last updated: 2026-06-06_
   text width/font grips, step radius grip
 - Grip edits and adds/deletes are undoable; properties sidebar
   (color/stroke/text size) applies to selection
+- Sidecar persistence: library images reopen with annotations as live
+  objects (`<library>/.wondershot/<name>.json` + `<name>.base.<N>.png`
+  stack, N=0 = original); destructive ops (crop/cut-out/bg-remove) are
+  undoable on revisit; autosave on close/switch/quit — no save prompts
+  for library files (kept for files opened from outside the library)
 
 **Video**
 - Smooth playback (QVideoWidget; frozen-frame overlay while editing —
@@ -31,6 +36,9 @@ _Last updated: 2026-06-06_
   regions, one ffmpeg pass → `-redacted.mp4`; renders isolated in
   `.rendering/` so half-written files never hit the gallery
 - GIF conversion (animates + loops in player, GIF badge)
+- Video sidecars: not yet — videos have no annotation objects (range
+  blur renders to a new file). Sidecars for video arrive together with
+  video annotation objects.
 
 **Recorder (native, no Spectacle)**
 - Portal ScreenCast → PipeWire → gst-launch: x264 + AAC mp4 into the
