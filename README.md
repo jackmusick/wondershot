@@ -57,10 +57,15 @@ point.
 
 ### Windows
 
-Download `WondershotSetup-<version>.exe` from
-[Releases](https://github.com/jackmusick/wondershot/releases) and run
-it. Fully self-contained — no runtimes to install. Supports
-`/VERYSILENT` for unattended installs.
+```powershell
+irm https://raw.githubusercontent.com/jackmusick/wondershot/main/Install-Wondershot.ps1 | iex
+```
+
+Installs the latest release silently, per-user, no admin. Re-run the
+same command to update. Or download `WondershotSetup-<version>.exe`
+from [Releases](https://github.com/jackmusick/wondershot/releases)
+yourself — fully self-contained, no runtimes to install, supports
+`/VERYSILENT`.
 
 > The installer isn't code-signed yet, so SmartScreen will interject —
 > **More info → Run anyway**.
