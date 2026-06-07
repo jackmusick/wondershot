@@ -26,4 +26,4 @@ grabbit = "wondershot.cli:main"  # legacy alias (existing hotkeys)
 include = ["wondershot*"]
 
 [tool.setuptools.package-data]
-wondershot = ["data/*"]
+wondershot = ["data/*", "data/icons/*"]

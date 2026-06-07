@@ -78,7 +78,10 @@ def test_remove_bg_action_disabled_without_rembg(qapp, monkeypatch):
     monkeypatch.setattr(bgremove, "available", lambda: False)
     ed = make_editor(qapp)
     assert not ed.bg_action.isEnabled()
-    assert "ai-local" in ed.bg_action.toolTip()
+    # User-facing copy must never leak pip/Python (Jack, 2026-06-07).
+    tip = ed.bg_action.toolTip().lower()
+    assert "isn't included" in tip
+    assert "pip" not in tip and "python" not in tip
 
 
 def test_remove_bg_action_enabled_with_rembg(qapp, monkeypatch):

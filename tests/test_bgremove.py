@@ -61,7 +61,8 @@ def test_remove_background_raises_without_rembg(monkeypatch):
                         lambda name: None)
     img = QImage(4, 4, QImage.Format_ARGB32_Premultiplied)
     img.fill(QColor("red"))
-    with pytest.raises(OSError, match="ai-local"):
+    # Message is user-facing: no pip/Python (Jack, 2026-06-07).
+    with pytest.raises(OSError, match="isn't included in this build"):
         bgremove.remove_background(img)
 
 

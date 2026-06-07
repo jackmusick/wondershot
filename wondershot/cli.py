@@ -79,6 +79,9 @@ def main(argv=None) -> int:
     qapp.setDesktopFileName("wondershot")
     qapp.setQuitOnLastWindowClosed(False)
 
+    from .theme import apply_system_theme
+    apply_system_theme(qapp)  # Windows: Fusion + follow OS light/dark
+
     app = GrabbitApp(qapp)
     # Apply the launch command once the event loop is up.
     from PySide6.QtCore import QTimer

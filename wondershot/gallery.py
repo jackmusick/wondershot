@@ -50,6 +50,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from . import icons
 from .editor import EditorWindow
 
 PATH_ROLE = Qt.UserRole + 1
@@ -453,6 +454,7 @@ class GalleryWindow(QMainWindow):
             lambda _p: self._rescan_timer.start())
 
         self._build_toolbar()
+        self._build_pin_button()
         if self.recorder is not None:
             self.recorder.tick.connect(
                 lambda t: self.record_action.setText(f"Stop {t}" if t
@@ -633,7 +635,7 @@ class GalleryWindow(QMainWindow):
     # -- toolbar ----------------------------------------------------------------
 
     def _tb_act(self, text: str, icon: str, slot, shortcut=None) -> QAction:
-        a = QAction(QIcon.fromTheme(icon), text, self)
+        a = QAction(icons.icon(icon), text, self)
         a.triggered.connect(slot)
         if shortcut:
             a.setShortcut(QKeySequence(shortcut))
@@ -664,17 +666,14 @@ class GalleryWindow(QMainWindow):
         tb.addAction(self.region_action)
         self._bubble_anchor = tb.addSeparator()
         self.main_toolbar = tb
-        tb.addAction(self._tb_act("Open in window", "window-new",
-                                  self._open_in_window))
-        tb.addAction(self._tb_act("Trash", "edit-delete",
-                                  self._delete_selected, "Ctrl+Del"))
-        tb.addSeparator()
-        tb.addAction(self._tb_act("Folder", "folder-open", self._open_folder))
-
-        self.pin_action = self._tb_act("Pin", "window-pin", self._toggle_pin)
-        self.pin_action.setCheckable(True)
-        self.pin_action.setChecked(self.settings.pin_on_top)
-        tb.addAction(self.pin_action)
+        # Toolbar diet (Jack, 2026-06-07): Open in window / Trash /
+        # Folder moved to the card context menu; Pin became the floating
+        # icon on the carousel (_build_pin_button). Ctrl+Del keeps
+        # working as a window-level shortcut.
+        trash = self._tb_act("Trash", "edit-delete",
+                             self._delete_selected, "Ctrl+Del")
+        trash.setShortcutContext(Qt.WindowShortcut)
+        self.addAction(trash)  # shortcut only — not on the toolbar
 
         tb.addAction(self._tb_act("Settings", "configure", self._open_settings))
 
@@ -684,7 +683,7 @@ class GalleryWindow(QMainWindow):
         tb.addWidget(spacer)
         self.share_btn = QToolButton(self)
         self.share_btn.setText("Share")
-        self.share_btn.setIcon(QIcon.fromTheme("document-send"))
+        self.share_btn.setIcon(icons.icon("document-send"))
         self.share_btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         self.share_btn.clicked.connect(
             lambda: self._share_default_path(self._share_target()))
@@ -968,7 +967,7 @@ class GalleryWindow(QMainWindow):
     def set_recording(self, on: bool) -> None:
         self.record_action.setEnabled(True)
         self.record_action.setText("Stop" if on else "Record")
-        self.record_action.setIcon(QIcon.fromTheme(
+        self.record_action.setIcon(icons.icon(
             "media-playback-stop" if on else "media-record"))
         self.set_pause_enabled(on)
 
@@ -990,7 +989,7 @@ class GalleryWindow(QMainWindow):
 
     def set_paused(self, paused: bool) -> None:
         self.pause_action.setText("Resume" if paused else "Pause")
-        self.pause_action.setIcon(QIcon.fromTheme(
+        self.pause_action.setIcon(icons.icon(
             "media-playback-start" if paused else "media-playback-pause"))
 
     def set_stopping(self) -> None:
@@ -1026,8 +1025,24 @@ class GalleryWindow(QMainWindow):
             self._update_share_toolbar()
             self.settings_applied.emit()
 
+    def _build_pin_button(self) -> None:
+        """Pin-on-top toggle floating top-left of the carousel (Jack,
+        2026-06-07): mirrors the per-card delete (x) top-right."""
+        from PySide6.QtWidgets import QToolButton
+        b = QToolButton(self.strip)
+        b.setIcon(icons.icon("window-pin"))
+        b.setCheckable(True)
+        b.setChecked(self.settings.pin_on_top)
+        b.setAutoRaise(True)
+        b.setToolTip("Keep this window on top")
+        b.setCursor(Qt.PointingHandCursor)
+        b.move(4, 4)
+        b.raise_()
+        b.toggled.connect(self._toggle_pin)
+        self.pin_btn = b
+
     def _toggle_pin(self) -> None:
-        self.settings.pin_on_top = self.pin_action.isChecked()
+        self.settings.pin_on_top = self.pin_btn.isChecked()
         self._apply_pin()
         self.show()  # re-applying window flags requires re-show
 
@@ -1038,22 +1053,26 @@ class GalleryWindow(QMainWindow):
         index = self.strip.indexAt(pos)
         menu = QMenu(self)
         if index.isValid():
-            menu.addAction(QIcon.fromTheme("window-new"), "Open in window",
+            menu.addAction(icons.icon("window-new"), "Open in window",
                            self._open_in_window)
-            menu.addAction(QIcon.fromTheme("edit-copy"), "Copy image",
+            menu.addAction(icons.icon("edit-copy"), "Copy image",
                            self._copy_selected)
-            menu.addAction(QIcon.fromTheme("edit-copy-path"), "Copy path",
+            menu.addAction(icons.icon("edit-copy-path"), "Copy path",
                            lambda: QGuiApplication.clipboard().setText(
                                "\n".join(self._selected_paths())))
-            menu.addAction(QIcon.fromTheme("edit-rename"), "Rename…",
+            menu.addAction(icons.icon("edit-rename"), "Rename…",
                            self._rename_selected)
-            menu.addAction(QIcon.fromTheme("document-send"), "Share…",
+            menu.addAction(icons.icon("document-send"), "Share…",
                            self._share_selected)
+            menu.addAction(icons.icon("folder-open"), "Show in folder",
+                           self._open_folder)
             menu.addSeparator()
-            menu.addAction(QIcon.fromTheme("edit-delete"), "Move to trash",
+            menu.addAction(icons.icon("edit-delete"), "Move to trash",
                            self._delete_selected)
         else:
-            menu.addAction(QIcon.fromTheme("view-refresh"), "Refresh", self.rescan)
+            menu.addAction(icons.icon("folder-open"), "Show in folder",
+                           self._open_folder)
+            menu.addAction(icons.icon("view-refresh"), "Refresh", self.rescan)
         menu.exec(self.strip.mapToGlobal(pos))
 
     # -- window ---------------------------------------------------------------------

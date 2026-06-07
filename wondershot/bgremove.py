@@ -23,8 +23,10 @@ def remove_background(image):
     flatten path handle the alpha untouched.
     """
     if not available():
-        raise OSError("Background removal needs the optional extra: "
-                      "pip install wondershot[ai-local]")
+        # User-facing message: never leak pip/Python (Jack, 2026-06-07).
+        # Dev note: the capability ships via the ai-local extra; bundles
+        # must include it (or this stays a disabled button).
+        raise OSError("Background removal isn't included in this build")
     import rembg
     from PySide6.QtCore import QBuffer, QIODevice
     from PySide6.QtGui import QImage

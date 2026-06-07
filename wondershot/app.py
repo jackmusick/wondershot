@@ -11,6 +11,7 @@ from PySide6.QtGui import QAction, QGuiApplication, QIcon, QImage, QPainter, QPi
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
+from . import icons
 from .capture import create_capture_manager, unique_path, timestamp_name, window_capture_available
 from .editor import EditorWindow
 from .gallery import GalleryWindow
@@ -40,7 +41,7 @@ def send_to_running(command: dict) -> bool:
 
 def make_app_icon() -> QIcon:
     """Rabbit silhouette, drawn so we don't need an icon theme installed."""
-    icon = QIcon.fromTheme("wondershot")
+    icon = icons.icon("wondershot")
     if not icon.isNull():
         return icon
     pm = QPixmap(64, 64)
@@ -155,7 +156,7 @@ class GrabbitApp(QObject):
             "Pick a rectangle, then record only that area")
         self.region_action.triggered.connect(self.record_region)
         menu.addAction(self.region_action)
-        self.bubble_action = QAction(QIcon.fromTheme("camera-web"),
+        self.bubble_action = QAction(icons.icon("camera-web"),
                                      "Camera", menu)
         self.bubble_action.setCheckable(True)
         self.bubble_action.setToolTip("Show camera (Loom-style bubble)")

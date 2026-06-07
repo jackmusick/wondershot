@@ -39,6 +39,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from . import icons
 from . import imageops
 from . import sidecar
 from .items import (
@@ -657,7 +658,7 @@ class EditorWindow(QMainWindow):
     # -- UI ----------------------------------------------------------------
 
     def _act(self, text: str, icon: str, shortcut=None, checkable=False):
-        a = QAction(QIcon.fromTheme(icon), text, self)
+        a = QAction(icons.icon(icon), text, self)
         if shortcut:
             a.setShortcut(QKeySequence(shortcut))
         a.setCheckable(checkable)
@@ -700,10 +701,10 @@ class EditorWindow(QMainWindow):
         tb.addSeparator()
 
         undo = self.undo_stack.createUndoAction(self, "Undo")
-        undo.setIcon(QIcon.fromTheme("edit-undo"))
+        undo.setIcon(icons.icon("edit-undo"))
         undo.setShortcut(QKeySequence.Undo)
         redo = self.undo_stack.createRedoAction(self, "Redo")
-        redo.setIcon(QIcon.fromTheme("edit-redo"))
+        redo.setIcon(icons.icon("edit-redo"))
         redo.setShortcut(QKeySequence.Redo)
         tb.addAction(undo)
         tb.addAction(redo)
@@ -740,8 +741,9 @@ class EditorWindow(QMainWindow):
         tb.addAction(self.bg_action)
         if not bgremove.available():
             self.bg_action.setEnabled(False)
+            # User-facing: never leak pip/Python (Jack, 2026-06-07).
             self.bg_action.setToolTip(
-                "Needs the optional extra: pip install wondershot[ai-local]")
+                "Background removal isn't included in this build")
         else:
             self.bg_action.setToolTip(
                 "Make the background transparent (local ONNX)")
@@ -752,7 +754,7 @@ class EditorWindow(QMainWindow):
         tb.addWidget(spacer)
         self.share_btn = QToolButton(self)
         self.share_btn.setText("Share")
-        self.share_btn.setIcon(QIcon.fromTheme("document-send"))
+        self.share_btn.setIcon(icons.icon("document-send"))
         self.share_btn.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
         self.share_btn.clicked.connect(self._share_default)
         self._share_menu = QMenu(self.share_btn)
@@ -1092,7 +1094,7 @@ class EditorWindow(QMainWindow):
                            ("center", "format-justify-center"),
                            ("right", "format-justify-right")):
             b = QToolButton(align_w)
-            b.setIcon(QIcon.fromTheme(icon))
+            b.setIcon(icons.icon(icon))
             b.setToolTip(f"Align {name}")
             b.setCheckable(True)
             b.setAutoExclusive(True)

@@ -274,6 +274,11 @@ work, not accepted limitations:
   distro packages) is dev-convenience only, not the user story.
 - Implication: avoid compiled C extensions where ctypes works (cursor
   halo pw_stream reader, libei) — keeps every package pure-Python.
+- Bundles must include the ai-local extra (rembg/onnxruntime) and
+  helper binaries (ffmpeg, tesseract) — Jack 2026-06-07: the user must
+  never see pip/Python ("my guy, the user should not know that this is
+  built on Python"). User-facing copy for missing capabilities says
+  "isn't included in this build", never an install command.
 
 ### InputCapture portal probe findings
 

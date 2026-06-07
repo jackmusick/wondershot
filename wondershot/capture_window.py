@@ -12,6 +12,8 @@ import shutil
 import sys
 
 from PySide6.QtCore import Qt, Signal
+
+from . import icons
 from PySide6.QtWidgets import (
     QCheckBox,
     QFormLayout,
@@ -31,17 +33,20 @@ class CaptureWindow(QWidget):
                  scroll_mode: bool = False):
         super().__init__(parent)
         self.settings = settings
-        self.setWindowTitle("Wondershot capture")
+        self.setWindowTitle("Capture")
         self.setWindowFlag(Qt.WindowStaysOnTopHint, True)
 
+        # Snagit-compact (Jack, 2026-06-07): a small panel, not a dialog.
         root = QHBoxLayout(self)
-        root.setContentsMargins(18, 14, 18, 14)
-        root.setSpacing(24)
+        root.setContentsMargins(12, 10, 12, 10)
+        root.setSpacing(16)
 
         # -- defaults column ------------------------------------------------
         left = QVBoxLayout()
+        left.setSpacing(2)
         form = QFormLayout()
-        form.setHorizontalSpacing(10)
+        form.setHorizontalSpacing(8)
+        form.setVerticalSpacing(4)
 
         def toggle(label: str, attr: str, tip: str = "") -> QCheckBox:
             box = QCheckBox(label)
@@ -74,24 +79,30 @@ class CaptureWindow(QWidget):
         form.addRow("Delay", self.delay_spin)
         left.addLayout(form)
 
-        from . import launcher_command
-        hint = QLabel(f"Hotkey: bind <code>{launcher_command()}</code> in "
-                      "System Settings")
-        hint.setStyleSheet("color: palette(mid); font-size: 8pt;")
-        left.addWidget(hint)
+        if sys.platform != "win32":
+            # Linux: the hotkey is user-bound (KGlobalAccel landmine — we
+            # never auto-register). Windows registers its own hotkey, so
+            # the hint would be wrong noise there. Keep it out of the
+            # layout's width: tooltip carries the command.
+            from . import launcher_command
+            hint = QLabel("Hotkey: bindable in System Settings")
+            hint.setToolTip(f"Bind a shortcut to: {launcher_command()}")
+            hint.setStyleSheet("color: palette(mid); font-size: 8pt;")
+            left.addWidget(hint)
         left.addStretch(1)
         root.addLayout(left)
 
         # -- the big red button ----------------------------------------------
         right = QVBoxLayout()
         right.setAlignment(Qt.AlignCenter)
+        right.setSpacing(4)
         cap = QPushButton("Capture")
-        cap.setFixedSize(92, 92)
+        cap.setFixedSize(80, 80)
         cap.setDefault(True)
         cap.setStyleSheet("""
             QPushButton {
                 background: #d3382c; color: white; font-weight: bold;
-                font-size: 12pt; border-radius: 46px; border: none;
+                font-size: 11pt; border-radius: 40px; border: none;
             }
             QPushButton:hover { background: #e4493d; }
             QPushButton:pressed { background: #b32a20; }
@@ -100,6 +111,7 @@ class CaptureWindow(QWidget):
         right.addWidget(cap, 0, Qt.AlignHCenter)
 
         row = QHBoxLayout()
+        row.setSpacing(2)
         secondary = [("Full screen", "fullscreen")]
         if window_mode:
             secondary.append(("Window", "window-auto"))
@@ -109,7 +121,8 @@ class CaptureWindow(QWidget):
         for label, mode in secondary:
             b = QPushButton(label)
             b.setFlat(True)
-            b.setStyleSheet("color: palette(link);")
+            b.setStyleSheet(
+                "color: palette(link); font-size: 8pt; padding: 2px 4px;")
             b.clicked.connect(lambda _=False, m=mode: self._fire(m))
             row.addWidget(b)
         right.addLayout(row)
@@ -286,7 +299,7 @@ class QuickActionBar(QWidget):
         def btn(text, icon, slot):
             b = QToolButton(self)
             b.setText(text)
-            b.setIcon(QIcon.fromTheme(icon))
+            b.setIcon(icons.icon(icon))
             b.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
             b.setAutoRaise(True)
             b.clicked.connect(slot)

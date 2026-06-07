@@ -15,6 +15,7 @@ import subprocess
 from dataclasses import dataclass
 
 from . import ffmpegutil
+from . import icons
 
 from PySide6.QtCore import QPoint, QPointF, QProcess, QRect, QRectF, Qt, QUrl, Signal
 from PySide6.QtGui import QColor, QIcon, QPainter, QPen
@@ -522,7 +523,7 @@ class VideoPane(QWidget):
             sink.videoFrameChanged.connect(self._frame_changed)
 
         self.play_btn = QPushButton(self)
-        self.play_btn.setIcon(QIcon.fromTheme("media-playback-start"))
+        self.play_btn.setIcon(icons.icon("media-playback-start"))
         self.play_btn.setFixedWidth(44)
         self.play_btn.clicked.connect(self.toggle)
 
@@ -533,13 +534,13 @@ class VideoPane(QWidget):
         self.time_label = QLabel("0:00 / 0:00", self)
 
         self.blur_btn = QPushButton("Blur region", self)
-        self.blur_btn.setIcon(QIcon.fromTheme("view-private"))
+        self.blur_btn.setIcon(icons.icon("view-private"))
         self.blur_btn.setCheckable(True)
         self.blur_btn.toggled.connect(self._blur_mode)
         self.blur_btn.setEnabled(ffmpegutil.have_ffmpeg())
 
         self.apply_btn = QPushButton("Apply blurs", self)
-        self.apply_btn.setIcon(QIcon.fromTheme("dialog-ok-apply"))
+        self.apply_btn.setIcon(icons.icon("dialog-ok-apply"))
         self.apply_btn.clicked.connect(self._apply_blurs)
         self.apply_btn.hide()
 
@@ -557,7 +558,7 @@ class VideoPane(QWidget):
         self.blur_strength_spin.hide()
 
         self.trim_btn = QPushButton("Trim", self)
-        self.trim_btn.setIcon(QIcon.fromTheme("edit-cut"))
+        self.trim_btn.setIcon(icons.icon("edit-cut"))
         self.trim_btn.setCheckable(True)
         self.trim_btn.toggled.connect(self._trim_mode)
         self.trim_btn.setEnabled(ffmpegutil.have_ffmpeg())
@@ -569,12 +570,12 @@ class VideoPane(QWidget):
         self.trim_accurate.hide()
 
         self.trim_apply_btn = QPushButton("Save trim", self)
-        self.trim_apply_btn.setIcon(QIcon.fromTheme("dialog-ok-apply"))
+        self.trim_apply_btn.setIcon(icons.icon("dialog-ok-apply"))
         self.trim_apply_btn.clicked.connect(self._apply_trim)
         self.trim_apply_btn.hide()
 
         self.gif_btn = QPushButton("Convert to GIF", self)
-        self.gif_btn.setIcon(QIcon.fromTheme("video-x-generic"))
+        self.gif_btn.setIcon(icons.icon("video-x-generic"))
         self.gif_btn.setCheckable(True)
         self.gif_btn.toggled.connect(self._gif_mode)
         self.gif_btn.setEnabled(ffmpegutil.have_ffmpeg())
@@ -599,12 +600,12 @@ class VideoPane(QWidget):
         self.gif_width_spin.hide()
 
         self.gif_apply_btn = QPushButton("Save GIF", self)
-        self.gif_apply_btn.setIcon(QIcon.fromTheme("dialog-ok-apply"))
+        self.gif_apply_btn.setIcon(icons.icon("dialog-ok-apply"))
         self.gif_apply_btn.clicked.connect(self._convert_gif)
         self.gif_apply_btn.hide()
 
         self.frame_btn = QPushButton("Save frame", self)
-        self.frame_btn.setIcon(QIcon.fromTheme("camera-photo"))
+        self.frame_btn.setIcon(icons.icon("camera-photo"))
         self.frame_btn.setToolTip(
             "Save the current frame as a PNG in the library")
         self.frame_btn.clicked.connect(self._save_frame)
@@ -722,7 +723,7 @@ class VideoPane(QWidget):
 
     def _state_changed(self, state) -> None:
         playing = state == QMediaPlayer.PlayingState
-        self.play_btn.setIcon(QIcon.fromTheme(
+        self.play_btn.setIcon(icons.icon(
             "media-playback-pause" if playing else "media-playback-start"))
         self._sync_video_surface()
 
@@ -961,7 +962,7 @@ class VideoPane(QWidget):
         to_btn.clicked.connect(lambda: at_playhead(end_spin))
 
         rm = QToolButton(row)
-        rm.setIcon(QIcon.fromTheme("edit-delete"))
+        rm.setIcon(icons.icon("edit-delete"))
         rm.setToolTip("Remove this blur")
 
         def remove():
