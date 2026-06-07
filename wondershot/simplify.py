@@ -84,6 +84,9 @@ def parse_regions(reply: str, width: int, height: int) -> list[Region]:
         data = json.loads(extract_json(reply))
     except ValueError as e:
         raise OSError(f"AI reply was not JSON: {reply[:120]}") from e
+    if isinstance(data, dict):
+        # some models wrap the array, e.g. {"regions": [...]}
+        data = next((v for v in data.values() if isinstance(v, list)), data)
     if not isinstance(data, list):
         raise OSError("AI reply was not a JSON array")
     img = QRect(0, 0, width, height)

@@ -85,7 +85,9 @@ def test_parse_regions_rejects_non_json(qapp):
     with pytest.raises(OSError):
         parse_regions("I could not find any regions, sorry!", 100, 100)
     with pytest.raises(OSError):
-        parse_regions('{"regions": []}', 100, 100)   # not an array
+        parse_regions('"just a string"', 100, 100)   # JSON, but not array
+    # an object-wrapped EMPTY array means "no regions", not an error
+    assert parse_regions('{"regions": []}', 100, 100) == []
 
 
 def test_simplify_regions_pipeline_calls_chat(qapp, monkeypatch):
@@ -105,3 +107,19 @@ def test_simplify_regions_pipeline_calls_chat(qapp, monkeypatch):
     assert calls["image"] is img               # vision call carries the image
     assert "JSON array" in calls["prompt"]
     assert regions == [simplify.Region(QRect(0, 0, 100, 50), "text")]
+
+
+def test_parse_regions_unwraps_object_wrapped_array(qapp):
+    """Some models return {"regions":[...]} instead of a bare array."""
+    from wondershot.simplify import parse_regions
+    reply = '{"regions": [{"type":"text","x0":0,"y0":0,"x1":0.5,"y1":0.5}]}'
+    regions = parse_regions(reply, 100, 100)
+    assert len(regions) == 1 and regions[0].kind == "text"
+
+
+def test_parse_regions_survives_prose_wrapped_array(qapp):
+    from wondershot.simplify import parse_regions
+    reply = ('I found these regions:\n'
+             '[{"type":"chrome","x0":0,"y0":0,"x1":1,"y1":0.1}]\nDone.')
+    regions = parse_regions(reply, 200, 200)
+    assert len(regions) == 1 and regions[0].kind == "chrome"

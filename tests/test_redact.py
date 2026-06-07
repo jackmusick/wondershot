@@ -108,3 +108,30 @@ def test_redact_regions_falls_back_to_bboxes(monkeypatch):
     img.fill(QColor("white"))
     assert redact.redact_regions(img, "http://x", "", "llava") == \
         [QRect(0, 0, 100, 50)]
+
+
+def test_extract_json_finds_array_amid_prose():
+    """Models often ignore 'no prose' and wrap the array in chatter with
+    no fences — extract the balanced [...] anyway (Jack's AI-simplify
+    JSON error, 2026-06-07)."""
+    from wondershot.redact import extract_json
+    reply = ('Here are the regions I found in the screenshot:\n'
+             '[{"type": "text", "x0": 0, "y0": 0, "x1": 1, "y1": 1}]\n'
+             'Let me know if you need anything else!')
+    import json
+    data = json.loads(extract_json(reply))
+    assert isinstance(data, list) and data[0]["type"] == "text"
+
+
+def test_extract_json_handles_brackets_inside_strings():
+    from wondershot.redact import extract_json
+    import json
+    reply = 'note: [see below]\n["a]b", "c"]\ndone'
+    assert json.loads(extract_json(reply)) == ["a]b", "c"]
+
+
+def test_extract_json_finds_object():
+    from wondershot.redact import extract_json
+    import json
+    reply = 'Sure:\n{"regions": [1, 2]}\nthanks'
+    assert json.loads(extract_json(reply)) == {"regions": [1, 2]}

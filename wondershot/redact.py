@@ -46,13 +46,65 @@ BBOX_PROMPT = (
 )
 
 
+def _span_from(text: str, start: int) -> str | None:
+    """Balanced [...]/{...} starting at `start`, ignoring brackets inside
+    JSON strings. None if it never closes."""
+    open_ch = text[start]
+    close_ch = "]" if open_ch == "[" else "}"
+    depth = 0
+    in_str = esc = False
+    for i in range(start, len(text)):
+        ch = text[i]
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch == open_ch:
+            depth += 1
+        elif ch == close_ch:
+            depth -= 1
+            if depth == 0:
+                return text[start:i + 1]
+    return None
+
+
+def _balanced_json_span(text: str) -> str | None:
+    """First balanced [...] / {...} substring that PARSES as JSON. Trying
+    each opening bracket in turn skips incidental prose brackets (e.g.
+    'see [below]') and returns the real payload."""
+    for i, ch in enumerate(text):
+        if ch not in "[{":
+            continue
+        span = _span_from(text, i)
+        if span is None:
+            continue
+        try:
+            json.loads(span)
+        except ValueError:
+            continue
+        return span
+    return None
+
+
 def extract_json(reply: str) -> str:
-    """Models love to wrap JSON in ``` fences and chatter — unwrap it."""
+    """Models love to wrap JSON in ``` fences and chatter — unwrap it.
+
+    A ```fence``` if present, else the first balanced [...]/{...} span
+    (handles prose before/after the JSON, which models emit despite
+    'no prose'), else the stripped text (so json.loads raises usefully).
+    """
     text = reply.strip()
     fenced = re.search(r"```(?:json)?\s*(.*?)```", text, re.DOTALL)
     if fenced:
-        return fenced.group(1).strip()
-    return text
+        text = fenced.group(1).strip()
+    span = _balanced_json_span(text)
+    return span if span is not None else text
 
 
 def parse_spans(reply: str) -> list[str]:
