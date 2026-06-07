@@ -24,7 +24,7 @@ from __future__ import annotations
 import signal as _signal
 import sys
 
-from PySide6.QtCore import QTimer, Signal
+from PySide6.QtCore import QObject, QTimer, Signal
 from PySide6.QtGui import QImage
 
 from .record import _HAVE_GIO, ScreenRecorder
@@ -129,6 +129,99 @@ class ScreenCastFrameSource(ScreenRecorder):
             self._pipeline = None
         self.recording = False
         self._cleanup()  # base class: closes fd + portal session
+
+
+# -- productized scroll mode ------------------------------------------------
+
+def scroll_capture_available() -> bool:
+    """Gate for the scroll-capture UI: gi + GStreamer + numpy.
+
+    Deliberately NOT gated on KDE/kwin — portal ScreenCast is
+    desktop-neutral (spec Addendum 2, Track 4b)."""
+    if not _HAVE_GIO:
+        return False
+    try:
+        _gst()
+    except (ImportError, ValueError):
+        return False
+    try:
+        from . import stitch  # noqa: F401 — needs numpy ([spike] extra)
+    except ImportError:
+        return False
+    return True
+
+
+class ScrollCaptureController(QObject):
+    """Mode state machine behind the scroll-capture UI.
+
+    idle -> running -> idle. start() builds a FrameSource (injectable
+    for tests) + ScrollStitcher; frames are relayed through a QObject
+    slot, so delivery from the GStreamer streaming thread is QUEUED
+    onto the Qt main loop — this retires the direct-connection caveat
+    in this module's docstring for the productized path. stop()
+    drives the source down, stitches, writes the PNG into the library
+    and emits captured(path); the app coordinator feeds that to the
+    SAME _on_captured used by every screenshot."""
+
+    started = Signal()       # portal granted; frames flowing
+    captured = Signal(str)   # stitched PNG path in the library
+    failed = Signal(str)
+
+    def __init__(self, settings, source_factory=None, parent=None):
+        super().__init__(parent)
+        self.settings = settings
+        self._source_factory = source_factory or (
+            lambda: ScreenCastFrameSource(settings, fps=10))
+        self._source = None
+        self._stitcher = None
+
+    @property
+    def running(self) -> bool:
+        return self._source is not None
+
+    def start(self) -> None:
+        if self.running:
+            return
+        from .stitch import ScrollStitcher
+        self._stitcher = ScrollStitcher()
+        self._source = self._source_factory()
+        self._source.frame.connect(self._on_frame)
+        self._source.started.connect(self.started)
+        self._source.failed.connect(self._on_source_failed)
+        self._source.start()
+
+    def _on_frame(self, img: QImage) -> None:
+        if self._stitcher is not None:
+            self._stitcher.add_frame(img)
+
+    def _on_source_failed(self, message: str) -> None:
+        self._teardown()
+        self.failed.emit(message)
+
+    def stop(self) -> None:
+        if not self.running:
+            return
+        source, stitcher = self._source, self._stitcher
+        self._teardown()
+        source.stop()  # pipeline -> NULL: callbacks cease before result()
+        img = stitcher.result()
+        if img.isNull():
+            self.failed.emit("no frames captured — nothing to stitch")
+            return
+        from .capture import timestamp_name, unique_path
+        path = unique_path(self.settings.library_dir,
+                           timestamp_name("ScrollCapture"))
+        img.save(path, "PNG")
+        self.captured.emit(path)
+
+    def _teardown(self) -> None:
+        if self._source is not None:
+            try:
+                self._source.frame.disconnect(self._on_frame)
+            except (RuntimeError, TypeError):
+                pass  # never connected / already gone
+        self._source = None
+        self._stitcher = None
 
 
 # -- CLI runner (wondershot --scroll-spike) --------------------------------
