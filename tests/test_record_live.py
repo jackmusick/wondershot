@@ -37,6 +37,28 @@ def _pump(qapp, done, timeout_s):
     return bool(done)
 
 
+def test_live_force_stop_is_terminal(qapp, tmp_path):
+    """REAL pipeline contract: after force_stop() (set NULL) poll_status
+    MUST report a terminal status. set NULL posts neither EOS nor ERROR to
+    the bus, so without this a genuinely wedged pipeline reports 'running'
+    forever and the finalize loop hangs on 'Stopping…' (the exact failure
+    the escalation ladder exists to prevent). The FakePipeline masks this."""
+    _gst_or_skip()
+    from wondershot.record import _GstPipeline
+    desc = ("videotestsrc is-live=true ! videoconvert ! videorate ! "
+            "video/x-raw,format=I420,framerate=30/1 ! identity name=pause ! "
+            "x264enc tune=zerolatency ! h264parse ! queue ! mp4mux name=mux ! "
+            f"filesink location={tmp_path / 'wedge.mp4'}")
+    pipe = _GstPipeline(desc, str(tmp_path / "wedge.log"))
+    deadline = time.monotonic() + 3
+    while pipe.poll_status() == "running" and time.monotonic() < deadline:
+        qapp.processEvents()
+        time.sleep(0.02)
+    pipe.force_stop()
+    assert pipe.poll_status() != "running", \
+        "force_stop() must make poll_status terminal or the UI hangs"
+
+
 def test_live_eos_finalizes_playable_mp4(qapp, tmp_path):
     """Real pipeline (videotestsrc, no portal): EOS must finalize a non-empty mp4."""
     _gst_or_skip()

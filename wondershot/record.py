@@ -203,6 +203,7 @@ class _GstPipeline:
         self._Gst = Gst
         self._log_path = log_path
         self._error = ""
+        self._forced = False        # force_stop() called: poll_status terminal
         self._paused_offset_ns = 0  # accumulated paused duration (C1)
         self._dropping = False
         self._pause_started_ns = 0
@@ -223,6 +224,12 @@ class _GstPipeline:
             if msg.type == Gst.MessageType.EOS:
                 return "eos"          # EOS on the bus == filesink finalized
             msg = self._bus.pop_filtered(flt)
+        # set NULL posts neither EOS nor ERROR to the bus, so a wedged
+        # pipeline would otherwise report "running" forever and hang the
+        # finalize loop on "Stopping…". force_stop() is the terminal,
+        # non-clean give-up — surface it so _poll_exit salvages + exits.
+        if self._forced:
+            return "error"
         return "running"
 
     def error_text(self):
@@ -232,6 +239,9 @@ class _GstPipeline:
         self._p.send_event(self._Gst.Event.new_eos())
 
     def force_stop(self):
+        self._forced = True
+        if not self._error:
+            self._error = "force-stopped (EOS wait abandoned)"
         try:
             self._p.set_state(self._Gst.State.NULL)
         except Exception:
