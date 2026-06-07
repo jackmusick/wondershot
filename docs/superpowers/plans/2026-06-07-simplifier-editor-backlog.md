@@ -147,7 +147,7 @@ Sample the dominant color of a region: bucket pixels to 3 bits/channel (so antia
 - Create: `wondershot/simplify.py`
 - Create: `tests/test_simplify.py`
 
-- [ ] **Step 1: Write the failing tests** — create `tests/test_simplify.py`:
+- [x] **Step 1: Write the failing tests** — create `tests/test_simplify.py`:
 
 ```python
 """Pure-function tests for the AI simplifier (no editor, no network)."""
@@ -199,12 +199,12 @@ def test_dominant_color_clamps_and_falls_back(qapp):
     assert dominant_color(img, QRect(45, 45, 30, 30)) == QColor("#ff0000")
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `QT_QPA_PLATFORM=offscreen .venv/bin/pytest tests/test_simplify.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'wondershot.simplify'`
 
-- [ ] **Step 3: Implement** — create `wondershot/simplify.py`:
+- [x] **Step 3: Implement** — create `wondershot/simplify.py`:
 
 ```python
 """AI image simplifier: vision LLM finds UI regions, the editor replaces
@@ -270,12 +270,12 @@ def dominant_color(image: QImage, rect: QRect) -> QColor:
 
 (The prompt/parsing/pipeline functions arrive in Task 3 — keep this commit to `dominant_color` plus module scaffolding.)
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `QT_QPA_PLATFORM=offscreen .venv/bin/pytest tests/test_simplify.py -v`
 Expected: 3 PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add wondershot/simplify.py tests/test_simplify.py
