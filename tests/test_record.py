@@ -110,3 +110,12 @@ def test_elapsed_and_tick_while_recording(qapp, tmp_path):
     finally:
         proc.kill()
         proc.wait()
+
+
+def test_log_dir_uses_standard_cache_location():
+    """recorder.log must live under the platform cache dir, not ~/.cache."""
+    from PySide6.QtCore import QStandardPaths
+    from wondershot.record import log_dir
+    base = QStandardPaths.writableLocation(
+        QStandardPaths.GenericCacheLocation)
+    assert log_dir() == os.path.join(base, "wondershot")

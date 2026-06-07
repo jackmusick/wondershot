@@ -31,6 +31,15 @@ try:
 except ImportError:
     _HAVE_GIO = False
 
+
+def log_dir() -> str:
+    """Per-platform cache dir for recorder logs (honors XDG on Linux)."""
+    from PySide6.QtCore import QStandardPaths
+    base = QStandardPaths.writableLocation(
+        QStandardPaths.GenericCacheLocation)
+    return os.path.join(base, "wondershot")
+
+
 _element_cache: dict[str, bool] = {}
 
 
@@ -278,11 +287,9 @@ class ScreenRecorder(QObject):
         args = self._gst_args(fd, node, tmp)
 
         os.set_inheritable(fd, True)
-        log_dir = os.path.join(
-            os.environ.get("XDG_CACHE_HOME",
-                           os.path.expanduser("~/.cache")), "wondershot")
-        os.makedirs(log_dir, exist_ok=True)
-        self.log_path = os.path.join(log_dir, "recorder.log")
+        logs = log_dir()
+        os.makedirs(logs, exist_ok=True)
+        self.log_path = os.path.join(logs, "recorder.log")
         try:
             log = open(self.log_path, "wb")
             log.write((" ".join(args) + "\n\n").encode())

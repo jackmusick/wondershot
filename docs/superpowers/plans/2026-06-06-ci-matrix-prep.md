@@ -120,7 +120,7 @@ Two real findings from the audit. (1) `wondershot/record.py:281–285` builds th
 
 **Steps:**
 
-- [ ] **Write the failing test for `record.log_dir()`.** Append to `tests/test_record.py`:
+- [x] **Write the failing test for `record.log_dir()`.** Append to `tests/test_record.py`:
   ```python
   def test_log_dir_uses_standard_cache_location():
       """recorder.log must live under the platform cache dir, not ~/.cache."""
@@ -132,13 +132,13 @@ Two real findings from the audit. (1) `wondershot/record.py:281–285` builds th
   ```
   (Note: this lands under the Task 1 `pytestmark`, so it is skipped on Windows along with the module — acceptable; the macOS CI job exercises it off-Linux.)
 
-- [ ] **Run it and watch it fail:**
+- [x] **Run it and watch it fail:**
   ```bash
   .venv/bin/pytest tests/test_record.py::test_log_dir_uses_standard_cache_location -v
   ```
   Expected failure: `ImportError: cannot import name 'log_dir' from 'wondershot.record'`.
 
-- [ ] **Implement `log_dir()` in `wondershot/record.py`.** Add after the module's import block (after the `try: import gi ...` block):
+- [x] **Implement `log_dir()` in `wondershot/record.py`.** Add after the module's import block (after the `try: import gi ...` block):
   ```python
   def log_dir() -> str:
       """Per-platform cache dir for recorder logs (honors XDG on Linux)."""
@@ -163,13 +163,13 @@ Two real findings from the audit. (1) `wondershot/record.py:281–285` builds th
   ```
   Gotcha: the old local variable is named `log_dir` — it MUST be renamed (to `logs`) or it shadows the new module-level function.
 
-- [ ] **Run the record tests:**
+- [x] **Run the record tests:**
   ```bash
   .venv/bin/pytest tests/test_record.py -v
   ```
   Expected: all pass, including the new test.
 
-- [ ] **Write the failing tests for `msgraph.token_path` platform fallbacks.** Append to `tests/test_msgraph.py`:
+- [x] **Write the failing tests for `msgraph.token_path` platform fallbacks.** Append to `tests/test_msgraph.py`:
   ```python
   def test_token_path_env_override(monkeypatch, tmp_path):
       from wondershot import msgraph
@@ -208,13 +208,13 @@ Two real findings from the audit. (1) `wondershot/record.py:281–285` builds th
   ```
   (`monkeypatch.setattr(sys, "platform", ...)` works because the implementation reads `sys.platform` at call time, and monkeypatch restores it after each test. `tests/test_msgraph.py` already has `import os` at the top — check; if not, add it.)
 
-- [ ] **Run them and watch the three fallback tests fail:**
+- [x] **Run them and watch the three fallback tests fail:**
   ```bash
   .venv/bin/pytest tests/test_msgraph.py -v
   ```
   Expected: `test_token_path_env_override` passes already (the env override exists today); the other three fail — `test_token_path_windows_fallback` and `test_token_path_macos_fallback` with assertion errors showing the `~/.local/share` path, and `test_token_path_linux_fallback` because the current code hardcodes `expanduser("~/.local/share")` and ignores `XDG_DATA_HOME` (the test sets it to `tmp_path`). Confirm all three fail before implementing.
 
-- [ ] **Implement in `wondershot/msgraph.py`** — stdlib only, per the module's docstring contract. Add `import sys` to the import block (it currently imports `base64, hashlib, json, os, secrets, time, urllib.error, urllib.parse, ...`). Then replace `token_path` (currently):
+- [x] **Implement in `wondershot/msgraph.py`** — stdlib only, per the module's docstring contract. Add `import sys` to the import block (it currently imports `base64, hashlib, json, os, secrets, time, urllib.error, urllib.parse, ...`). Then replace `token_path` (currently):
   ```python
   def token_path() -> str:
       base = os.environ.get(
@@ -241,7 +241,7 @@ Two real findings from the audit. (1) `wondershot/record.py:281–285` builds th
       return os.path.join(base, "graph_token.json")
   ```
 
-- [ ] **Run the whole suite:**
+- [x] **Run the whole suite:**
   ```bash
   .venv/bin/pytest tests/ -v
   ```

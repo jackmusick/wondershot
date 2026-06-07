@@ -32,3 +32,39 @@ def test_expired_token_requires_refresh(tmp_path, monkeypatch):
                         {"access_token": "new", "expires_in": 3600})
     assert msgraph.ensure_access_token() == "new"
     assert calls["grant_type"] == "refresh_token"
+
+
+def test_token_path_env_override(monkeypatch, tmp_path):
+    from wondershot import msgraph
+    monkeypatch.setenv("WONDERSHOT_DATA_DIR", str(tmp_path))
+    assert msgraph.token_path() == str(tmp_path / "graph_token.json")
+
+
+def test_token_path_windows_fallback(monkeypatch, tmp_path):
+    import sys
+    from wondershot import msgraph
+    monkeypatch.delenv("WONDERSHOT_DATA_DIR", raising=False)
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    assert msgraph.token_path() == os.path.join(
+        str(tmp_path), "wondershot", "graph_token.json")
+
+
+def test_token_path_macos_fallback(monkeypatch):
+    import sys
+    from wondershot import msgraph
+    monkeypatch.delenv("WONDERSHOT_DATA_DIR", raising=False)
+    monkeypatch.setattr(sys, "platform", "darwin")
+    assert msgraph.token_path() == os.path.join(
+        os.path.expanduser("~/Library/Application Support"),
+        "wondershot", "graph_token.json")
+
+
+def test_token_path_linux_fallback(monkeypatch, tmp_path):
+    import sys
+    from wondershot import msgraph
+    monkeypatch.delenv("WONDERSHOT_DATA_DIR", raising=False)
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    assert msgraph.token_path() == os.path.join(
+        str(tmp_path), "wondershot", "graph_token.json")

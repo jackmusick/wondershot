@@ -15,6 +15,7 @@ import hashlib
 import json
 import os
 import secrets
+import sys
 import time
 import urllib.error
 import urllib.parse
@@ -74,10 +75,20 @@ _SIMPLE_UPLOAD_LIMIT = 4 * 1024 * 1024
 _CHUNK = 10 * 1024 * 1024  # upload-session chunk (multiple of 320 KiB)
 
 
+def _data_home() -> str:
+    """Per-platform user data dir — stdlib only (this module's contract)."""
+    if sys.platform == "win32":
+        return os.environ.get(
+            "LOCALAPPDATA", os.path.expanduser(r"~\AppData\Local"))
+    if sys.platform == "darwin":
+        return os.path.expanduser("~/Library/Application Support")
+    return os.environ.get(
+        "XDG_DATA_HOME", os.path.expanduser("~/.local/share"))
+
+
 def token_path() -> str:
     base = os.environ.get(
-        "WONDERSHOT_DATA_DIR",
-        os.path.join(os.path.expanduser("~/.local/share"), "wondershot"))
+        "WONDERSHOT_DATA_DIR", os.path.join(_data_home(), "wondershot"))
     return os.path.join(base, "graph_token.json")
 
 
