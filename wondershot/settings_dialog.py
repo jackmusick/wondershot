@@ -187,6 +187,15 @@ class SettingsDialog(QDialog):
         self.noise_check.setChecked(settings.noise_suppression)
         form.addRow("", self.noise_check)
 
+        self.countdown_spin = QSpinBox()
+        self.countdown_spin.setRange(0, 10)
+        self.countdown_spin.setSuffix(" s")
+        self.countdown_spin.setSpecialValueText("Off")
+        self.countdown_spin.setValue(settings.record_countdown)
+        self.countdown_spin.setToolTip(
+            "Count down on screen before a recording starts (Esc cancels)")
+        form.addRow("Recording countdown:", self.countdown_spin)
+
         # hotkey guidance
         hk = QGroupBox("Global capture hotkey")
         hk_layout = QVBoxLayout(hk)
@@ -680,6 +689,7 @@ class SettingsDialog(QDialog):
         self.settings.mic_device = self.mic_combo.currentData()
         self.settings.mic_enabled = self.mic_check.isChecked()
         self.settings.noise_suppression = self.noise_check.isChecked()
+        self.settings.record_countdown = self.countdown_spin.value()
         self.settings.copy_after_capture = self.copy_check.isChecked()
         self.settings.show_gallery_after_capture = self.show_check.isChecked()
         self.settings.quick_bar_enabled = self.quickbar_check.isChecked()

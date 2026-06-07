@@ -622,7 +622,7 @@ Recording settings (mic, camera, noise suppression) currently live on the **Gene
 
 ### Step 4.1: Failing tests
 
-- [ ] Create `tests/test_settings_recording.py` (mirrors `tests/test_settings_quickbar.py`):
+- [x] Create `tests/test_settings_recording.py` (mirrors `tests/test_settings_quickbar.py`):
 
 ```python
 import os
@@ -650,7 +650,7 @@ def test_record_countdown_roundtrip(tmp_path):
     assert s.record_countdown == 3
 ```
 
-- [ ] Create `tests/test_settings_dialog_recording.py` (mirrors `tests/test_settings_dialog_quickbar.py`):
+- [x] Create `tests/test_settings_dialog_recording.py` (mirrors `tests/test_settings_dialog_quickbar.py`):
 
 ```python
 import os
@@ -688,12 +688,12 @@ def test_apply_writes_record_countdown(qapp, tmp_path):
     assert s.record_countdown == 5
 ```
 
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_settings_recording.py tests/test_settings_dialog_recording.py -q`
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_settings_recording.py tests/test_settings_dialog_recording.py -q`
       Expected: FAIL — `AttributeError: ... record_countdown` / `... countdown_spin`.
 
 ### Step 4.2: Implementation
 
-- [ ] `wondershot/settings.py` — add after the `noise_suppression` property (lines 91-97):
+- [x] `wondershot/settings.py` — add after the `noise_suppression` property (lines 91-97):
 
 ```python
     @property
@@ -706,7 +706,7 @@ def test_apply_writes_record_countdown(qapp, tmp_path):
         self._s.setValue("record_countdown", int(value))
 ```
 
-- [ ] `wondershot/settings_dialog.py` — after the `noise_check` row (line 188 `form.addRow("", self.noise_check)`) add:
+- [x] `wondershot/settings_dialog.py` — after the `noise_check` row (line 188 `form.addRow("", self.noise_check)`) add:
 
 ```python
         self.countdown_spin = QSpinBox()
@@ -721,16 +721,16 @@ def test_apply_writes_record_countdown(qapp, tmp_path):
 
   `QSpinBox` is already imported in settings_dialog.py (used by `quickbar_timeout` at line 151).
 
-- [ ] `wondershot/settings_dialog.py` — in `apply()`, after line 682 (`self.settings.noise_suppression = ...`) add:
+- [x] `wondershot/settings_dialog.py` — in `apply()`, after line 682 (`self.settings.noise_suppression = ...`) add:
 
 ```python
         self.settings.record_countdown = self.countdown_spin.value()
 ```
 
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_settings_recording.py tests/test_settings_dialog_recording.py -q`
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_settings_recording.py tests/test_settings_dialog_recording.py -q`
       Expected: pass.
 
-- [ ] Commit: `git add -A && git commit -m "settings: recording countdown (0-10 s, default off) on the General tab"`
+- [x] Commit: `git add -A && git commit -m "settings: recording countdown (0-10 s, default off) on the General tab"`
 
 ---
 

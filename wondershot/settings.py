@@ -97,6 +97,15 @@ class Settings:
         self._s.setValue("noise_suppression", "true" if value else "false")
 
     @property
+    def record_countdown(self) -> int:
+        """Seconds of on-screen countdown before a recording starts (0 = off)."""
+        return int(self._s.value("record_countdown", 0))
+
+    @record_countdown.setter
+    def record_countdown(self, value: int) -> None:
+        self._s.setValue("record_countdown", int(value))
+
+    @property
     def capture_cursor(self) -> bool:
         """Include the pointer in screenshots (Spectacle backend only)."""
         return self._s.value("capture_cursor", "false") in (True, "true")
