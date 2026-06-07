@@ -796,7 +796,7 @@ git add spikes/cursor_halo_probe.md
 git commit -m "Cursor halo spike: probe transcript for portal metadata cursor mode in gst-launch pipeline"
 ```
 
-- [ ] **Step 7.3 — Decision gate.** Branch A only if BOTH hold: (a) `AvailableCursorModes` includes 4, and (b) the probe found a concrete mechanism by which cursor coordinates reach a compositing element inside a `gst-launch-1.0` argv pipeline (e.g. a pipewiresrc property that re-embeds or exposes the cursor). If either fails — or the timebox expires — take branch B.
+- [x] **Step 7.3 — Decision gate.** Branch A only if BOTH hold: (a) `AvailableCursorModes` includes 4, and (b) the probe found a concrete mechanism by which cursor coordinates reach a compositing element inside a `gst-launch-1.0` argv pipeline (e.g. a pipewiresrc property that re-embeds or exposes the cursor). If either fails — or the timebox expires — take branch B.
 
 ### Branch A — implement (only if the gate passed)
 
@@ -883,7 +883,7 @@ git commit -m "Cursor halo: Settings->Recording option, portal metadata cursor m
 
 ### Branch B — document (the expected outcome)
 
-- [ ] **Step 7.B1 — Update ROADMAP.md.** Replace the WS-A cursor halo bullet (~lines 107–108, currently "Cursor halo (M): portal cursor-mode *metadata* + composite in our gst pipeline. Static halo only — click *animation* gated on WS-D input") with:
+- [x] **Step 7.B1 — Update ROADMAP.md.** Replace the WS-A cursor halo bullet (~lines 107–108, currently "Cursor halo (M): portal cursor-mode *metadata* + composite in our gst pipeline. Static halo only — click *animation* gated on WS-D input") with:
 
 ```markdown
 - Cursor halo (M): **investigated 2026-06-06, parked.** Portal cursor-mode
@@ -905,7 +905,7 @@ git commit -m "Cursor halo: Settings->Recording option, portal metadata cursor m
 
 Adjust the bullet text to match the actual probe findings if they differ in detail (e.g. metadata mode not offered at all) — the transcript file is the source of truth.
 
-- [ ] **Step 7.B2 — Verify nothing else changed and commit.** `git status` shows only `ROADMAP.md` modified (the probe transcript was committed in 7.2; any temporary hardcode in record.py is reverted). `python -m pytest tests/ -q` → all pass.
+- [x] **Step 7.B2 — Verify nothing else changed and commit.** `git status` shows only `ROADMAP.md` modified (the probe transcript was committed in 7.2; any temporary hardcode in record.py is reverted). `python -m pytest tests/ -q` → all pass.
 ```
 git add ROADMAP.md
 git commit -m "Cursor halo: document gst-launch metadata-cursor findings, park behind WS-D pipeline rewrite"
