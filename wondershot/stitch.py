@@ -105,6 +105,11 @@ def _consensus(ds: list[int], n_candidates: int,
         return None, 0.0
     med = int(np.median(ds))
     inliers = [d for d in ds if abs(d - med) <= tol]
+    if not inliers:
+        # Even vote count with two distant clusters: the averaged
+        # median lands between them and nothing is within tol —
+        # no consensus (np.median([]) would be NaN and crash).
+        return None, 0.0
     conf = len(inliers) / max(n_candidates, 1)
     return int(round(float(np.median(inliers)))), conf
 

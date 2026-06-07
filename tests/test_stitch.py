@@ -385,3 +385,17 @@ def test_textpage_fixed_header_chrome_cropped_and_exact():
     assert st.frames_used == 5
     assert np.array_equal(out, page[0:out.shape[0]])
     assert out.shape[0] == 190 + 300
+
+
+def test_detect_offset_bimodal_votes_is_none_not_crash():
+    """A scroll past the overlap window can leave exactly two bands
+    voting distant spurious offsets (here 60 and 117). The averaged
+    median lands between the clusters, no vote is within tol, and
+    _consensus must report no-consensus — not crash on the median of
+    an empty inlier list (np.median([]) is NaN; pre-fix this raised
+    ValueError out of ScrollStitcher.add_frame)."""
+    from wondershot.stitch import detect_offset, to_gray
+    page = render_text_page()
+    prev = to_gray(page[0:300])
+    cur = to_gray(page[280:580])   # 280 > h - band: no true overlap
+    assert detect_offset(prev, cur) == (None, 0.0)
