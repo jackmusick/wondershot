@@ -832,7 +832,7 @@ def ocr_words(image, binary: str | None = None) -> list[Word]:
 - Create: `wondershot/redact.py`
 - Test: `tests/test_redact.py` (create)
 
-- [ ] Write the failing tests:
+- [x] Write the failing tests:
 
 ```python
 # tests/test_redact.py
@@ -948,8 +948,8 @@ def test_redact_regions_falls_back_to_bboxes(monkeypatch):
         [QRect(0, 0, 100, 50)]
 ```
 
-- [ ] Run and confirm failure: `python -m pytest tests/test_redact.py -q` — expect `ModuleNotFoundError: No module named 'wondershot.redact'`.
-- [ ] Implement `wondershot/redact.py`:
+- [x] Run and confirm failure: `python -m pytest tests/test_redact.py -q` — expect `ModuleNotFoundError: No module named 'wondershot.redact'`.
+- [x] Implement `wondershot/redact.py`:
 
 ```python
 """AI redaction: find sensitive text on a screenshot, return regions.
@@ -1084,8 +1084,8 @@ def redact_regions(image, endpoint: str, api_key: str,
     return parse_bboxes(reply, image.width(), image.height())
 ```
 
-- [ ] Run tests: `python -m pytest tests/test_redact.py -q` — expect 9 passed.
-- [ ] Commit: `git add wondershot/redact.py tests/test_redact.py && git commit -m "WS-B: redaction pipeline — OCR span matching + bbox fallback"`
+- [x] Run tests: `python -m pytest tests/test_redact.py -q` — expect 9 passed.
+- [x] Commit: `git add wondershot/redact.py tests/test_redact.py && git commit -m "WS-B: redaction pipeline — OCR span matching + bbox fallback"`
 
 ---
 
