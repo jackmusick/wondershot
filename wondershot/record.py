@@ -1,11 +1,11 @@
 """Native screen recorder with microphone audio.
 
 Flow: xdg-desktop-portal ScreenCast (CreateSession → SelectSources →
-Start → OpenPipeWireRemote) hands us a PipeWire fd + node; a
-`gst-launch-1.0 -e` subprocess encodes it (x264 + AAC → mp4), mixing in
-the microphone via pulsesrc. SIGINT triggers EOS so the mp4 finalizes
-cleanly. A portal restore token is persisted, so the screen-share picker
-only appears the first time.
+Start → OpenPipeWireRemote) hands us a PipeWire fd + node; an in-process
+`Gst.parse_launch` pipeline encodes it (x264 + AAC → mp4), mixing in the
+microphone via pulsesrc. A bus EOS event triggers the mp4 to finalize
+cleanly; bus ERROR is the death signal. A portal restore token is
+persisted, so the screen-share picker only appears the first time.
 
 The portal D-Bus traffic uses Gio/GLib (PyGObject): the portal insists on
 uint32-typed options, which PySide6's QtDBus cannot produce. Qt's Linux
@@ -19,7 +19,6 @@ import os
 import random
 import shutil
 import sys
-import signal
 import subprocess
 import time
 
@@ -97,6 +96,192 @@ def sweep_stale_tmp(tmp_dir: str, max_age_s: int = 3600) -> None:
             pass
 
 
+def build_pipeline_description(fd, node, tmp, *, mic_enabled, mic_device="",
+                               noise_suppression=True, have_webrtcdsp=False,
+                               crop=None, halo=False):
+    """Build the Gst.parse_launch string. PURE — no Gst, no portal, no I/O.
+
+    crop: dict(left,right,top,bottom) or None. halo: bool (cursor overlay).
+    The videorate + fixed-framerate caps are the no-PTS landmine fix — VERBATIM.
+    """
+    crop_seg = ""
+    if crop:
+        crop_seg = ("videocrop top={top} left={left} "
+                    "right={right} bottom={bottom} ! ").format(**crop)
+    # cairooverlay needs an alpha-capable format; wrap it in videoconvert.
+    halo_seg = ("videoconvert ! cairooverlay name=halo ! " if halo else "")
+    video = (
+        f"pipewiresrc fd={fd} path={node} do-timestamp=true ! "
+        "queue ! videoconvert ! "
+        f"{crop_seg}"
+        # pipewiresrc emits PTS-less buffers (mp4mux-fatal); videorate drops
+        # them and turns the damage-driven stream into clean CFR. VERBATIM.
+        "videorate ! video/x-raw,format=I420,framerate=30/1 ! "
+        # 'pause' identity carries the PTS-offset probe (C1) and MUST sit on
+        # RAW frames BEFORE x264enc: dropping/retiming encoded H264 NALs would
+        # corrupt inter-frame dependencies. Harmless transparent tap until C1
+        # wires the probe.
+        "identity name=pause ! "
+        f"{halo_seg}"
+        "x264enc speed-preset=veryfast tune=zerolatency "
+        "bitrate=8000 key-int-max=120 ! "
+        "h264parse ! queue ! mux. "
+    )
+    audio = ""
+    if mic_enabled:
+        device = mic_pulse_device(mic_device)
+        dev = f"device={device} " if device else ""
+        dsp = ""
+        if noise_suppression and have_webrtcdsp:
+            dsp = ("audio/x-raw,rate=48000,channels=1 ! webrtcdsp "
+                   "echo-cancel=false noise-suppression=true "
+                   "noise-suppression-level=very-high gain-control=false "
+                   "high-pass-filter=true ! ")
+        audio = (
+            f"pulsesrc {dev}do-timestamp=true ! "
+            "queue ! audioconvert ! audioresample ! "
+            f"{dsp}audioconvert ! avenc_aac bitrate=160000 ! "
+            "aacparse ! queue ! mux. "
+        )
+    return f"{video}{audio}mp4mux name=mux ! filesink location={tmp}"
+
+
+def elapsed_seconds(started_at, now, paused_total=0.0, paused_at=None):
+    """Wall seconds recorded, excluding paused spans. PURE."""
+    if started_at is None:
+        return 0.0
+    live = now - started_at - paused_total
+    if paused_at is not None:
+        live -= (now - paused_at)
+    return max(0.0, live)
+
+
+def format_elapsed(seconds):
+    s = int(seconds)
+    return f"{s // 60}:{s % 60:02d}"
+
+
+def pts_offset_ns(paused_total_s):
+    """Nanoseconds to subtract from buffer PTS/DTS so the resumed segment
+    is gap-free for mp4mux. PURE."""
+    return int(round(paused_total_s * 1_000_000_000))
+
+
+def crop_props(rect, stream_w, stream_h):
+    """Map a chosen rect (x,y,w,h) in stream pixels to videocrop
+    top/left/right/bottom borders, clamped. PURE."""
+    x, y, w, h = rect
+    left = max(0, x)
+    top = max(0, y)
+    right = max(0, stream_w - (x + w))
+    bottom = max(0, stream_h - (y + h))
+    return {"left": left, "top": top, "right": right, "bottom": bottom}
+
+
+def halo_geometry(cx, cy, frame_w, frame_h, radius=24):
+    """Clamp the halo centre into frame; return (cx, cy, radius). PURE."""
+    cx = max(0, min(int(cx), frame_w))
+    cy = max(0, min(int(cy), frame_h))
+    return (cx, cy, radius)
+
+
+def _gst():
+    import gi
+    gi.require_version("Gst", "1.0")
+    from gi.repository import Gst
+    if not Gst.is_initialized():
+        Gst.init(None)
+    return Gst
+
+
+class _GstPipeline:
+    """Owns a real Gst pipeline + bus; exposes the fakeable lifecycle
+    surface (poll_status/error_text/send_eos/force_stop/pause/resume)."""
+
+    def __init__(self, desc, log_path):
+        Gst = _gst()
+        self._Gst = Gst
+        self._log_path = log_path
+        self._error = ""
+        self._paused_offset_ns = 0  # accumulated paused duration (C1)
+        self._dropping = False
+        self._pause_started_ns = 0
+        self._p = Gst.parse_launch(desc)          # may raise GLib.Error
+        self._bus = self._p.get_bus()
+        self._p.set_state(Gst.State.PLAYING)
+
+    def poll_status(self):
+        Gst = self._Gst
+        flt = Gst.MessageType.ERROR | Gst.MessageType.EOS
+        msg = self._bus.pop_filtered(flt)
+        while msg is not None:
+            if msg.type == Gst.MessageType.ERROR:
+                err, dbg = msg.parse_error()
+                self._error = err.message
+                self._append_log(f"ERROR: {err.message} | {dbg}")
+                return "error"
+            if msg.type == Gst.MessageType.EOS:
+                return "eos"          # EOS on the bus == filesink finalized
+            msg = self._bus.pop_filtered(flt)
+        return "running"
+
+    def error_text(self):
+        return self._error or "unknown"
+
+    def send_eos(self):
+        self._p.send_event(self._Gst.Event.new_eos())
+
+    def force_stop(self):
+        try:
+            self._p.set_state(self._Gst.State.NULL)
+        except Exception:
+            pass
+
+    # -- pause/resume (C1) -------------------------------------------------
+    def pause(self):
+        """Gate the 'pause' identity: drop buffers and remember when."""
+        Gst = self._Gst
+        elem = self._p.get_by_name("pause")
+        if elem is None:
+            return
+        if not self._dropping:
+            self._pause_started_ns = self._p.get_clock().get_time() \
+                if self._p.get_clock() else 0
+            self._dropping = True
+            if not getattr(self, "_probe_id", None):
+                pad = elem.get_static_pad("src")
+                self._probe_id = pad.add_probe(
+                    Gst.PadProbeType.BUFFER, self._pause_probe)
+
+    def resume(self):
+        if self._dropping:
+            now = self._p.get_clock().get_time() \
+                if self._p.get_clock() else 0
+            self._paused_offset_ns += max(0, now - self._pause_started_ns)
+            self._dropping = False
+
+    def _pause_probe(self, pad, info):
+        Gst = self._Gst
+        if self._dropping:
+            return Gst.PadProbeReturn.DROP
+        buf = info.get_buffer()
+        if buf is not None and self._paused_offset_ns:
+            buf = buf.make_writable()
+            if buf.pts != Gst.CLOCK_TIME_NONE:
+                buf.pts = max(0, buf.pts - self._paused_offset_ns)
+            if buf.dts != Gst.CLOCK_TIME_NONE:
+                buf.dts = max(0, buf.dts - self._paused_offset_ns)
+            info.data = buf
+        return Gst.PadProbeReturn.OK
+
+    def _append_log(self, line):
+        try:
+            with open(self._log_path, "a", errors="replace") as f:
+                f.write(line + "\n")
+        except OSError:
+            pass
+
+
 class ScreenRecorder(QObject):
     """Portal + PipeWire + GStreamer screen recorder."""
 
@@ -105,12 +290,13 @@ class ScreenRecorder(QObject):
     finished = Signal(str)  # final file path
     failed = Signal(str)
     tick = Signal(str)  # elapsed time ("1:05"), once a second while recording
+    paused_changed = Signal(bool)  # C1: pause/resume state
 
-    # Finalize escalation ladder. gst-launch -e can wedge in "Waiting for
-    # EOS" indefinitely (observed 2026-06-06: pipeline still draining-
-    # failing 3+ min after SIGINT — journal pipewire-pulse overruns,
-    # orphaned .rendering tmp). A SECOND SIGINT makes gst-launch abort
-    # the EOS wait and exit; SIGKILL is the last resort.
+    # Finalize escalation ladder. An in-process pipeline can wedge waiting
+    # for EOS indefinitely (observed 2026-06-06: still draining-failing 3+
+    # min — journal pipewire-pulse overruns, orphaned .rendering tmp).
+    # force_stop() (set NULL) abandons the wedged EOS wait and is the
+    # in-process analog of the second-SIGINT / SIGKILL last resort.
     GRACE_MS = 5000
     KILL_MS = 10000
 
@@ -119,7 +305,7 @@ class ScreenRecorder(QObject):
         self.settings = settings
         self.recording = False
         self._busy = False
-        self._proc: subprocess.Popen | None = None
+        self._pipeline = None
         self._session: str | None = None
         self._tmp = self._out = None
         self._fd = -1
@@ -129,19 +315,32 @@ class ScreenRecorder(QObject):
         self._watchdog: QTimer | None = None
         self._started_at: float | None = None
         self.log_path = ""
+        # pause/resume (C1) + region crop (D1) + cursor halo (B1) state
+        self.paused = False
+        self._paused_at: float | None = None
+        self._paused_total = 0.0
+        self._crop = None
+        self._halo = False
 
     # -- public ------------------------------------------------------------
 
     def available(self) -> bool:
-        return _HAVE_GIO and shutil.which("gst-launch-1.0") is not None
+        if not _HAVE_GIO:
+            return False
+        try:
+            _gst()
+            return True
+        except (ImportError, ValueError):
+            return False
 
     def start(self) -> None:
         if self.recording or self._busy:
             return
         if not self.available():
             self.failed.emit(
-                "recording needs python3-gobject and gst-launch-1.0")
+                "recording needs python3-gobject and GStreamer (Gst) bindings")
             return
+        self._halo = bool(getattr(self.settings, "record_cursor_halo", False))
         self._busy = True
         try:
             self._conn = Gio.bus_get_sync(Gio.BusType.SESSION, None)
@@ -158,16 +357,35 @@ class ScreenRecorder(QObject):
     def stop(self) -> None:
         if self._stopping:
             return  # double-stop (tray + toolbar) must not double-finalize
-        if self._proc is None:
+        if self._pipeline is None:
             return
         self._stopping = True
         self.stopping.emit()
-        if self._proc.poll() is None:
-            # -e turns SIGINT into EOS: the mp4 finalizes, then exits.
-            self._proc.send_signal(signal.SIGINT)
+        self._pipeline.send_eos()  # in-process analog of -e + SIGINT
         # Even if the pipeline already died (mux error etc.), finalize so
         # finished/failed always fires — the UI must never stay "Stopping".
         self._poll_exit(elapsed_ms=0)
+
+    def pause(self) -> None:
+        if not (self.recording and not self.paused and not self._stopping):
+            return
+        if self._pipeline is None:
+            return
+        self._pipeline.pause()
+        self.paused = True
+        self._paused_at = time.monotonic()
+        self.paused_changed.emit(True)
+
+    def resume(self) -> None:
+        if not self.paused:
+            return
+        if self._paused_at is not None:
+            self._paused_total += time.monotonic() - self._paused_at
+        self._paused_at = None
+        self.paused = False
+        if self._pipeline is not None:
+            self._pipeline.resume()
+        self.paused_changed.emit(False)
 
     # -- portal plumbing -------------------------------------------------------
 
@@ -231,7 +449,8 @@ class ScreenRecorder(QObject):
             "handle_token": GLib.Variant("s", token),
             "types": GLib.Variant("u", 3),        # monitor | window
             "multiple": GLib.Variant("b", False),
-            "cursor_mode": GLib.Variant("u", 2),  # embedded
+            # 4 = METADATA (halo composites it), 2 = EMBEDDED (baked in).
+            "cursor_mode": GLib.Variant("u", 4 if self._halo else 2),
             "persist_mode": GLib.Variant("u", 2),  # remember permanently
         }
         restore = self._restore_token()
@@ -277,47 +496,9 @@ class ScreenRecorder(QObject):
 
     # -- gstreamer ---------------------------------------------------------------
 
-    def _gst_args(self, fd: int, node: int, tmp: str) -> list[str]:
-        args = [
-            "gst-launch-1.0", "-e",
-            "pipewiresrc", f"fd={fd}", f"path={node}", "do-timestamp=true",
-            "!", "queue", "!", "videoconvert",
-            # pipewiresrc intermittently emits buffers with no PTS (fatal
-            # to mp4mux: "Buffer has no PTS"); videorate drops them and
-            # turns the damage-driven stream into clean CFR.
-            "!", "videorate",
-            "!", "video/x-raw,format=I420,framerate=30/1",
-            "!", "x264enc", "speed-preset=veryfast", "tune=zerolatency",
-            "bitrate=8000", "key-int-max=120",
-            "!", "h264parse", "!", "queue", "!", "mux.",
-        ]
-        if self.settings.mic_enabled:
-            device = mic_pulse_device(self.settings.mic_device)
-            dev_arg = [f"device={device}"] if device else []
-            # webrtcdsp: noise suppression + auto gain + high-pass — raw
-            # pulsesrc picks up every fan and echo in the room.
-            dsp = []
-            if (self.settings.noise_suppression
-                    and _have_gst_element("webrtcdsp")):
-                # measured on this hardware: NS very-high without AGC has a
-                # 22dB lower ambient floor than raw, 8dB lower than NS+AGC
-                # (AGC re-amplifies room noise between words)
-                dsp = ["!", "audio/x-raw,rate=48000,channels=1",
-                       "!", "webrtcdsp", "echo-cancel=false",
-                       "noise-suppression=true",
-                       "noise-suppression-level=very-high",
-                       "gain-control=false",
-                       "high-pass-filter=true"]
-            args += [
-                "pulsesrc", *dev_arg, "do-timestamp=true",
-                "!", "queue", "!", "audioconvert", "!", "audioresample",
-                *dsp,
-                "!", "audioconvert",
-                "!", "avenc_aac", "bitrate=160000",
-                "!", "aacparse", "!", "queue", "!", "mux.",
-            ]
-        args += ["mp4mux", "name=mux", "!", "filesink", f"location={tmp}"]
-        return args
+    def _make_pipeline(self, desc):
+        """The ONLY Gst entry point. Overridable by tests."""
+        return _GstPipeline(desc, self.log_path)
 
     def _launch_gst(self, fd: int, node: int) -> None:
         from .capture import timestamp_name, unique_path
@@ -328,21 +509,28 @@ class ScreenRecorder(QObject):
         sweep_stale_tmp(tmp_dir)
         tmp = os.path.join(tmp_dir, os.path.basename(out))
         self._tmp, self._out = tmp, out
-        args = self._gst_args(fd, node, tmp)
+        desc = build_pipeline_description(
+            fd, node, tmp,
+            mic_enabled=self.settings.mic_enabled,
+            mic_device=self.settings.mic_device,
+            noise_suppression=self.settings.noise_suppression,
+            have_webrtcdsp=_have_gst_element("webrtcdsp"),
+            crop=self._crop, halo=self._halo)
 
-        os.set_inheritable(fd, True)
         logs = log_dir()
         os.makedirs(logs, exist_ok=True)
         self.log_path = os.path.join(logs, "recorder.log")
         try:
-            log = open(self.log_path, "wb")
-            log.write((" ".join(args) + "\n\n").encode())
-            log.flush()
-            self._proc = subprocess.Popen(
-                args, pass_fds=[fd], stdout=log, stderr=log)
-        except OSError as e:
+            with open(self.log_path, "w", errors="replace") as log:
+                log.write(desc + "\n\n")
+        except OSError:
+            pass
+        try:
+            self._pipeline = self._make_pipeline(desc)
+        except Exception as e:
             self._fail(f"could not start gstreamer: {e}")
             return
+        self._connect_halo()
         # Watch for pipeline death for the whole recording (mux errors
         # can kill it minutes in), not just at startup.
         self._start_watchdog()
@@ -350,6 +538,43 @@ class ScreenRecorder(QObject):
         self.recording = True
         self._started_at = time.monotonic()
         self.started.emit()
+
+    def _connect_halo(self) -> None:
+        """Wire the cairooverlay draw callback when halo compositing is on.
+
+        Reading the cursor position from PipeWire's spa_meta_cursor is the
+        known risk (B2) — see ROADMAP "Cursor halo (in-process)". The
+        overlay element path is wired here; cursor-source correctness is a
+        desktop checklist item / parked pending gi meta access."""
+        if not self._halo or self._pipeline is None:
+            return
+        p = getattr(self._pipeline, "_p", None)
+        if p is None:
+            return
+        try:
+            overlay = p.get_by_name("halo")
+            if overlay is not None:
+                overlay.connect("draw", self._draw_halo)
+        except Exception:
+            pass
+
+    def _draw_halo(self, overlay, cr, timestamp, duration) -> None:
+        """Paint a translucent halo at the latest cursor position. The
+        cursor coords (self._cursor_xy) are updated by a buffer pad probe;
+        until spa_meta_cursor is reachable through gi this stays a no-op
+        (parked) — see ROADMAP."""
+        xy = getattr(self, "_cursor_xy", None)
+        if xy is None:
+            return
+        cx, cy, radius = halo_geometry(xy[0], xy[1],
+                                       getattr(self, "_frame_w", 0),
+                                       getattr(self, "_frame_h", 0))
+        try:
+            cr.set_source_rgba(1, 1, 0, 0.35)
+            cr.arc(cx, cy, radius, 0, 2 * 3.14159265)
+            cr.fill()
+        except Exception:
+            pass
 
     def _log_tail(self) -> str:
         try:
@@ -367,24 +592,28 @@ class ScreenRecorder(QObject):
         self._watchdog.start()
 
     def elapsed_str(self) -> str:
-        if not self.recording or self._started_at is None:
+        if not self.recording:
             return ""
-        s = int(time.monotonic() - self._started_at)
-        return f"{s // 60}:{s % 60:02d}"
+        return format_elapsed(elapsed_seconds(
+            self._started_at, time.monotonic(),
+            self._paused_total, self._paused_at))
 
     def _check_alive(self) -> None:
         if self._stopping:
             return  # _poll_exit owns the exit path now
-        if self._proc is not None and self._proc.poll() is not None:
+        if (self._pipeline is not None
+                and self._pipeline.poll_status() == "error"):
             self.recording = False
             tmp, out = self._tmp, self._out
+            tail = self._pipeline.error_text()
             self._cleanup()
             partial = self._salvage_partial(tmp, out)
             self.failed.emit(
-                f"recorder died: {self._log_tail()[:160]} "
+                f"recorder died: {tail[:160]} "
                 f"(full log: {self.log_path}){partial}")
             return
-        self.tick.emit(self.elapsed_str())
+        if not self.paused:
+            self.tick.emit(self.elapsed_str())
 
     @staticmethod
     def _salvage_partial(tmp, out) -> str:
@@ -399,24 +628,25 @@ class ScreenRecorder(QObject):
         os.unlink(tmp)  # zero bytes: nothing to salvage
         return ""
 
-    def _poll_exit(self, elapsed_ms: int = 0, nudged: bool = False) -> None:
-        if self._proc is None:
+    def _poll_exit(self, elapsed_ms: int = 0, escalated: bool = False) -> None:
+        if self._pipeline is None:
             return
-        if self._proc.poll() is None:
+        status = self._pipeline.poll_status()
+        if status == "running":
             if elapsed_ms >= self.KILL_MS:
-                self._proc.kill()
-            elif elapsed_ms >= self.GRACE_MS and not nudged:
-                # second interrupt: gst-launch gives up waiting for EOS
-                self._proc.send_signal(signal.SIGINT)
-                nudged = True
+                self._pipeline.force_stop()           # hard give-up
+            elif elapsed_ms >= self.GRACE_MS and not escalated:
+                self._pipeline.force_stop()           # abandon wedged EOS
+                escalated = True
             QTimer.singleShot(
-                200, lambda: self._poll_exit(elapsed_ms + 200, nudged))
+                200, lambda: self._poll_exit(elapsed_ms + 200, escalated))
             return
         self.recording = False
-        ok = (self._proc.returncode == 0 and self._tmp
+        ok = (status == "eos" and self._tmp
               and os.path.exists(self._tmp)
               and os.path.getsize(self._tmp) > 0)
         tmp, out = self._tmp, self._out
+        tail = self._pipeline.error_text()
         self._cleanup()
         if ok:
             shutil.move(tmp, out)
@@ -424,7 +654,7 @@ class ScreenRecorder(QObject):
             return
         partial = self._salvage_partial(tmp, out)
         self.failed.emit(
-            f"recording did not finalize: {self._log_tail()[:160]} "
+            f"recording did not finalize: {tail[:160]} "
             f"(log: {getattr(self, 'log_path', '?')}){partial}")
 
     def _close_session(self) -> None:
@@ -449,8 +679,13 @@ class ScreenRecorder(QObject):
             except OSError:
                 pass
             self._fd = -1
-        self._proc = None
+        if self._pipeline is not None:
+            self._pipeline.force_stop()
+            self._pipeline = None
         self._tmp = self._out = None
+        self.paused = False
+        self._paused_at = None
+        self._paused_total = 0.0
         self._close_session()
 
 

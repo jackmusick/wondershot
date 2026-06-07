@@ -1,6 +1,4 @@
 import os
-import subprocess
-import sys
 import time
 
 import pytest
@@ -9,11 +7,11 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication
 
-pytestmark = pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="recorder tests drive POSIX subprocesses (true/sleep, SIGINT-as-EOS);"
-           " the recorder itself is Linux-only (portal/PipeWire/gst)",
-)
+from tests._fakegst import FakePipeline, WedgedPipeline
+
+# These tests are PURE: constructing ScreenRecorder imports no Gst, and
+# _make_pipeline is never called (tests assign _pipeline directly). They
+# run on every platform with no skips.
 
 
 @pytest.fixture(scope="session")
@@ -29,6 +27,7 @@ class FakeSettings:
         self.mic_device = ""
         self.noise_suppression = True
         self.screencast_token = ""
+        self.record_cursor_halo = False
 
 
 def make_recorder(tmp_path):
@@ -44,17 +43,11 @@ def wait_until(qapp, cond, timeout_s):
     return cond()
 
 
-def dead_proc():
-    proc = subprocess.Popen(["true"])
-    proc.wait()
-    return proc
-
-
 def test_stop_with_dead_pipeline_emits_signal(qapp, tmp_path):
-    """The gst process can die mid-recording (e.g. mux error). Stop must
+    """The pipeline can die mid-recording (e.g. mux error). Stop must
     still finalize and emit, not leave the UI on 'Stopping' forever."""
     rec = make_recorder(tmp_path)
-    rec._proc = dead_proc()
+    rec._pipeline = FakePipeline(status="error")
     rec.recording = True
     rec._tmp = str(tmp_path / ".rendering" / "r.mp4")
     rec._out = str(tmp_path / "r.mp4")
@@ -65,14 +58,14 @@ def test_stop_with_dead_pipeline_emits_signal(qapp, tmp_path):
     assert wait_until(qapp, lambda: results, 3), \
         "stop() on a dead pipeline must emit finished or failed"
     assert rec.recording is False
-    assert rec._proc is None
+    assert rec._pipeline is None
 
 
 def test_watchdog_detects_late_pipeline_death(qapp, tmp_path):
     """Pipeline death after the initial liveness check must surface as
     failed (resetting recording state) without the user pressing stop."""
     rec = make_recorder(tmp_path)
-    rec._proc = dead_proc()
+    rec._pipeline = FakePipeline(status="error")
     rec.recording = True
     failures = []
     rec.failed.connect(failures.append)
@@ -80,36 +73,32 @@ def test_watchdog_detects_late_pipeline_death(qapp, tmp_path):
     assert wait_until(qapp, lambda: failures, 3), \
         "watchdog must emit failed when the pipeline dies"
     assert rec.recording is False
-    assert rec._proc is None
+    assert rec._pipeline is None
 
 
 def test_video_branch_sanitizes_timestamps(tmp_path):
     """pipewiresrc intermittently emits buffers without PTS, which is
     fatal to mp4mux; videorate + fixed framerate caps absorb them."""
-    rec = make_recorder(tmp_path)
-    args = rec._gst_args(fd=5, node=7, tmp=str(tmp_path / "t.mp4"))
-    assert "videorate" in args
-    assert any("framerate=" in a for a in args)
+    from wondershot.record import build_pipeline_description
+    desc = build_pipeline_description(
+        fd=5, node=7, tmp=str(tmp_path / "t.mp4"), mic_enabled=False)
+    assert "videorate" in desc
+    assert "framerate=" in desc
 
 
 def test_elapsed_and_tick_while_recording(qapp, tmp_path):
     """The watchdog doubles as the elapsed-time ticker for the UI."""
     rec = make_recorder(tmp_path)
-    proc = subprocess.Popen(["sleep", "10"])
-    try:
-        rec._proc = proc
-        rec.recording = True
-        rec._started_at = time.monotonic() - 65
-        assert rec.elapsed_str() == "1:05"
-        ticks = []
-        rec.tick.connect(ticks.append)
-        rec._start_watchdog()
-        assert wait_until(qapp, lambda: ticks, 3), \
-            "watchdog must tick elapsed time while recording"
-        assert ticks[0].startswith("1:0")
-    finally:
-        proc.kill()
-        proc.wait()
+    rec._pipeline = FakePipeline(status="running")
+    rec.recording = True
+    rec._started_at = time.monotonic() - 65
+    assert rec.elapsed_str() == "1:05"
+    ticks = []
+    rec.tick.connect(ticks.append)
+    rec._start_watchdog()
+    assert wait_until(qapp, lambda: ticks, 3), \
+        "watchdog must tick elapsed time while recording"
+    assert ticks[0].startswith("1:0")
 
 
 def test_log_dir_uses_standard_cache_location():
@@ -141,8 +130,7 @@ def test_stop_emits_stopping_exactly_once(qapp, tmp_path):
     """Both UIs key their 'Stopping…' state off this signal; a second
     stop click (tray after toolbar) must not re-emit."""
     rec = make_recorder(tmp_path)
-    proc = subprocess.Popen(["sleep", "30"])
-    rec._proc = proc
+    rec._pipeline = FakePipeline(status="running")
     rec.recording = True
     rec._tmp = str(tmp_path / ".rendering" / "r.mp4")
     rec._out = str(tmp_path / "r.mp4")
@@ -155,17 +143,13 @@ def test_stop_emits_stopping_exactly_once(qapp, tmp_path):
     rec.stop()  # the second control's click: silent no-op, no re-emit
     assert stops == [1]
     assert wait_until(qapp, lambda: done, 5)
-    proc.poll() is not None or (proc.kill(), proc.wait())
 
 
 def test_stop_escalates_when_eos_wait_wedges(qapp, tmp_path):
-    """2026-06-06 forensics: gst-launch wedged in 'Waiting for EOS' for
-    3+ minutes (journal pulse overruns, orphaned .rendering tmp). The
-    finalize loop must escalate: SIGINT -> second SIGINT -> SIGKILL."""
+    """2026-06-06 forensics: the pipeline wedged in 'Waiting for EOS' for
+    3+ minutes. The finalize loop must escalate: EOS -> force_stop."""
     rec = make_recorder(tmp_path)
-    # a child that ignores SIGINT entirely == a wedged EOS wait
-    proc = subprocess.Popen(["bash", "-c", 'trap "" INT; sleep 60'])
-    rec._proc = proc
+    rec._pipeline = WedgedPipeline(status="running")
     rec.recording = True
     rec._tmp = str(tmp_path / ".rendering" / "r.mp4")
     rec._out = str(tmp_path / "r.mp4")
@@ -179,20 +163,18 @@ def test_stop_escalates_when_eos_wait_wedges(qapp, tmp_path):
     rec.finished.connect(lambda p: results.append(p))
     rec.stop()
     assert wait_until(qapp, lambda: results, 8), \
-        "escalation must finalize a SIGINT-ignoring pipeline"
+        "escalation must finalize a wedged pipeline"
     assert rec.recording is False
-    assert rec._proc is None
-    assert "ERROR" in results[0], \
-        "the did-not-finalize message must surface the gst log tail"
-    proc.poll() is not None or (proc.kill(), proc.wait())
+    assert rec._pipeline is None
+    assert "wedged" in results[0] or "ERROR" in results[0], \
+        "the did-not-finalize message must surface the error"
 
 
 def test_sigkill_keeps_partial_recording(qapp, tmp_path):
-    """When the ladder ends in SIGKILL the partial recording must be
+    """When the ladder ends in force_stop the partial recording must be
     KEPT, not deleted — minutes of footage may be salvageable."""
     rec = make_recorder(tmp_path)
-    proc = subprocess.Popen(["bash", "-c", 'trap "" INT; sleep 60'])
-    rec._proc = proc
+    rec._pipeline = WedgedPipeline(status="running")
     rec.recording = True
     d = tmp_path / ".rendering"
     d.mkdir()
@@ -209,10 +191,9 @@ def test_sigkill_keeps_partial_recording(qapp, tmp_path):
     rec.stop()
     assert wait_until(qapp, lambda: results, 8)
     assert out.exists() and out.read_bytes() == b"partial-footage", \
-        "the partial recording must survive the SIGKILL path"
+        "the partial recording must survive the force_stop path"
     assert not tmp.exists()  # moved out of .rendering, not left to the sweep
     assert "partial" in results[0]
-    proc.poll() is not None or (proc.kill(), proc.wait())
 
 
 def test_sweep_stale_tmp_removes_old_orphans_only(tmp_path):
@@ -233,7 +214,7 @@ def test_sweep_stale_tmp_removes_old_orphans_only(tmp_path):
 
 
 def test_watchdog_death_keeps_partial_recording(qapp, tmp_path):
-    """Same salvage mandate as the SIGKILL path: a pipeline that dies on
+    """Same salvage mandate as the force_stop path: a pipeline that dies on
     its own (mux error minutes in) must not delete the partial footage."""
     rec = make_recorder(tmp_path)
     d = tmp_path / ".rendering"
@@ -241,7 +222,7 @@ def test_watchdog_death_keeps_partial_recording(qapp, tmp_path):
     tmp = d / "r.mp4"
     tmp.write_bytes(b"partial-footage")
     out = tmp_path / "r.mp4"
-    rec._proc = dead_proc()
+    rec._pipeline = FakePipeline(status="error")
     rec.recording = True
     rec._tmp = str(tmp)
     rec._out = str(out)
