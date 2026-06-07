@@ -81,7 +81,7 @@ spikes/
 
 ### Step 1.1: Failing tests
 
-- [ ] Append to `tests/test_record.py` (it already has `qapp`, `FakeSettings`, `make_recorder`, `wait_until`, `dead_proc` helpers at lines 19-50 — reuse them):
+- [x] Append to `tests/test_record.py` (it already has `qapp`, `FakeSettings`, `make_recorder`, `wait_until`, `dead_proc` helpers at lines 19-50 — reuse them):
 
 ```python
 def test_stop_emits_stopping_exactly_once(qapp, tmp_path):
@@ -151,12 +151,12 @@ def test_sweep_stale_tmp_removes_old_orphans_only(tmp_path):
     assert fresh.exists()
 ```
 
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_record.py -q`
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_record.py -q`
       Expected: the three new tests FAIL — `AttributeError: 'ScreenRecorder' object has no attribute 'stopping'`, `AttributeError ... GRACE_MS`, and `ImportError: cannot import name 'sweep_stale_tmp'`. The 7 pre-existing tests still pass.
 
 ### Step 1.2: Implementation
 
-- [ ] In `wondershot/record.py`, add the signal and ladder constants to `ScreenRecorder` (currently lines 81-84):
+- [x] In `wondershot/record.py`, add the signal and ladder constants to `ScreenRecorder` (currently lines 81-84):
 
 ```python
     started = Signal()
@@ -174,7 +174,7 @@ def test_sweep_stale_tmp_removes_old_orphans_only(tmp_path):
     KILL_MS = 10000
 ```
 
-- [ ] Replace `stop()` (record.py lines 127-138) with:
+- [x] Replace `stop()` (record.py lines 127-138) with:
 
 ```python
     def stop(self) -> None:
@@ -192,7 +192,7 @@ def test_sweep_stale_tmp_removes_old_orphans_only(tmp_path):
         self._poll_exit(elapsed_ms=0)
 ```
 
-- [ ] Replace `_poll_exit()` (record.py lines 357-379) with:
+- [x] Replace `_poll_exit()` (record.py lines 357-379) with:
 
 ```python
     def _poll_exit(self, elapsed_ms: int = 0, nudged: bool = False) -> None:
@@ -227,7 +227,7 @@ def test_sweep_stale_tmp_removes_old_orphans_only(tmp_path):
 
       Note: the old signature was `_poll_exit(self, timeout_ms)` counting *down*; the only caller is `stop()`, updated above. `test_stop_with_dead_pipeline_emits_signal` calls `stop()`, not `_poll_exit`, so it keeps passing.
 
-- [ ] Add `sweep_stale_tmp` as a module-level function (place it just above `class ScreenRecorder`, after `mic_pulse_device`):
+- [x] Add `sweep_stale_tmp` as a module-level function (place it just above `class ScreenRecorder`, after `mic_pulse_device`):
 
 ```python
 def sweep_stale_tmp(tmp_dir: str, max_age_s: int = 3600) -> None:
@@ -251,20 +251,20 @@ def sweep_stale_tmp(tmp_dir: str, max_age_s: int = 3600) -> None:
             pass
 ```
 
-- [ ] Call it in `_launch_gst` right after the tmp dir is created (record.py line 295 `os.makedirs(tmp_dir, exist_ok=True)`):
+- [x] Call it in `_launch_gst` right after the tmp dir is created (record.py line 295 `os.makedirs(tmp_dir, exist_ok=True)`):
 
 ```python
         os.makedirs(tmp_dir, exist_ok=True)
         sweep_stale_tmp(tmp_dir)
 ```
 
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_record.py -q`
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_record.py -q`
       Expected: all tests pass (10 total in this file).
 
-- [ ] Run the full suite: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q`
+- [x] Run the full suite: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q`
       Expected: green (186 pre-existing + 3 new).
 
-- [ ] Commit: `git add -A && git commit -m "record: stopping signal, EOS-wedge escalation, log tail in failures, stale tmp sweep"`
+- [x] Commit: `git add -A && git commit -m "record: stopping signal, EOS-wedge escalation, log tail in failures, stale tmp sweep"`
 
 ---
 

@@ -135,3 +135,98 @@ def test_recorder_save_token_hook_persists(qapp, tmp_path):
     rec = ScreenRecorder(settings)
     rec._save_restore_token("new-grant")
     assert settings.screencast_token == "new-grant"
+
+
+def test_stop_emits_stopping_exactly_once(qapp, tmp_path):
+    """Both UIs key their 'Stopping…' state off this signal; a second
+    stop click (tray after toolbar) must not re-emit."""
+    rec = make_recorder(tmp_path)
+    proc = subprocess.Popen(["sleep", "30"])
+    rec._proc = proc
+    rec.recording = True
+    rec._tmp = str(tmp_path / ".rendering" / "r.mp4")
+    rec._out = str(tmp_path / "r.mp4")
+    stops = []
+    rec.stopping.connect(lambda: stops.append(1))
+    done = []
+    rec.failed.connect(lambda m: done.append(m))
+    rec.finished.connect(lambda p: done.append(p))
+    rec.stop()
+    rec.stop()  # the second control's click: silent no-op, no re-emit
+    assert stops == [1]
+    assert wait_until(qapp, lambda: done, 5)
+    proc.poll() is not None or (proc.kill(), proc.wait())
+
+
+def test_stop_escalates_when_eos_wait_wedges(qapp, tmp_path):
+    """2026-06-06 forensics: gst-launch wedged in 'Waiting for EOS' for
+    3+ minutes (journal pulse overruns, orphaned .rendering tmp). The
+    finalize loop must escalate: SIGINT -> second SIGINT -> SIGKILL."""
+    rec = make_recorder(tmp_path)
+    # a child that ignores SIGINT entirely == a wedged EOS wait
+    proc = subprocess.Popen(["bash", "-c", 'trap "" INT; sleep 60'])
+    rec._proc = proc
+    rec.recording = True
+    rec._tmp = str(tmp_path / ".rendering" / "r.mp4")
+    rec._out = str(tmp_path / "r.mp4")
+    rec.GRACE_MS = 400   # speed the ladder up for the test
+    rec.KILL_MS = 900
+    log = tmp_path / "recorder.log"
+    log.write_text("gst output\nERROR: from element mux: wedged\n")
+    rec.log_path = str(log)
+    results = []
+    rec.failed.connect(lambda m: results.append(m))
+    rec.finished.connect(lambda p: results.append(p))
+    rec.stop()
+    assert wait_until(qapp, lambda: results, 8), \
+        "escalation must finalize a SIGINT-ignoring pipeline"
+    assert rec.recording is False
+    assert rec._proc is None
+    assert "ERROR" in results[0], \
+        "the did-not-finalize message must surface the gst log tail"
+    proc.poll() is not None or (proc.kill(), proc.wait())
+
+
+def test_sigkill_keeps_partial_recording(qapp, tmp_path):
+    """When the ladder ends in SIGKILL the partial recording must be
+    KEPT, not deleted — minutes of footage may be salvageable."""
+    rec = make_recorder(tmp_path)
+    proc = subprocess.Popen(["bash", "-c", 'trap "" INT; sleep 60'])
+    rec._proc = proc
+    rec.recording = True
+    d = tmp_path / ".rendering"
+    d.mkdir()
+    tmp = d / "r.mp4"
+    tmp.write_bytes(b"partial-footage")
+    out = tmp_path / "r.mp4"
+    rec._tmp = str(tmp)
+    rec._out = str(out)
+    rec.GRACE_MS = 400
+    rec.KILL_MS = 900
+    results = []
+    rec.failed.connect(lambda m: results.append(m))
+    rec.finished.connect(lambda p: results.append(p))
+    rec.stop()
+    assert wait_until(qapp, lambda: results, 8)
+    assert out.exists() and out.read_bytes() == b"partial-footage", \
+        "the partial recording must survive the SIGKILL path"
+    assert not tmp.exists()  # moved out of .rendering, not left to the sweep
+    assert "partial" in results[0]
+    proc.poll() is not None or (proc.kill(), proc.wait())
+
+
+def test_sweep_stale_tmp_removes_old_orphans_only(tmp_path):
+    """Four orphaned mp4s sat in .rendering on 2026-06-06 (EOS wedges +
+    app restarts). Old files are dead; fresh ones may be live."""
+    import time as _time
+    from wondershot.record import sweep_stale_tmp
+    d = tmp_path / ".rendering"
+    d.mkdir()
+    old = d / "Recording_old.mp4"
+    old.write_bytes(b"x")
+    os.utime(old, (_time.time() - 7200, _time.time() - 7200))
+    fresh = d / "Recording_fresh.mp4"
+    fresh.write_bytes(b"x")
+    sweep_stale_tmp(str(d))
+    assert not old.exists()
+    assert fresh.exists()

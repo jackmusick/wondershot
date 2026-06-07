@@ -75,13 +75,43 @@ def mic_pulse_device(preferred_description: str = "") -> str:
     return bytes(chosen.id().data()).decode(errors="replace")
 
 
+def sweep_stale_tmp(tmp_dir: str, max_age_s: int = 3600) -> None:
+    """Remove finalize leftovers from crashed/quit-while-recording runs.
+
+    2026-06-06 forensics: four orphaned mp4s in <library>/.rendering.
+    A live recording's tmp has a fresh mtime (filesink writes
+    continuously), so anything older than max_age_s is dead.
+    """
+    try:
+        names = os.listdir(tmp_dir)
+    except OSError:
+        return
+    now = time.time()
+    for name in names:
+        path = os.path.join(tmp_dir, name)
+        try:
+            if now - os.path.getmtime(path) > max_age_s:
+                os.unlink(path)
+        except OSError:
+            pass
+
+
 class ScreenRecorder(QObject):
     """Portal + PipeWire + GStreamer screen recorder."""
 
     started = Signal()
+    stopping = Signal()  # a stop transition began (whichever control asked)
     finished = Signal(str)  # final file path
     failed = Signal(str)
     tick = Signal(str)  # elapsed time ("1:05"), once a second while recording
+
+    # Finalize escalation ladder. gst-launch -e can wedge in "Waiting for
+    # EOS" indefinitely (observed 2026-06-06: pipeline still draining-
+    # failing 3+ min after SIGINT — journal pipewire-pulse overruns,
+    # orphaned .rendering tmp). A SECOND SIGINT makes gst-launch abort
+    # the EOS wait and exit; SIGKILL is the last resort.
+    GRACE_MS = 5000
+    KILL_MS = 10000
 
     def __init__(self, settings, parent=None):
         super().__init__(parent)
@@ -130,12 +160,13 @@ class ScreenRecorder(QObject):
         if self._proc is None:
             return
         self._stopping = True
+        self.stopping.emit()
         if self._proc.poll() is None:
             # -e turns SIGINT into EOS: the mp4 finalizes, then exits.
             self._proc.send_signal(signal.SIGINT)
         # Even if the pipeline already died (mux error etc.), finalize so
         # finished/failed always fires — the UI must never stay "Stopping".
-        self._poll_exit(timeout_ms=15000)
+        self._poll_exit(elapsed_ms=0)
 
     # -- portal plumbing -------------------------------------------------------
 
@@ -293,6 +324,7 @@ class ScreenRecorder(QObject):
                           timestamp_name("Recording").replace(".png", ".mp4"))
         tmp_dir = os.path.join(self.settings.library_dir, ".rendering")
         os.makedirs(tmp_dir, exist_ok=True)
+        sweep_stale_tmp(tmp_dir)
         tmp = os.path.join(tmp_dir, os.path.basename(out))
         self._tmp, self._out = tmp, out
         args = self._gst_args(fd, node, tmp)
@@ -354,14 +386,18 @@ class ScreenRecorder(QObject):
             return
         self.tick.emit(self.elapsed_str())
 
-    def _poll_exit(self, timeout_ms: int) -> None:
+    def _poll_exit(self, elapsed_ms: int = 0, nudged: bool = False) -> None:
         if self._proc is None:
             return
         if self._proc.poll() is None:
-            if timeout_ms <= 0:
+            if elapsed_ms >= self.KILL_MS:
                 self._proc.kill()
+            elif elapsed_ms >= self.GRACE_MS and not nudged:
+                # second interrupt: gst-launch gives up waiting for EOS
+                self._proc.send_signal(signal.SIGINT)
+                nudged = True
             QTimer.singleShot(
-                200, lambda: self._poll_exit(timeout_ms - 200))
+                200, lambda: self._poll_exit(elapsed_ms + 200, nudged))
             return
         self.recording = False
         ok = (self._proc.returncode == 0 and self._tmp
@@ -372,11 +408,19 @@ class ScreenRecorder(QObject):
         if ok:
             shutil.move(tmp, out)
             self.finished.emit(out)
-        else:
-            if tmp and os.path.exists(tmp):
-                os.unlink(tmp)
-            self.failed.emit(f"recording did not finalize "
-                             f"(log: {getattr(self, 'log_path', '?')})")
+            return
+        # KEEP whatever was written — a SIGKILLed pipeline can leave
+        # minutes of salvageable footage; deleting it was part of the
+        # "Stop did nothing / recording vanished" bug.
+        partial = ""
+        if tmp and os.path.exists(tmp) and os.path.getsize(tmp) > 0:
+            shutil.move(tmp, out)
+            partial = f"; partial recording kept: {os.path.basename(out)}"
+        elif tmp and os.path.exists(tmp):
+            os.unlink(tmp)  # zero bytes: nothing to salvage
+        self.failed.emit(
+            f"recording did not finalize: {self._log_tail()[:160]} "
+            f"(log: {getattr(self, 'log_path', '?')}){partial}")
 
     def _close_session(self) -> None:
         if self._session and self._conn is not None:
