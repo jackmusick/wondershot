@@ -1,4 +1,12 @@
-# WS-C desktop checklist (live KDE session, NOT offscreen)
+# Wondershot desktop verification checklist
+
+Consolidated across the whole Snagit-parity effort (batches A–E). Linux
+items need a live KDE session (NOT offscreen); the Windows section runs
+on the win11-pam VM. Nothing here is required for the build to be
+"done" — it's human-eye confirmation of things that can't be asserted
+headlessly.
+
+## Linux — WS-C capture UX (live KDE session)
 
 1. Quick bar: Settings → General → "Quick-action bar after capture" ON,
    "Show Wondershot window after capture" OFF. Capture a region — a
@@ -107,11 +115,15 @@ visually inspected and ffprobe dimension/codec checks.
    WinCaptureManager.capture_active_window() on the desktop:
    active_window_rect=(129,130,1115,628), crop PNG = 1115x628 = exactly
    the foreground window frame (DWM shadow excluded), not the desktop.
-6. Recording produces a playable mp4 — PASS (via gdigrab fallback).
-   ddagrab probe = True but fails on the VM (no D3D11VA device);
-   recorder falls back to gdigrab: started→ticks→finished,
-   Recording_*.mp4 = h264, duration 6.23s, extracted frame shows the
-   real desktop. Mic: no dshow audio devices on the VM → video-only.
+6. Recording produces a playable mp4 — PASS via AUTOMATIC ddagrab→gdigrab
+   fallback (re-verified 2026-06-07 through the real probe path — no
+   forced builder). ddagrab filter present but fails at runtime on the VM
+   (no D3D11VA device); the recorder now detects the early death and
+   transparently relaunches gdigrab. Real path: create_screen_recorder()
+   → started → cand_idx advances 0→1 → finished, Recording_*.mp4 =
+   h264 1280x800 3.13s (ffprobe). Mic: no dshow audio devices on the VM →
+   video-only. (This closes the review's BIG finding: the fallback was
+   advertised but didn't exist; it does now, with 4 regression tests.)
 7. Editor annotates + sidecar persists — PASS. On Windows, offscreen:
    `test_editor test_sidecar test_editor_sidecar test_items_serialize`
    = 63 passed (case-insensitivity + backslash paths exercised).

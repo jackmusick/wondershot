@@ -219,9 +219,15 @@ correct crops of real pixels, recording produces a playable h264 mp4.
 
 Documented gaps / landmines:
 - **ddagrab needs a D3D11 device** — the VM has no GPU D3D11VA, so
-  `ddagrab` fails ("Failed to create D3D11VA device") and the recorder
-  falls back to **gdigrab** (verified end-to-end). On real hardware
-  ddagrab is preferred; the probe + fallback handle both.
+  `ddagrab` fails ("Failed to create D3D11VA device"). The recorder
+  detects the candidate dying within `FALLBACK_WINDOW_S` (never produced
+  footage) and **automatically relaunches gdigrab** — a runtime,
+  death-triggered fallback (filter-presence probe alone can't predict
+  D3D11 init). Verified end-to-end through the real create_screen_recorder
+  path on the VM: h264 1280x800 mp4, no forced builder. A *later* death
+  stays a real, salvaged failure. On GPU hardware ddagrab wins first try.
+  (Added in response to code review — the originally-claimed fallback
+  didn't exist; 4 regression tests now guard it.)
 - **Cursor capture**: unsupported (mss/BitBlt); toggle disabled.
 - **Window mode = active window only** (no compositor window picker).
 - **Mic** depends on dshow devices (VM has none → records video-only).
