@@ -70,6 +70,16 @@ _Last updated: 2026-06-06_
   `grabbit` CLI alias kept so existing KDE hotkeys still fire
 - Old `~/.local/share/grabbit/venv` is orphaned; safe to delete once the
   new install is confirmed good
+- 2026-06-07: Jack's Alt+% capture shortcut was still bound to the
+  pre-rename `net.local.grabbit.desktop` service id — the deleted file's
+  cached entry launched the ORPHANED venv's old binary, whose
+  single-instance socket name (`grabbit-<uid>`) no longer matches the
+  running app (`wondershot-<uid>`), so the shortcut died whenever the
+  app was already open. Fixed with a NoDisplay compatibility shim at
+  `~/.local/share/applications/net.local.grabbit.desktop` exec'ing the
+  new binary (KGlobalAccel config deliberately untouched — landmine).
+  `wondershot --install-desktop` should write this shim too so other
+  pre-rename users heal automatically.
 
 **Sharing — three providers, one Share button**
 - Single Share button, top-right of the gallery's main toolbar (same
