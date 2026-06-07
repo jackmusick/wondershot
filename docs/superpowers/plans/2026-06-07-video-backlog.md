@@ -55,7 +55,7 @@ python -m venv .venv && .venv/bin/pip install -e ".[spike]" pytest
 - Modify: `wondershot/settings.py` (insert after line 298, the `quick_bar_timeout` setter, before the `# -- AI` section comment at line 300)
 - Create: `tests/test_settings_video.py`
 
-- [ ] **Write the failing test** — create `tests/test_settings_video.py`:
+- [x] **Write the failing test** — create `tests/test_settings_video.py`:
 
 ```python
 import os
@@ -100,9 +100,9 @@ def test_video_tool_values_survive_string_storage(tmp_path):
     assert s.gif_max_width == 1280
 ```
 
-- [ ] **Run it, expect failure:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_settings_video.py -q` → 3 failures, `AttributeError: 'Settings' object has no attribute 'video_blur_strength'`.
+- [x] **Run it, expect failure:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_settings_video.py -q` → 3 failures, `AttributeError: 'Settings' object has no attribute 'video_blur_strength'`.
 
-- [ ] **Implement** — in `wondershot/settings.py`, insert between the `quick_bar_timeout` setter (line 298) and the `# -- AI (OpenAI-compatible chat endpoint)` comment (line 300):
+- [x] **Implement** — in `wondershot/settings.py`, insert between the `quick_bar_timeout` setter (line 298) and the `# -- AI (OpenAI-compatible chat endpoint)` comment (line 300):
 
 ```python
     # -- video tools (persisted defaults) ------------------------------------
@@ -134,9 +134,9 @@ def test_video_tool_values_survive_string_storage(tmp_path):
         self._s.setValue("gif_max_width", int(value))
 ```
 
-- [ ] **Run:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_settings_video.py -q` → 3 passed.
-- [ ] **Full suite:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q` → 189 passed.
-- [ ] **Commit:** `git add wondershot/settings.py tests/test_settings_video.py && git commit -m "Settings: persisted video-tool defaults (blur strength, GIF fps/width)"`
+- [x] **Run:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_settings_video.py -q` → 3 passed.
+- [x] **Full suite:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q` → 189 passed.
+- [x] **Commit:** `git add wondershot/settings.py tests/test_settings_video.py && git commit -m "Settings: persisted video-tool defaults (blur strength, GIF fps/width)"`
 
 ---
 
@@ -147,7 +147,7 @@ def test_video_tool_values_survive_string_storage(tmp_path):
 - Modify: `tests/test_video_filter.py` (append)
 - Create: `tests/test_video_pane.py`
 
-- [ ] **Write the characterization test** for the existing `blur` parameter (this test passes immediately — it pins the contract the UI is about to depend on; the failing tests come next). Append to `tests/test_video_filter.py`:
+- [x] **Write the characterization test** for the existing `blur` parameter (this test passes immediately — it pins the contract the UI is about to depend on; the failing tests come next). Append to `tests/test_video_filter.py`:
 
 ```python
 def test_blur_strength_parameter():
@@ -158,7 +158,7 @@ def test_blur_strength_parameter():
     assert "boxblur=14" not in graph
 ```
 
-- [ ] **Write the failing pane tests** — create `tests/test_video_pane.py`:
+- [x] **Write the failing pane tests** — create `tests/test_video_pane.py`:
 
 ```python
 import os
@@ -268,9 +268,9 @@ def test_apply_blurs_passes_strength_to_filter(qapp, tmp_path, monkeypatch):
     assert FakeProc.last[0] == "/usr/bin/ffmpeg"  # via ffmpegutil seam
 ```
 
-- [ ] **Run, expect failure:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_video_pane.py tests/test_video_filter.py -q` → the 5 pane tests fail (`AttributeError: ... no attribute 'blur_strength_spin'`); all filter tests including the new characterization pass.
+- [x] **Run, expect failure:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_video_pane.py tests/test_video_filter.py -q` → the 5 pane tests fail (`AttributeError: ... no attribute 'blur_strength_spin'`); all filter tests including the new characterization pass.
 
-- [ ] **Implement** — four edits in `wondershot/video.py`:
+- [x] **Implement** — four edits in `wondershot/video.py`:
 
   1. Add `QSpinBox` to the `QtWidgets` import block (line 23–33), keeping alphabetical order:
 
@@ -344,9 +344,9 @@ from PySide6.QtWidgets import (
             video_h=vs.height() if vs else 0)
 ```
 
-- [ ] **Run:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_video_pane.py tests/test_video_filter.py -q` → all pass (5 pane + 15 filter: 14 existing + the characterization test).
-- [ ] **Full suite:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q` → 195 passed.
-- [ ] **Commit:** `git add wondershot/video.py tests/test_video_pane.py tests/test_video_filter.py && git commit -m "Video: blur strength control wired into the boxblur render"`
+- [x] **Run:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_video_pane.py tests/test_video_filter.py -q` → all pass (5 pane + 15 filter: 14 existing + the characterization test).
+- [x] **Full suite:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q` → 195 passed.
+- [x] **Commit:** `git add wondershot/video.py tests/test_video_pane.py tests/test_video_filter.py && git commit -m "Video: blur strength control wired into the boxblur render"`
 
 ---
 
@@ -356,7 +356,7 @@ from PySide6.QtWidgets import (
 - Modify: `wondershot/video.py` (new module-level `preview_blur` after `build_blur_filter`, line 73; `RedactOverlay.paintEvent` frost block, lines 258–262)
 - Create: `tests/test_video_preview.py`
 
-- [ ] **Write the failing tests** — create `tests/test_video_preview.py`:
+- [x] **Write the failing tests** — create `tests/test_video_preview.py`:
 
 ```python
 import os
@@ -455,9 +455,9 @@ def test_overlay_paints_blurred_region(qapp, tmp_path):
     assert outside.red() > 245
 ```
 
-- [ ] **Run, expect failure:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_video_preview.py -q` → `ImportError: cannot import name 'preview_blur'` (5 tests) and the integration test fails (frost fill paints translucent white over green, not blurred frame pixels — `inside.red()` lands near 255-blend, possibly passing by luck; the `preview_blur` import failures are the definitive red).
+- [x] **Run, expect failure:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_video_preview.py -q` → `ImportError: cannot import name 'preview_blur'` (5 tests) and the integration test fails (frost fill paints translucent white over green, not blurred frame pixels — `inside.red()` lands near 255-blend, possibly passing by luck; the `preview_blur` import failures are the definitive red).
 
-- [ ] **Implement** — two edits in `wondershot/video.py`:
+- [x] **Implement** — two edits in `wondershot/video.py`:
 
   1. Add the module-level function directly after `build_blur_filter` (after line 72, before `build_frame_grab_args`):
 
@@ -513,9 +513,9 @@ def preview_blur(img, radius: int):
 
   (The number badge and the rest of `paintEvent` are unchanged. `_blur_strength_changed` from Task 2 already calls `self.overlay.update()`, so dragging the spinbox re-blurs the preview live.)
 
-- [ ] **Run:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_video_preview.py -q` → 6 passed.
-- [ ] **Full suite:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q` → 201 passed.
-- [ ] **Commit:** `git add wondershot/video.py tests/test_video_preview.py && git commit -m "Video: frost rectangles preview the actual blur (QImage approximation)"`
+- [x] **Run:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_video_preview.py -q` → 6 passed.
+- [x] **Full suite:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q` → 201 passed.
+- [x] **Commit:** `git add wondershot/video.py tests/test_video_preview.py && git commit -m "Video: frost rectangles preview the actual blur (QImage approximation)"`
 
 ---
 
@@ -525,7 +525,7 @@ def preview_blur(img, radius: int):
 - Modify: `wondershot/video.py` (new module-level function after `build_trim_args`, line 120)
 - Modify: `tests/test_video_filter.py` (append)
 
-- [ ] **Write the failing tests** — append to `tests/test_video_filter.py`:
+- [x] **Write the failing tests** — append to `tests/test_video_filter.py`:
 
 ```python
 def test_gif_args_defaults():
@@ -561,9 +561,9 @@ def test_gif_args_no_partial_range():
     assert "-ss" not in args and "-to" not in args
 ```
 
-- [ ] **Run, expect failure:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_video_filter.py -q` → 4 failures, `ImportError: cannot import name 'build_gif_args'`.
+- [x] **Run, expect failure:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_video_filter.py -q` → 4 failures, `ImportError: cannot import name 'build_gif_args'`.
 
-- [ ] **Implement** — in `wondershot/video.py`, insert after `build_trim_args` (after line 120, before the `_encoder_cache` line):
+- [x] **Implement** — in `wondershot/video.py`, insert after `build_trim_args` (after line 120, before the `_encoder_cache` line):
 
 ```python
 def build_gif_args(src: str, out: str, fps: int = 12, max_width: int = 720,
@@ -584,9 +584,9 @@ def build_gif_args(src: str, out: str, fps: int = 12, max_width: int = 720,
     return [*args, "-i", src, "-vf", vf, out]
 ```
 
-- [ ] **Run:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_video_filter.py -q` → 19 passed (14 existing + 1 from Task 2 + these 4).
-- [ ] **Full suite:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q` → 205 passed.
-- [ ] **Commit:** `git add wondershot/video.py tests/test_video_filter.py && git commit -m "Video: build_gif_args with fps/width/range (trim-style input seek)"`
+- [x] **Run:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_video_filter.py -q` → 19 passed (14 existing + 1 from Task 2 + these 4).
+- [x] **Full suite:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q` → 205 passed.
+- [x] **Commit:** `git add wondershot/video.py tests/test_video_filter.py && git commit -m "Video: build_gif_args with fps/width/range (trim-style input seek)"`
 
 ---
 
@@ -598,7 +598,7 @@ This task contains the one refactor of shipped code: generalizing the trim-only 
 - Modify: `wondershot/video.py` (`VideoPane.__init__` lines 451–452 & 516–519 & layout line 539; `load` line 575–582; `frozen_mode` line 624; `active_redaction` line 664; `set_active` line 671; `spans` line 679; `_blur_mode` line 684; `_trim_mode` line 696; `_clear_redactions` line 734; `refresh_overlays` line 745; `sync_active_row` line 765; `_position_changed` line 644; `RangeBar._hit` line 330; `RangeBar.paintEvent` lines 418 & 422; `_convert_gif`/`_gif_done` lines 945–976)
 - Modify: `tests/test_video_pane.py` (append)
 
-- [ ] **Write the failing tests** — append to `tests/test_video_pane.py`:
+- [x] **Write the failing tests** — append to `tests/test_video_pane.py`:
 
 ```python
 def test_gif_mode_creates_full_range_span(qapp, tmp_path):
@@ -684,9 +684,9 @@ def test_convert_gif_full_range_omits_seek(qapp, tmp_path, monkeypatch):
     assert "-ss" not in args and "-to" not in args
 ```
 
-- [ ] **Run, expect failure:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_video_pane.py -q` → the 7 new tests fail (`AttributeError: ... no attribute 'gif_fps_spin'` / `'single_span'`); the Task-2 tests still pass.
+- [x] **Run, expect failure:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_video_pane.py -q` → the 7 new tests fail (`AttributeError: ... no attribute 'gif_fps_spin'` / `'single_span'`); the Task-2 tests still pass.
 
-- [ ] **Implement** — edits in `wondershot/video.py`:
+- [x] **Implement** — edits in `wondershot/video.py`:
 
   1. **State field** — in `VideoPane.__init__`, after `self.trim: Redaction | None = None` (line 451) add:
 
@@ -853,9 +853,9 @@ def test_convert_gif_full_range_omits_seek(qapp, tmp_path, monkeypatch):
 
   Note: `load()` (line 582) already hides `gif_btn` for GIF sources; the option widgets stay hidden because the mode is unchecked by `_clear_redactions`. Validation that `end > start` is enforced structurally by `RangeBar` (it clamps `start <= end - 0.1` during drags, lines 389–392) plus the full-range fallback — no extra guard needed.
 
-- [ ] **Run:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_video_pane.py -q` → 12 passed.
-- [ ] **Regression check (mandatory — this task touched shipped trim/blur paths):** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q` → 212 passed, zero failures.
-- [ ] **Commit:** `git add wondershot/video.py tests/test_video_pane.py && git commit -m "Video: GIF fps/width/range options reusing the trim span timeline"`
+- [x] **Run:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_video_pane.py -q` → 12 passed.
+- [x] **Regression check (mandatory — this task touched shipped trim/blur paths):** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q` → 212 passed, zero failures.
+- [x] **Commit:** `git add wondershot/video.py tests/test_video_pane.py && git commit -m "Video: GIF fps/width/range options reusing the trim span timeline"`
 
 ---
 
@@ -864,8 +864,8 @@ def test_convert_gif_full_range_omits_seek(qapp, tmp_path, monkeypatch):
 **Files:**
 - Modify: `ROADMAP.md` (lines 192–194 only — see cross-track caution in File Structure)
 
-- [ ] **Full suite, clean:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q` → 212 passed. Also run the video-touching files verbosely to eyeball nothing was skipped: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_video_filter.py tests/test_video_pane.py tests/test_video_preview.py tests/test_settings_video.py -v`.
-- [ ] **Update ROADMAP** — replace lines 192–194:
+- [x] **Full suite, clean:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q` → 212 passed. Also run the video-touching files verbosely to eyeball nothing was skipped: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_video_filter.py tests/test_video_pane.py tests/test_video_preview.py tests/test_settings_video.py -v`.
+- [x] **Update ROADMAP** — replace lines 192–194:
 
 ```
 4. **Video backlog** — blur strength setting, GIF options
@@ -883,5 +883,5 @@ with:
    (trim/cut moved to WS-A)
 ```
 
-- [ ] **Hand these manual items to the consolidated desktop checklist** (the orchestrator owns `docs/superpowers/plans/2026-06-07-desktop-checklist.md`; do NOT create a separate checklist file — list them in your final task report): (1) draw a blur on a real recording, drag the Strength spinbox and watch the frost re-blur live; render and compare preview vs output; (2) re-open the app — strength/fps/width remember their last values; (3) Convert to GIF with a sub-range on the timeline, confirm the GIF covers only that range and respects fps/width; (4) confirm trim and frame-grab still behave exactly as before (regression items); (5) confirm blur/trim/GIF buttons mutually exclude on click.
-- [ ] **Commit:** `git add ROADMAP.md && git commit -m "ROADMAP: track 3c video backlog done (blur strength, true preview, GIF options)"`
+- [x] **Hand these manual items to the consolidated desktop checklist** (the orchestrator owns `docs/superpowers/plans/2026-06-07-desktop-checklist.md`; do NOT create a separate checklist file — list them in your final task report): (1) draw a blur on a real recording, drag the Strength spinbox and watch the frost re-blur live; render and compare preview vs output; (2) re-open the app — strength/fps/width remember their last values; (3) Convert to GIF with a sub-range on the timeline, confirm the GIF covers only that range and respects fps/width; (4) confirm trim and frame-grab still behave exactly as before (regression items); (5) confirm blur/trim/GIF buttons mutually exclude on click.
+- [x] **Commit:** `git add ROADMAP.md && git commit -m "ROADMAP: track 3c video backlog done (blur strength, true preview, GIF options)"`

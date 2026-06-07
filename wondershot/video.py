@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QSlider,
+    QSpinBox,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -70,6 +71,25 @@ def build_blur_filter(redactions, blur: int = 14,
             f"enable='between(t,{r.start:.3f},{r.end:.3f})'[{out}]")
         cur = out
     return ";".join(parts), cur
+
+
+def preview_blur(img, radius: int):
+    """Preview-only approximation of ffmpeg's boxblur for the overlay.
+
+    Downscale by a radius-derived factor with bilinear filtering, then
+    scale back up — O(pixels), pure QImage, no deps. Visually close to
+    boxblur=radius but NOT the same kernel: the ffmpeg render pass is
+    the source of truth, this only previews it. Returns the input
+    unchanged when blurring is meaningless (radius<=0, tiny/null image).
+    """
+    if radius <= 0 or img.isNull() or img.width() < 2 or img.height() < 2:
+        return img
+    factor = max(2, int(radius))
+    w = max(1, img.width() // factor)
+    h = max(1, img.height() // factor)
+    small = img.scaled(w, h, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
+    return small.scaled(img.width(), img.height(),
+                        Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
 
 
 def build_frame_grab_args(src: str, position_s: float, out: str) -> list[str]:
@@ -118,6 +138,24 @@ def build_trim_args(src: str, start_s: float, end_s: float, out: str,
     if os.path.splitext(out)[1].lower() in (".mp4", ".m4v", ".mov"):
         args += ["-movflags", "+faststart"]  # instant seeking
     return [*args, out]
+
+
+def build_gif_args(src: str, out: str, fps: int = 12, max_width: int = 720,
+                   start_s: float | None = None,
+                   end_s: float | None = None) -> list[str]:
+    """ffmpeg args for the two-pass palette GIF convert.
+
+    -ss/-to are INPUT options (before -i): absolute source timestamps,
+    the exact pattern build_trim_args uses. scale never upsizes
+    (min(max_width, iw)) and lanczos keeps screen text legible. The
+    range is applied only when both ends are given.
+    """
+    args = ["-y"]
+    if start_s is not None and end_s is not None:
+        args += ["-ss", f"{start_s:.3f}", "-to", f"{end_s:.3f}"]
+    vf = (f"fps={fps},scale='min({max_width},iw)':-1:flags=lanczos,"
+          "split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse")
+    return [*args, "-i", src, "-vf", vf, out]
 
 
 _encoder_cache: str | None = None
@@ -257,8 +295,16 @@ class RedactOverlay(QWidget):
                 continue
             r = self.video_to_widget(red.rect)
             color = QColor(PALETTE[i % len(PALETTE)])
+            region = red.rect.intersected(frame_img.rect())
+            if not region.isEmpty():
+                # Target the mapped *intersection*, not r: if red.rect ever
+                # exceeds the frame (size mismatch edge case), drawing the
+                # cropped copy into the full r would stretch it.
+                p.drawImage(self.video_to_widget(region), preview_blur(
+                    frame_img.copy(region),
+                    self.pane.blur_strength_spin.value()))
             p.setPen(QPen(color, 2, Qt.DashLine))
-            p.setBrush(QColor(255, 255, 255, 70))
+            p.setBrush(Qt.NoBrush)
             p.drawRect(r)
             f = p.font()
             f.setBold(True)
@@ -327,7 +373,7 @@ class RangeBar(QWidget):
     def _hit(self, x: float) -> tuple | None:
         """Edge/inside hit-test, active band first."""
         spans = self.pane.spans()
-        active = 0 if self.pane.trim is not None else self.pane.active_idx
+        active = 0 if self.pane.single_span() is not None else self.pane.active_idx
         order = []
         if 0 <= active < len(spans):
             order.append(active)
@@ -415,11 +461,11 @@ class RangeBar(QWidget):
         p.drawRoundedRect(0, 4, w, h - 8, 4, 4)
         dur = max(1, self.pane.player.duration())
         spans = self.pane.spans()
-        active_i = 0 if self.pane.trim is not None else self.pane.active_idx
+        active_i = 0 if self.pane.single_span() is not None else self.pane.active_idx
         for i, red in enumerate(spans):
             x1 = red.start * 1000 / dur * w
             x2 = red.end * 1000 / dur * w
-            color = (QColor("#3daee9") if self.pane.trim is not None
+            color = (QColor("#3daee9") if self.pane.single_span() is not None
                      else QColor(PALETTE[i % len(PALETTE)]))
             active = i == active_i
             color.setAlpha(230 if active else 130)
@@ -449,6 +495,7 @@ class VideoPane(QWidget):
         self._frame_proc: QProcess | None = None
         self.redactions: list[Redaction] = []
         self.trim: Redaction | None = None   # rect unused; start/end = kept span
+        self.gif_range: Redaction | None = None  # rect unused; start/end = GIF span
         self._trim_proc: QProcess | None = None
         self.active_idx = -1
         self._row_spins: list[tuple[QDoubleSpinBox, QDoubleSpinBox]] = []
@@ -496,6 +543,19 @@ class VideoPane(QWidget):
         self.apply_btn.clicked.connect(self._apply_blurs)
         self.apply_btn.hide()
 
+        self.blur_strength_label = QLabel("Strength", self)
+        self.blur_strength_label.hide()
+        self.blur_strength_spin = QSpinBox(self)
+        self.blur_strength_spin.setRange(2, 60)
+        self.blur_strength_spin.setToolTip(
+            "Blur radius used for the render — the boxes show an "
+            "approximate live preview (the rendered blur is the "
+            "ffmpeg boxblur, which can differ slightly)")
+        self.blur_strength_spin.setValue(settings.video_blur_strength)
+        self.blur_strength_spin.valueChanged.connect(
+            self._blur_strength_changed)
+        self.blur_strength_spin.hide()
+
         self.trim_btn = QPushButton("Trim", self)
         self.trim_btn.setIcon(QIcon.fromTheme("edit-cut"))
         self.trim_btn.setCheckable(True)
@@ -515,8 +575,33 @@ class VideoPane(QWidget):
 
         self.gif_btn = QPushButton("Convert to GIF", self)
         self.gif_btn.setIcon(QIcon.fromTheme("video-x-generic"))
-        self.gif_btn.clicked.connect(self._convert_gif)
+        self.gif_btn.setCheckable(True)
+        self.gif_btn.toggled.connect(self._gif_mode)
         self.gif_btn.setEnabled(ffmpegutil.have_ffmpeg())
+
+        self.gif_fps_spin = QSpinBox(self)
+        self.gif_fps_spin.setRange(4, 30)
+        self.gif_fps_spin.setSuffix(" fps")
+        self.gif_fps_spin.setValue(settings.gif_fps)
+        self.gif_fps_spin.valueChanged.connect(
+            lambda v: setattr(self.settings, "gif_fps", v))
+        self.gif_fps_spin.hide()
+
+        self.gif_width_spin = QSpinBox(self)
+        self.gif_width_spin.setRange(160, 1920)
+        self.gif_width_spin.setSingleStep(80)
+        self.gif_width_spin.setSuffix(" px")
+        self.gif_width_spin.setToolTip(
+            "Maximum GIF width — the video is never upscaled")
+        self.gif_width_spin.setValue(settings.gif_max_width)
+        self.gif_width_spin.valueChanged.connect(
+            lambda v: setattr(self.settings, "gif_max_width", v))
+        self.gif_width_spin.hide()
+
+        self.gif_apply_btn = QPushButton("Save GIF", self)
+        self.gif_apply_btn.setIcon(QIcon.fromTheme("dialog-ok-apply"))
+        self.gif_apply_btn.clicked.connect(self._convert_gif)
+        self.gif_apply_btn.hide()
 
         self.frame_btn = QPushButton("Save frame", self)
         self.frame_btn.setIcon(QIcon.fromTheme("camera-photo"))
@@ -533,10 +618,15 @@ class VideoPane(QWidget):
         controls.addSpacing(12)
         controls.addWidget(self.blur_btn)
         controls.addWidget(self.apply_btn)
+        controls.addWidget(self.blur_strength_label)
+        controls.addWidget(self.blur_strength_spin)
         controls.addWidget(self.trim_btn)
         controls.addWidget(self.trim_accurate)
         controls.addWidget(self.trim_apply_btn)
         controls.addWidget(self.gif_btn)
+        controls.addWidget(self.gif_fps_spin)
+        controls.addWidget(self.gif_width_spin)
+        controls.addWidget(self.gif_apply_btn)
         controls.addWidget(self.frame_btn)
 
         self.range_bar = RangeBar(self)
@@ -623,7 +713,7 @@ class VideoPane(QWidget):
         while decorating we hide it and paint the frame ourselves."""
         return (self.player.playbackState() != QMediaPlayer.PlayingState
                 and (self.overlay.active or bool(self.redactions)
-                     or self.trim is not None)
+                     or self.single_span() is not None)
                 and self._last_frame is not None)
 
     def _sync_video_surface(self) -> None:
@@ -641,7 +731,7 @@ class VideoPane(QWidget):
             self.slider.setValue(pos)
         self.time_label.setText(
             f"{_fmt_ms(pos)} / {_fmt_ms(self.player.duration())}")
-        if self.redactions or self.trim is not None:
+        if self.redactions or self.single_span() is not None:
             self.overlay.update()
             self.range_bar.update()
 
@@ -662,28 +752,36 @@ class VideoPane(QWidget):
                 if self.hint.text() == msg else None)
 
     def active_redaction(self) -> Redaction | None:
-        if self.trim is not None:
-            return self.trim
+        single = self.single_span()
+        if single is not None:
+            return single
         if 0 <= self.active_idx < len(self.redactions):
             return self.redactions[self.active_idx]
         return None
 
     def set_active(self, idx: int) -> None:
-        if self.trim is not None:
+        if self.single_span() is not None:
             return
         if idx != self.active_idx and 0 <= idx < len(self.redactions):
             self.active_idx = idx
             self._rebuild_rows()
             self.range_bar.update()
 
+    def single_span(self) -> Redaction | None:
+        """The exclusive one-span mode the timeline edits: the trim span
+        or the GIF time range. None when editing blur redactions."""
+        return self.trim if self.trim is not None else self.gif_range
+
     def spans(self) -> list[Redaction]:
-        """What the timeline bar edits: the trim span while trimming,
-        otherwise the blur redactions."""
-        return [self.trim] if self.trim is not None else self.redactions
+        """What the timeline bar edits: the exclusive single span while
+        trimming or choosing a GIF range, otherwise the blur redactions."""
+        single = self.single_span()
+        return [single] if single is not None else self.redactions
 
     def _blur_mode(self, on: bool) -> None:
         if on:
             self.trim_btn.setChecked(False)
+            self.gif_btn.setChecked(False)
             self.player.pause()
             self.hint.setText(
                 "Drag a box over the part of the video to blur")
@@ -693,6 +791,10 @@ class VideoPane(QWidget):
         self.overlay.set_active(on)
         self._sync_video_surface()
 
+    def _blur_strength_changed(self, v: int) -> None:
+        self.settings.video_blur_strength = v
+        self.overlay.update()  # the preview (true blur) repaints live
+
     def _trim_mode(self, on: bool) -> None:
         if on and self.redactions:
             self.trim_btn.setChecked(False)
@@ -700,6 +802,7 @@ class VideoPane(QWidget):
             return
         if on:
             self.blur_btn.setChecked(False)  # mutual exclusion, both ways
+            self.gif_btn.setChecked(False)
             self.player.pause()
             dur = self.player.duration() / 1000.0
             self.trim = Redaction(QRect(), 0.0, round(max(dur, 0.1), 2))
@@ -711,6 +814,31 @@ class VideoPane(QWidget):
             self.hint.hide()
         self.trim_accurate.setVisible(on)
         self.trim_apply_btn.setVisible(on)
+        self.blur_btn.setEnabled(not on and ffmpegutil.have_ffmpeg())
+        self.range_bar.setVisible(on or bool(self.redactions))
+        self.range_bar.update()
+        self._sync_video_surface()
+
+    def _gif_mode(self, on: bool) -> None:
+        if on and self.redactions:
+            self.gif_btn.setChecked(False)
+            self._notify("Apply or remove the pending blurs before "
+                         "converting to GIF")
+            return
+        if on:
+            self.blur_btn.setChecked(False)  # exclusive, like trim
+            self.trim_btn.setChecked(False)
+            self.player.pause()
+            dur = self.player.duration() / 1000.0
+            self.gif_range = Redaction(QRect(), 0.0, round(max(dur, 0.1), 2))
+            self._notify("Pick fps/width, drag the timeline edges to "
+                         "choose the section to convert, then Save GIF — "
+                         "the video scrubs as you drag", 0)
+        else:
+            self.gif_range = None
+            self.hint.hide()
+        for w in (self.gif_fps_spin, self.gif_width_spin, self.gif_apply_btn):
+            w.setVisible(on)
         self.blur_btn.setEnabled(not on and ffmpegutil.have_ffmpeg())
         self.range_bar.setVisible(on or bool(self.redactions))
         self.range_bar.update()
@@ -736,13 +864,15 @@ class VideoPane(QWidget):
         self.active_idx = -1
         self.blur_btn.setChecked(False)
         self.trim_btn.setChecked(False)
+        self.gif_btn.setChecked(False)
         self.hint.hide()
         self._rebuild_rows()
         self.refresh_overlays()
 
     def refresh_overlays(self) -> None:
         self._sync_video_surface()
-        self.range_bar.setVisible(bool(self.redactions) or self.trim is not None)
+        self.range_bar.setVisible(
+            bool(self.redactions) or self.single_span() is not None)
         self.range_bar.update()
 
     # -- rows -------------------------------------------------------------------
@@ -758,12 +888,14 @@ class VideoPane(QWidget):
         has = bool(self.redactions)
         self.redact_box.setVisible(has)
         self.apply_btn.setVisible(has)
+        self.blur_strength_label.setVisible(has)
+        self.blur_strength_spin.setVisible(has)
         self.apply_btn.setText(f"Apply blurs ({len(self.redactions)})")
         if not has:
             self.range_bar.hide()
 
     def sync_active_row(self) -> None:
-        if self.trim is not None:
+        if self.single_span() is not None:
             return
         red = self.active_redaction()
         if red is None or self.active_idx >= len(self._row_spins):
@@ -866,6 +998,7 @@ class VideoPane(QWidget):
         self.blur_btn.setChecked(False)
         self.blur_btn.setEnabled(not on)
         self.apply_btn.setEnabled(not on)
+        self.blur_strength_spin.setEnabled(not on)
         self.redact_box.setVisible(not on and bool(self.redactions))
         self.range_bar.setVisible(not on and bool(self.redactions))
         if on:
@@ -889,6 +1022,7 @@ class VideoPane(QWidget):
         vs = sink.videoSize() if sink else None
         graph, out_label = build_blur_filter(
             self.redactions,
+            blur=self.blur_strength_spin.value(),
             video_w=vs.width() if vs else 0,
             video_h=vs.height() if vs else 0)
         base, ext = os.path.splitext(os.path.basename(self.path))
@@ -949,25 +1083,36 @@ class VideoPane(QWidget):
         base = os.path.splitext(os.path.basename(self.path))[0]
         out = unique_path(self.settings.library_dir, f"{base}.gif")
         tmp = self._render_temp(out)
-        vf = ("fps=12,scale='min(720,iw)':-1:flags=lanczos,"
-              "split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse")
+        start = end = None
+        if self.gif_range is not None:
+            dur = self.player.duration() / 1000.0
+            # Skip the seek when the span is effectively the whole video:
+            # QMediaPlayer's duration is approximate, and an exact -to can
+            # drop the final frames.
+            if (self.gif_range.start > 0.05
+                    or self.gif_range.end < dur - 0.05):
+                start, end = self.gif_range.start, self.gif_range.end
+        args = build_gif_args(self.path, tmp,
+                              fps=self.gif_fps_spin.value(),
+                              max_width=self.gif_width_spin.value(),
+                              start_s=start, end_s=end)
         self._gif_proc = QProcess(self)
         self._gif_proc.finished.connect(
             lambda code, _st: self._gif_done(code, tmp, out))
-        self.gif_btn.setEnabled(False)
-        self.gif_btn.setText("Converting…")
+        self.gif_apply_btn.setEnabled(False)
+        self.gif_apply_btn.setText("Converting…")
         self.status.emit("Converting to GIF…", 0)
-        self._gif_proc.start(ffmpegutil.ffmpeg_path(),
-                             ["-y", "-i", self.path, "-vf", vf, tmp])
+        self._gif_proc.start(ffmpegutil.ffmpeg_path(), args)
 
     def _gif_done(self, code: int, tmp: str, out: str) -> None:
         proc, self._gif_proc = self._gif_proc, None
         if proc is not None:
             proc.deleteLater()
-        self.gif_btn.setEnabled(True)
-        self.gif_btn.setText("Convert to GIF")
+        self.gif_apply_btn.setEnabled(True)
+        self.gif_apply_btn.setText("Save GIF")
         if code == 0 and os.path.exists(tmp) and os.path.getsize(tmp) > 0:
             shutil.move(tmp, out)
+            self.gif_btn.setChecked(False)  # exits GIF mode
             self._notify(f"GIF saved: {os.path.basename(out)}")
             self.file_ready.emit(out)
         else:

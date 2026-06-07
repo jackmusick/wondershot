@@ -128,3 +128,44 @@ def test_trim_args_reencode_fallback_encoder():
                            "/l/.rendering/in-trimmed.mp4",
                            reencode=True, encoder="mpeg4")
     assert "-q:v" in args and "-crf" not in args
+
+
+def test_blur_strength_parameter():
+    graph, _ = build_blur_filter(
+        [Redaction(QRect(0, 0, 100, 100), 0.0, 1.0)],
+        blur=30, video_w=640, video_h=360)
+    assert "boxblur=30" in graph
+    assert "boxblur=14" not in graph
+
+
+def test_gif_args_defaults():
+    from wondershot.video import build_gif_args
+    args = build_gif_args("/l/in.mp4", "/l/.rendering/in.gif")
+    assert args[:3] == ["-y", "-i", "/l/in.mp4"]
+    vf = args[args.index("-vf") + 1]
+    assert vf.startswith("fps=12,scale='min(720,iw)':-1:flags=lanczos")
+    assert "palettegen" in vf and "paletteuse" in vf
+    assert args[-1] == "/l/.rendering/in.gif"
+
+
+def test_gif_args_custom_fps_and_width():
+    from wondershot.video import build_gif_args
+    args = build_gif_args("/l/in.mp4", "/l/o.gif", fps=24, max_width=480)
+    vf = args[args.index("-vf") + 1]
+    assert "fps=24," in vf
+    assert "min(480,iw)" in vf
+
+
+def test_gif_args_range_is_input_seek():
+    from wondershot.video import build_gif_args
+    args = build_gif_args("/l/in.mp4", "/l/o.gif", start_s=1.5, end_s=4.0)
+    i = args.index("-i")
+    # -ss AND -to before -i: absolute source timestamps, same contract
+    # as build_trim_args
+    assert args[:i] == ["-y", "-ss", "1.500", "-to", "4.000"]
+
+
+def test_gif_args_no_partial_range():
+    from wondershot.video import build_gif_args
+    args = build_gif_args("/l/in.mp4", "/l/o.gif", start_s=1.0, end_s=None)
+    assert "-ss" not in args and "-to" not in args

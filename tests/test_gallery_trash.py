@@ -20,7 +20,8 @@ class _Settings:
 
     def __getattr__(self, k):
         if k in ("stroke_width", "font_size", "capture_delay",
-                 "share_expiry_days"):
+                 "share_expiry_days",
+                 "video_blur_strength", "gif_fps", "gif_max_width"):
             return 10
         if k == "tool_color":
             return "#e3242b"

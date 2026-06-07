@@ -216,8 +216,10 @@ _(pending — filled in by the WS-D spike)_
 3. **Editor backlog** — text alignment + edge snapping in boxes
    (Snagit), style-change undo, blur-tool variant, step renumbering,
    custom rotate cursor polish.
-4. **Video backlog** — blur strength setting, GIF options
-   (fps/scale/range), true blur preview in the frost.
+4. **Video backlog** — DONE 2026-06-07: blur strength spinbox (persisted,
+   previewed live), GIF fps/max-width/time-range options reusing the trim
+   span timeline (persisted defaults), frost rectangles preview the actual
+   blur (QImage downscale/upscale approximation — render remains truth).
    (trim/cut moved to WS-A)
 
 ## Bugs & small UX (from Jack, 2026-06-07 — end of list per Jack)
