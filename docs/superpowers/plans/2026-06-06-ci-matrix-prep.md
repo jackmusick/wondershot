@@ -437,7 +437,7 @@ No CI exists (`.github/` is absent). Matrix: {ubuntu, windows, macos}-latest × 
 
 **Steps:**
 
-- [ ] **Create `.github/workflows/ci.yml`:**
+- [x] **Create `.github/workflows/ci.yml`:**
   ```yaml
   name: CI
 
@@ -485,19 +485,19 @@ No CI exists (`.github/` is absent). Matrix: {ubuntu, windows, macos}-latest × 
   ```
   Notes for the executor: keep the import smoke to `import wondershot` only (per spec) — deeper module imports are exercised by pytest itself, which imports `wondershot.editor`, `wondershot.gallery`, `wondershot.imageops`, `wondershot.msgraph`, `wondershot.share`, `wondershot.video`, and (Linux/macOS only) `wondershot.record` and the new `wondershot.hotkey`. Do NOT add `xvfb` — offscreen platform makes it unnecessary.
 
-- [ ] **Validate the YAML parses (no actions runner locally):**
+- [x] **Validate the YAML parses (no actions runner locally):**
   ```bash
   .venv/bin/pip install pyyaml >/dev/null && .venv/bin/python -c "import yaml; yaml.safe_load(open('.github/workflows/ci.yml')); print('yaml ok')"
   ```
   Expected output: `yaml ok`.
 
-- [ ] **Run the exact CI commands locally as a dry run (Linux leg):**
+- [x] **Run the exact CI commands locally as a dry run (Linux leg):**
   ```bash
   QT_QPA_PLATFORM=offscreen .venv/bin/python -c "import wondershot; print(wondershot.__version__)" && QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -v
   ```
   Expected: `0.1.0` printed, all tests pass.
 
-- [ ] **Commit:**
+- [x] **Commit:**
   ```bash
   git add .github/workflows/ci.yml
   git commit -m "ci: 3-OS x py3.10/3.13 matrix — install, import smoke, pytest"
