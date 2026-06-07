@@ -80,6 +80,7 @@ class GrabbitApp(QObject):
                                      recorder=self.recorder)
         self.gallery.quit_requested.connect(qapp.quit)
         self.gallery.settings_applied.connect(self._on_settings_applied)
+        self.gallery.capture_requested.connect(self.trigger_capture)
         self._editors: list[EditorWindow] = []
         self._gallery_was_visible = False
 
@@ -158,11 +159,10 @@ class GrabbitApp(QObject):
     # -- capture flow ---------------------------------------------------------
 
     def trigger_capture(self, mode: str) -> None:
-        # Hide our own windows so they're not in the shot.
+        # Hide ALL our windows (gallery, capture panel, editors) so none
+        # ends up in the shot; the delay gives the compositor time to unmap.
         self._gallery_was_visible = self.gallery.isVisible()
-        if self._gallery_was_visible:
-            self.gallery.hide()
-        delay = 300 if self._gallery_was_visible else 0
+        delay = self.gallery.hide_for_capture()
         fn = {
             "region": self.capture.capture_region,
             "fullscreen": self.capture.capture_fullscreen,
@@ -172,6 +172,7 @@ class GrabbitApp(QObject):
         QTimer.singleShot(delay, fn)
 
     def _on_captured(self, path: str) -> None:
+        self.gallery.restore_after_capture()
         if self.settings.copy_after_capture:
             img = QImage(path)
             if not img.isNull():
@@ -188,6 +189,7 @@ class GrabbitApp(QObject):
                               self.icon, 2500)
 
     def _on_capture_failed(self, message: str) -> None:
+        self.gallery.restore_after_capture()
         if self._gallery_was_visible:
             self.show_gallery()
         self.tray.showMessage("Wondershot — capture failed", message, self.icon, 4000)

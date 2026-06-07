@@ -108,7 +108,9 @@ class CaptureWindow(QWidget):
         self.setFixedSize(self.sizeHint())
 
     def _fire(self, mode: str) -> None:
-        self.hide()  # never end up in the shot
+        # Hiding is owned by gallery.hide_for_capture() (via the app
+        # coordinator) so the panel is also RESTORED after the shot; hiding
+        # here first would mark it as never-visible and lose it.
         self.capture_requested.emit(mode)
 
 

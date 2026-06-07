@@ -334,6 +334,7 @@ class GalleryWindow(QMainWindow):
     quit_requested = Signal()
     settings_applied = Signal()
     oauth_callback = Signal(str)  # wondershot://auth?... redirect URL
+    capture_requested = Signal(str)  # routed through app.trigger_capture
 
     def __init__(self, settings, capture, recorder=None, parent=None):
         super().__init__(parent)
@@ -734,13 +735,34 @@ class GalleryWindow(QMainWindow):
 
     def _capture_mode(self, mode: str) -> None:
         if mode == "record":
+            if getattr(self, "_capture_window", None) is not None:
+                self._capture_window.hide()  # not in the recording
             self._toggle_record()
-        elif mode == "fullscreen":
-            self.capture.capture_fullscreen()
-        elif mode == "window-auto":
-            self.capture.capture_active_window()
         else:
-            self.capture.capture_region()
+            # Route through app.trigger_capture so OUR windows leave the
+            # screen (with compositor grace time) before the shot fires.
+            self.capture_requested.emit(mode)
+
+    def hide_for_capture(self) -> int:
+        """Hide every Wondershot window so none ends up in the shot.
+
+        Returns the ms delay the caller must wait before capturing —
+        Wayland needs a beat for the compositor to actually unmap us.
+        """
+        wins = [self, getattr(self, "_capture_window", None), *self._windows]
+        self._capture_hidden = [w for w in wins if w is not None and w.isVisible()]
+        for w in self._capture_hidden:
+            w.hide()
+        return 300 if self._capture_hidden else 0
+
+    def restore_after_capture(self) -> None:
+        """Re-show what hide_for_capture() hid — except the gallery itself,
+        whose return is the app coordinator's decision (preview setting /
+        quick bar)."""
+        for w in getattr(self, "_capture_hidden", []):
+            if w is not self:
+                w.show()
+        self._capture_hidden = []
 
     def _selected_paths(self) -> list[str]:
         return [i.data(PATH_ROLE)
