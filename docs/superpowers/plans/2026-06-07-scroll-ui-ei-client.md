@@ -917,7 +917,7 @@ from .scrollsource import scroll_capture_available
 The flag already exists (`cli.py` line 48 + dispatch at line 62); this test
 pins it so later CLI churn can't silently drop the debugging harness.
 
-- [ ] Create `tests/test_cli_scroll_spike.py`:
+- [x] Create `tests/test_cli_scroll_spike.py`:
 
 ```python
 """--scroll-spike must stay: it is the scroll-capture debugging harness
@@ -932,27 +932,27 @@ def test_scroll_spike_flag_dispatches(monkeypatch):
     assert main(["--scroll-spike"]) == 42
 ```
 
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_cli_scroll_spike.py -x -q`
-- [ ] Expected: PASSES immediately (the flag exists). This is a pin, not TDD
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_cli_scroll_spike.py -x -q`
+- [x] Expected: PASSES immediately (the flag exists). This is a pin, not TDD
   — justification: no production change is being made to cli.py; the test
   exists to make removal a visible failure.
-- [ ] Commit: `git add -A && git commit -m "Pin --scroll-spike CLI flag with a regression test"`
+- [x] Commit: `git add -A && git commit -m "Pin --scroll-spike CLI flag with a regression test"`
 
 ### Step 5.2: snegg availability verdict (evidence step, no code)
 
-- [ ] Run: `.venv/bin/pip install snegg`
-- [ ] Expected output: `ERROR: No matching distribution found for snegg`
+- [x] Run: `.venv/bin/pip install snegg`
+- [x] Expected output: `ERROR: No matching distribution found for snegg`
   (plan-prep verification 2026-06-07: `https://pypi.org/pypi/snegg/json`
   returns HTTP 404 — snegg lives on gitlab.freedesktop.org/libinput/snegg
   and is not published to PyPI).
-- [ ] Decision (already reflected in this plan): do NOT add a
+- [x] Decision (already reflected in this plan): do NOT add a
   `wondershot[stepcapture]` extra — an extra pointing at a non-existent PyPI
   dist breaks `pip install wondershot[stepcapture]` outright, and an empty
   extra is a lie. The EI client ships as `wondershot/ei.py` (Task 6) using
   stdlib ctypes against the system `libei.so.1` (Fedora package `libei`;
   1.5.0 is installed on Jack's box) — zero pip dependencies. Record the
   verdict + pip error line in ROADMAP (Task 8 step 3).
-- [ ] If, against expectation, the install SUCCEEDS: stop, add
+- [x] If, against expectation, the install SUCCEEDS: stop, add
   `stepcapture = ["snegg"]` to `[project.optional-dependencies]`, prefer
   snegg in the probe (it is already the first branch in `observe_events`),
   and SKIP Task 6 — note the deviation in the final report.
