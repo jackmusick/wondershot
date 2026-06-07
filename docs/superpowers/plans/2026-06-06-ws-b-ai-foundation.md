@@ -1248,7 +1248,7 @@ def test_redact_action_exists_on_toolbar(qapp):
 - Create: `wondershot/bgremove.py`
 - Test: `tests/test_bgremove.py` (create)
 
-- [ ] Write the failing tests:
+- [x] Write the failing tests:
 
 ```python
 # tests/test_bgremove.py
@@ -1332,8 +1332,8 @@ def test_remove_background_with_fake_rembg(fake_rembg):
     assert 100 < out.pixelColor(1, 1).alpha() < 160   # the fake's alpha=128
 ```
 
-- [ ] Run and confirm failure: `python -m pytest tests/test_bgremove.py -q` — expect `ModuleNotFoundError: No module named 'wondershot.bgremove'`.
-- [ ] Implement `wondershot/bgremove.py`:
+- [x] Run and confirm failure: `python -m pytest tests/test_bgremove.py -q` — expect `ModuleNotFoundError: No module named 'wondershot.bgremove'`.
+- [x] Implement `wondershot/bgremove.py`:
 
 ```python
 """Local background removal via rembg/U²-Net ONNX — optional extra.
@@ -1376,15 +1376,15 @@ def remove_background(image):
     return out.convertToFormat(QImage.Format_ARGB32_Premultiplied)
 ```
 
-- [ ] Add the extra to `pyproject.toml` — insert after the `[project.scripts]` table:
+- [x] Add the extra to `pyproject.toml` — insert after the `[project.scripts]` table:
 
 ```toml
 [project.optional-dependencies]
 ai-local = ["rembg>=2.0", "onnxruntime>=1.16"]
 ```
 
-- [ ] Run tests: `python -m pytest tests/test_bgremove.py -q` — expect 3 passed. Sanity-check packaging metadata parses: `python -c "import tomllib; tomllib.load(open('pyproject.toml','rb'))" && echo OK` — expect `OK`.
-- [ ] Commit: `git add wondershot/bgremove.py pyproject.toml tests/test_bgremove.py && git commit -m "WS-B: bgremove — import-guarded rembg wrapper + ai-local extra"`
+- [x] Run tests: `python -m pytest tests/test_bgremove.py -q` — expect 3 passed. Sanity-check packaging metadata parses: `python -c "import tomllib; tomllib.load(open('pyproject.toml','rb'))" && echo OK` — expect `OK`.
+- [x] Commit: `git add wondershot/bgremove.py pyproject.toml tests/test_bgremove.py && git commit -m "WS-B: bgremove — import-guarded rembg wrapper + ai-local extra"`
 
 ---
 
