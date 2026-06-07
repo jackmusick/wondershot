@@ -9,7 +9,8 @@ _Last updated: 2026-06-06_
 - Carousel gallery over multiple watched folders (Screenshots +
   ~/Videos/Screencasts), drag-out to any app, skeleton thumbs, rename,
   trash, pin-on-top, settings dialog, tray, single-instance CLI
-- Hotkey via KDE custom shortcut → `grabbit --capture`
+- Hotkey via KDE custom shortcut → `wondershot --capture`
+  (`grabbit --capture` still works as a legacy alias)
 
 **Editor**
 - Arrows, lines, boxes, ellipses, pen, highlighter, text (click label /
@@ -36,7 +37,7 @@ _Last updated: 2026-06-06_
   library; share dialog only on first use (restore token persisted)
 - Microphone with measured tuning: webrtcdsp NS very-high, AGC off
   (ambient floor −43dB vs −21dB raw); device picker + toggles in
-  Settings; full log at ~/.cache/grabbit/recorder.log
+  Settings; full log at ~/.cache/wondershot/recorder.log
 - Camera bubble: circular, frameless, always-on-top, drag to move,
   wheel to resize, bottom-right default via KWin window rule;
   toolbar + tray toggle
@@ -51,38 +52,53 @@ _Last updated: 2026-06-06_
 - [ ] Recording survives past the first seconds (videorate fix for the
       pipewiresrc no-PTS mux abort) and stop always resolves — the
       watchdog now reports pipeline death instead of "Stopping" forever
-- [ ] Date/time overlay on carousel cards; elapsed time on stop buttons
+- [ ] OneDrive end-to-end: Connect → browser sign-in lands; share a
+      shot and a video, link opens. Azure SAS untested against a real
+      account (built to spec)
 
 **Wondershot rename (2026-06-06)**
 - Package/CLI/config renamed; settings auto-migrate from grabbit;
   `grabbit` CLI alias kept so existing KDE hotkeys still fire
-- OneDrive/SharePoint share provider (Graph device-code flow, stdlib):
-  Connect button in Settings → Sharing; upload + createLink
-  (anonymous → organization fallback). NEEDS app registration toggle:
-  'Allow public client flows' = Yes (AADSTS70002 otherwise)
-- Effects: rounded corners + bottom fade (properties panel, persisted
-  defaults, live preview, applied at flatten)
-- Share button on the video pane (editor toolbar is hidden there);
-  share outcomes also toast via tray
-- Deletes stage for Ctrl+Z undo, flush to system trash on quit
+- Old `~/.local/share/grabbit/venv` is orphaned; safe to delete once the
+  new install is confirmed good
 
-**Sharing & capture UX (new)**
-- Share button (editor toolbar, top-right): uploads to S3-compatible or
-  Azure Blob, copies a time-limited presigned/SAS URL; stdlib HMAC
-  signers (SigV4 verified against AWS's test vector + live MinIO);
-  caret menu picks provider + default; Share… in carousel context menu
+**Sharing — three providers, one Share button**
+- Single Share button, top-right of the gallery's main toolbar (same
+  spot for images and videos; acts on the selected item). Confirms on
+  the button itself: Uploading… → ✓ Copied link; dialog on failure
+- S3-compatible + Azure Blob: stdlib HMAC signers (SigV4 verified
+  against AWS's test vector + live MinIO); time-limited presigned/SAS
+  URLs; caret menu picks provider + sets default
+- OneDrive/SharePoint via Graph (stdlib): browser-redirect sign-in
+  (auth-code + PKCE over the `wondershot://auth` scheme handler, no
+  secret) with a "Use device code" checkbox fallback; Connect↔Cancel↔
+  Disconnect; inline destination (My OneDrive / search a SharePoint
+  site → library); client ID hidden as "Wondershot Built-In" w/ Change.
+  Public-client toggle on the app registration is confirmed ON.
+- Credentials note: S3/Azure keys are plaintext in config; OneDrive
+  uses refresh tokens in a 0600 cache instead
+
+**Editor & capture UX**
+- Snagit-style zoom: fit-to-window default (tracks window resize, never
+  upscales small images); status-bar − / zoom-% combo / + / Fit
+- Effects: rounded corners + bottom fade (properties panel, persisted
+  defaults). Live preview over a checkerboard mat + padding so the
+  transparency reads; applied once, mat excluded at flatten
 - Snagit-style capture window (Capture button in gallery toolbar):
   big red Capture + full screen/record, toggles for preview/clipboard/
   cursor/delay that persist as defaults
-- Editor toolbar is tools-only (file ops via shortcuts + context menu);
-  "Camera" replaces "Bubble" in UI strings
+- Editor toolbar is tools-only (file ops via shortcuts + context menu)
+- Deletes are undoable: hover (x) on cards (confirms), Ctrl+Z restores
+  from a staging dir, flushed to system trash on quit
+- Arrows/lines show endpoint grips only (no dashed box); properties
+  panel rows follow the selection; "Camera" replaces "Bubble"
 
 ## Next up (in order)
 
 1. **Sidecar persistence** — annotations stay editable objects when you
    revisit an image (Jack's "can't go back and edit objects").
    Design: library file stays the flattened share-ready PNG; sidecar
-   `.grabbit/<name>.json` + original base copy; editor reconstructs
+   `.wondershot/<name>.json` + original base copy; editor reconstructs
    objects on load.
 2. **Recording polish** — countdown before start, region-only
    recording (portal already asks, but in-app choice), pause/resume,
