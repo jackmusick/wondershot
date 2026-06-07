@@ -80,7 +80,7 @@
 - Create: `wondershot/stitch.py`
 - Create: `tests/test_stitch.py`
 
-- [ ] Write the failing test. Create `tests/test_stitch.py`:
+- [x] Write the failing test. Create `tests/test_stitch.py`:
   ```python
   import os
 
@@ -134,11 +134,11 @@
       assert g.dtype == np.float32
       assert 0.0 <= g.min() and g.max() <= 255.0
   ```
-- [ ] Run it — must fail with `ModuleNotFoundError: No module named 'wondershot.stitch'`:
+- [x] Run it — must fail with `ModuleNotFoundError: No module named 'wondershot.stitch'`:
   ```bash
   .venv/bin/python -m pytest tests/test_stitch.py -q
   ```
-- [ ] Implement. Create `wondershot/stitch.py`:
+- [x] Implement. Create `wondershot/stitch.py`:
   ```python
   """Scroll-capture stitcher core (WS-D spike).
 
@@ -200,11 +200,11 @@
       """(H, W) float32 luma for matching; exactness doesn't matter."""
       return rgb.astype(np.float32).mean(axis=2)
   ```
-- [ ] Run tests, expected pass:
+- [x] Run tests, expected pass:
   ```bash
   .venv/bin/python -m pytest tests/test_stitch.py -q
   ```
-- [ ] Commit:
+- [x] Commit:
   ```bash
   git add wondershot/stitch.py tests/test_stitch.py
   git commit -m "WS-D: stitch.py FrameSource seam + QImage/numpy conversions (TDD)"
