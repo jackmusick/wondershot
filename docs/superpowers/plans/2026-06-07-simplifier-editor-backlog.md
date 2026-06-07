@@ -62,7 +62,7 @@ The simplifier emits *filled* rectangles. `RectItem` today is outline-only (`Qt.
 - Modify: `wondershot/items.py` (RectItem, ~lines 192-212)
 - Test: `tests/test_items_serialize.py`
 
-- [ ] **Step 1: Write the failing tests** — append to `tests/test_items_serialize.py`:
+- [x] **Step 1: Write the failing tests** — append to `tests/test_items_serialize.py`:
 
 ```python
 def test_rect_fill_roundtrip(qapp):
@@ -87,12 +87,12 @@ def test_rect_without_fill_stays_hollow(qapp):
     assert out.brush().style() == Qt.NoBrush
 ```
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 Run: `QT_QPA_PLATFORM=offscreen .venv/bin/pytest tests/test_items_serialize.py -v -k fill`
 Expected: FAIL — `TypeError: ... __init__() got an unexpected keyword argument 'fill'`
 
-- [ ] **Step 3: Implement** — replace `RectItem` in `wondershot/items.py`:
+- [x] **Step 3: Implement** — replace `RectItem` in `wondershot/items.py`:
 
 ```python
 class RectItem(QGraphicsRectItem):
@@ -125,12 +125,12 @@ class RectItem(QGraphicsRectItem):
         return item
 ```
 
-- [ ] **Step 4: Run the whole serialize file** (existing rect tests must still pass)
+- [x] **Step 4: Run the whole serialize file** (existing rect tests must still pass)
 
 Run: `QT_QPA_PLATFORM=offscreen .venv/bin/pytest tests/test_items_serialize.py -v`
 Expected: ALL PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add wondershot/items.py tests/test_items_serialize.py
@@ -147,7 +147,7 @@ Sample the dominant color of a region: bucket pixels to 3 bits/channel (so antia
 - Create: `wondershot/simplify.py`
 - Create: `tests/test_simplify.py`
 
-- [ ] **Step 1: Write the failing tests** — create `tests/test_simplify.py`:
+- [x] **Step 1: Write the failing tests** — create `tests/test_simplify.py`:
 
 ```python
 """Pure-function tests for the AI simplifier (no editor, no network)."""
@@ -199,12 +199,12 @@ def test_dominant_color_clamps_and_falls_back(qapp):
     assert dominant_color(img, QRect(45, 45, 30, 30)) == QColor("#ff0000")
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `QT_QPA_PLATFORM=offscreen .venv/bin/pytest tests/test_simplify.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'wondershot.simplify'`
 
-- [ ] **Step 3: Implement** — create `wondershot/simplify.py`:
+- [x] **Step 3: Implement** — create `wondershot/simplify.py`:
 
 ```python
 """AI image simplifier: vision LLM finds UI regions, the editor replaces
@@ -270,12 +270,12 @@ def dominant_color(image: QImage, rect: QRect) -> QColor:
 
 (The prompt/parsing/pipeline functions arrive in Task 3 — keep this commit to `dominant_color` plus module scaffolding.)
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `QT_QPA_PLATFORM=offscreen .venv/bin/pytest tests/test_simplify.py -v`
 Expected: 3 PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add wondershot/simplify.py tests/test_simplify.py
@@ -292,7 +292,7 @@ Same pure-function discipline as `redact.parse_bboxes`: the LLM returns normaliz
 - Modify: `wondershot/simplify.py`
 - Test: `tests/test_simplify.py`
 
-- [ ] **Step 1: Write the failing tests** — append to `tests/test_simplify.py`:
+- [x] **Step 1: Write the failing tests** — append to `tests/test_simplify.py`:
 
 ```python
 def test_parse_regions_normalized_to_pixels(qapp):
@@ -355,12 +355,12 @@ def test_simplify_regions_pipeline_calls_chat(qapp, monkeypatch):
     assert regions == [simplify.Region(QRect(0, 0, 100, 50), "text")]
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `QT_QPA_PLATFORM=offscreen .venv/bin/pytest tests/test_simplify.py -v`
 Expected: the 5 new tests FAIL with `ImportError: cannot import name 'parse_regions'` (the 3 Task-2 tests still pass)
 
-- [ ] **Step 3: Implement** — append to `wondershot/simplify.py`:
+- [x] **Step 3: Implement** — append to `wondershot/simplify.py`:
 
 ```python
 REGION_PROMPT = (
@@ -421,12 +421,12 @@ def simplify_regions(image, endpoint: str, api_key: str,
     return parse_regions(reply, image.width(), image.height())
 ```
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `QT_QPA_PLATFORM=offscreen .venv/bin/pytest tests/test_simplify.py -v`
 Expected: 8 PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add wondershot/simplify.py tests/test_simplify.py
@@ -443,7 +443,7 @@ Mirror `ai_redact` exactly: gate on `ai_configured`, snapshot the base image, ru
 - Modify: `wondershot/editor.py` (toolbar in `_build_toolbar` after the redact action ~line 601; new methods next to `ai_redact`/`apply_redact_regions` ~lines 721-764)
 - Create: `tests/test_editor_simplify.py`
 
-- [ ] **Step 1: Write the failing tests** — create `tests/test_editor_simplify.py`:
+- [x] **Step 1: Write the failing tests** — create `tests/test_editor_simplify.py`:
 
 ```python
 """Editor integration for the AI simplifier (offscreen, no network)."""
@@ -533,12 +533,12 @@ def test_simplify_done_error_path_keeps_scene_clean(qapp, monkeypatch):
     assert [i for i in ed.scene.items() if isinstance(i, RectItem)] == []
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `QT_QPA_PLATFORM=offscreen .venv/bin/pytest tests/test_editor_simplify.py -v`
 Expected: FAIL — `AttributeError: 'EditorWindow' object has no attribute 'apply_simplify_regions'` (and `simplify_action`)
 
-- [ ] **Step 3: Implement** — in `wondershot/editor.py`:
+- [x] **Step 3: Implement** — in `wondershot/editor.py`:
 
 (a) In `_build_toolbar`, directly after `tb.addAction(self.redact_action)`:
 
@@ -608,12 +608,12 @@ Expected: FAIL — `AttributeError: 'EditorWindow' object has no attribute 'appl
         return len(kept)
 ```
 
-- [ ] **Step 4: Run to verify pass** (plus the existing editor suites — same file touched)
+- [x] **Step 4: Run to verify pass** (plus the existing editor suites — same file touched)
 
 Run: `QT_QPA_PLATFORM=offscreen .venv/bin/pytest tests/test_editor_simplify.py tests/test_editor.py tests/test_editor_ai.py tests/test_editor_sidecar.py -v`
 Expected: ALL PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add wondershot/editor.py tests/test_editor_simplify.py
@@ -630,7 +630,7 @@ Today `_apply_to_selection` mutates items directly and calls `undo_stack.resetCl
 - Modify: `wondershot/editor.py` (`StyleCommand` next to `GripCommand` ~line 209; `_apply_to_selection` ~line 956)
 - Create: `tests/test_editor_backlog.py`
 
-- [ ] **Step 1: Write the failing tests** — create `tests/test_editor_backlog.py`:
+- [x] **Step 1: Write the failing tests** — create `tests/test_editor_backlog.py`:
 
 ```python
 """Editor backlog: style undo, text alignment, blur tool, step renumbering."""
@@ -706,12 +706,12 @@ def test_text_font_size_change_is_undoable(qapp):
     assert t.font().pointSize() == 18
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `QT_QPA_PLATFORM=offscreen .venv/bin/pytest tests/test_editor_backlog.py -v`
 Expected: FAIL — undo() does not restore the old style (current code mutates directly), and the merge test fails on stack count
 
-- [ ] **Step 3: Implement** — in `wondershot/editor.py`:
+- [x] **Step 3: Implement** — in `wondershot/editor.py`:
 
 (a) Add after `GripCommand`:
 
@@ -767,12 +767,12 @@ class StyleCommand(QUndoCommand):
 
 **Pitfall to verify while implementing:** `get_style` for a `TextItem` returns `{"color", "font_size"}` and for shapes `{"color", "width"}` — every key is a valid `apply_style` kwarg, so `apply_style(it, **b)` restores cleanly. When Task 6 adds `"align"`, it joins both dicts symmetrically; do not special-case.
 
-- [ ] **Step 4: Run to verify pass** (plus the editor suites — `_apply_to_selection` callers unchanged)
+- [x] **Step 4: Run to verify pass** (plus the editor suites — `_apply_to_selection` callers unchanged)
 
 Run: `QT_QPA_PLATFORM=offscreen .venv/bin/pytest tests/test_editor_backlog.py tests/test_editor.py tests/test_editor_sidecar.py -v`
 Expected: ALL PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add wondershot/editor.py tests/test_editor_backlog.py
@@ -790,7 +790,7 @@ git commit -m "feat(editor): properties-panel restyles go on the undo stack (mer
 - Modify: `wondershot/editor.py` (`_build_panel` ~line 846, `_update_panel_rows`, `_sync_panel`)
 - Test: `tests/test_items_serialize.py`, `tests/test_editor_backlog.py`
 
-- [ ] **Step 1: Write the failing serialization tests** — append to `tests/test_items_serialize.py`:
+- [x] **Step 1: Write the failing serialization tests** — append to `tests/test_items_serialize.py`:
 
 ```python
 def test_text_alignment_roundtrip(qapp):
@@ -818,7 +818,7 @@ def test_text_alignment_defaults_left_for_old_sidecars(qapp):
     assert out.alignment() == "left"
 ```
 
-- [ ] **Step 2: Write the failing editor tests** — append to `tests/test_editor_backlog.py`:
+- [x] **Step 2: Write the failing editor tests** — append to `tests/test_editor_backlog.py`:
 
 ```python
 def _add_selected_text(ed, text="hello"):
@@ -854,12 +854,12 @@ def test_panel_sync_reflects_selected_text_alignment(qapp):
     assert ed.undo_stack.count() == n
 ```
 
-- [ ] **Step 3: Run to verify failure**
+- [x] **Step 3: Run to verify failure**
 
 Run: `QT_QPA_PLATFORM=offscreen .venv/bin/pytest tests/test_items_serialize.py tests/test_editor_backlog.py -v -k align`
 Expected: FAIL — `AttributeError: 'TextItem' object has no attribute 'set_alignment'` / no `align_buttons`
 
-- [ ] **Step 4: Implement items.py** —
+- [x] **Step 4: Implement items.py** —
 
 (a) Module-level, near the top of `TextItem`:
 
@@ -917,7 +917,7 @@ and inside the `TextItem` branch, after the font-size block:
             item.set_alignment(align)
 ```
 
-- [ ] **Step 5: Implement editor.py panel** — in `_build_panel`, after the `font_spin` row:
+- [x] **Step 5: Implement editor.py panel** — in `_build_panel`, after the `font_spin` row:
 
 ```python
         from PySide6.QtWidgets import QHBoxLayout, QToolButton
@@ -965,12 +965,12 @@ In `_sync_panel`, inside the `try:` block after the `font_size` case:
                 self.align_buttons[style["align"]].setChecked(True)
 ```
 
-- [ ] **Step 6: Run to verify pass**
+- [x] **Step 6: Run to verify pass**
 
 Run: `QT_QPA_PLATFORM=offscreen .venv/bin/pytest tests/test_items_serialize.py tests/test_editor_backlog.py tests/test_editor.py tests/test_editor_sidecar.py -v`
 Expected: ALL PASS
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add wondershot/items.py wondershot/editor.py tests/test_items_serialize.py tests/test_editor_backlog.py
@@ -987,7 +987,7 @@ Counterpart of `pixelated_patch`: a gaussian-blurred copy of just `rect`. Implem
 - Modify: `wondershot/imageops.py`
 - Test: `tests/test_imageops.py`
 
-- [ ] **Step 1: Upgrade the file's app fixture.** `tests/test_imageops.py` has an autouse session fixture that creates a `QGuiApplication` — but `blurred_patch` renders through `QGraphicsScene`, which needs a full **`QApplication`** (a `QGuiApplication` subclass, so existing tests are unaffected; when other suites already created a `QApplication`, `instance()` returns it either way). Replace the existing fixture body in `tests/test_imageops.py`:
+- [x] **Step 1: Upgrade the file's app fixture.** `tests/test_imageops.py` has an autouse session fixture that creates a `QGuiApplication` — but `blurred_patch` renders through `QGraphicsScene`, which needs a full **`QApplication`** (a `QGuiApplication` subclass, so existing tests are unaffected; when other suites already created a `QApplication`, `instance()` returns it either way). Replace the existing fixture body in `tests/test_imageops.py`:
 
 ```python
 @pytest.fixture(scope="session", autouse=True)
@@ -1001,7 +1001,7 @@ def qapp():
 
 Run: `QT_QPA_PLATFORM=offscreen .venv/bin/pytest tests/test_imageops.py -v` — Expected: ALL PASS (pure fixture widening, no behavior change).
 
-- [ ] **Step 2: Write the failing tests** — append to `tests/test_imageops.py` (it already imports `pytest`, `QRect`, `QColor`, `QImage` at the top):
+- [x] **Step 2: Write the failing tests** — append to `tests/test_imageops.py` (it already imports `pytest`, `QRect`, `QColor`, `QImage` at the top):
 
 ```python
 def _half_and_half(w=120, h=80):
@@ -1035,12 +1035,12 @@ def test_blurred_patch_clamps_and_empty(qapp):
         img.rect()).size()
 ```
 
-- [ ] **Step 3: Run to verify failure**
+- [x] **Step 3: Run to verify failure**
 
 Run: `QT_QPA_PLATFORM=offscreen .venv/bin/pytest tests/test_imageops.py -v -k blurred`
 Expected: FAIL — `ImportError: cannot import name 'blurred_patch'`
 
-- [ ] **Step 4: Implement** — append to `wondershot/imageops.py`:
+- [x] **Step 4: Implement** — append to `wondershot/imageops.py`:
 
 ```python
 def blurred_patch(image: QImage, rect: QRect, radius: int = 12) -> QImage:
@@ -1078,12 +1078,12 @@ def blurred_patch(image: QImage, rect: QRect, radius: int = 12) -> QImage:
     return out.copy(r.x() - pr.x(), r.y() - pr.y(), r.width(), r.height())
 ```
 
-- [ ] **Step 5: Run to verify pass**
+- [x] **Step 5: Run to verify pass**
 
 Run: `QT_QPA_PLATFORM=offscreen .venv/bin/pytest tests/test_imageops.py -v`
 Expected: ALL PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add wondershot/imageops.py tests/test_imageops.py
@@ -1100,7 +1100,7 @@ A soft sibling of `PixelateItem` with identical move/resize/serialize behavior. 
 - Modify: `wondershot/items.py` (PixelateItem `_regen` ~line 638; new class after it; `item_from_dict` ~line 669)
 - Test: `tests/test_items_serialize.py`
 
-- [ ] **Step 1: Write the failing tests** — append to `tests/test_items_serialize.py`:
+- [x] **Step 1: Write the failing tests** — append to `tests/test_items_serialize.py`:
 
 ```python
 def test_blur_roundtrip_uses_base_provider(qapp):
@@ -1128,12 +1128,12 @@ def test_blur_without_provider_is_skipped(qapp):
     assert item_from_dict(d) is None
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `QT_QPA_PLATFORM=offscreen .venv/bin/pytest tests/test_items_serialize.py -v -k blur`
 Expected: FAIL — `ImportError: cannot import name 'GaussianBlurItem'`
 
-- [ ] **Step 3: Refactor PixelateItem._regen** — replace it with:
+- [x] **Step 3: Refactor PixelateItem._regen** — replace it with:
 
 ```python
     def _regen(self) -> None:
@@ -1151,7 +1151,7 @@ Expected: FAIL — `ImportError: cannot import name 'GaussianBlurItem'`
         return imageops.pixelated_patch(base, scene_rect, self._block)
 ```
 
-- [ ] **Step 4: Add GaussianBlurItem** — after `PixelateItem`:
+- [x] **Step 4: Add GaussianBlurItem** — after `PixelateItem`:
 
 ```python
 class GaussianBlurItem(PixelateItem):
@@ -1189,7 +1189,7 @@ class GaussianBlurItem(PixelateItem):
         return item
 ```
 
-- [ ] **Step 5: Dispatch "blur" in item_from_dict** — replace the pixelate branch:
+- [x] **Step 5: Dispatch "blur" in item_from_dict** — replace the pixelate branch:
 
 ```python
     t = d.get("type")
@@ -1200,12 +1200,12 @@ class GaussianBlurItem(PixelateItem):
         return cls.from_dict(d, base_provider)
 ```
 
-- [ ] **Step 6: Run to verify pass** (whole serialize file: pixelate refactor must not regress)
+- [x] **Step 6: Run to verify pass** (whole serialize file: pixelate refactor must not regress)
 
 Run: `QT_QPA_PLATFORM=offscreen .venv/bin/pytest tests/test_items_serialize.py tests/test_editor_sidecar.py -v`
 Expected: ALL PASS
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add wondershot/items.py tests/test_items_serialize.py
@@ -1222,7 +1222,7 @@ git commit -m "feat(items): GaussianBlurItem — serializable gaussian sibling o
 - Modify: `wondershot/editor.py` (Tool enum ~line 72; items import ~line 39; toolbar `tools` list ~line 548; `set_tool` hints ~line 1015; `begin_draw`/`end_draw` overlay branches ~lines 1075/1115; new `_apply_blur` next to `_apply_pixelate` ~line 1330)
 - Test: `tests/test_editor_backlog.py`
 
-- [ ] **Step 1: Write the failing tests** — append to `tests/test_editor_backlog.py`:
+- [x] **Step 1: Write the failing tests** — append to `tests/test_editor_backlog.py`:
 
 ```python
 def test_blur_tool_draws_a_blur_item(qapp):
@@ -1259,12 +1259,12 @@ def test_blur_item_gets_corner_grips(qapp):
     assert roles == {"tl", "tr", "bl", "br"}
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `QT_QPA_PLATFORM=offscreen .venv/bin/pytest tests/test_editor_backlog.py -v -k blur`
 Expected: FAIL — `AttributeError: BLUR` on the Tool enum
 
-- [ ] **Step 3: Implement** — in `wondershot/editor.py`:
+- [x] **Step 3: Implement** — in `wondershot/editor.py`:
 
 (a) Tool enum, after `PIXELATE`:
 
@@ -1317,12 +1317,12 @@ Expected: FAIL — `AttributeError: BLUR` on the Tool enum
 
 (No `_handle_positions` change needed — `GaussianBlurItem` is a `PixelateItem`; the third test proves it.)
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `QT_QPA_PLATFORM=offscreen .venv/bin/pytest tests/test_editor_backlog.py tests/test_editor.py -v`
 Expected: ALL PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add wondershot/editor.py tests/test_editor_backlog.py
@@ -1339,7 +1339,7 @@ git commit -m "feat(editor): Blur tool — live gaussian region blur alongside P
 - Modify: `wondershot/editor.py` (new command after `StyleCommand`; hooks on `EditorWindow`; two calls in `CanvasView.mousePressEvent`/`mouseReleaseEvent` ~lines 269-303; `self._step_drag = None` in `EditorWindow.__init__` near `self._adjusting = False`)
 - Test: `tests/test_editor_backlog.py`
 
-- [ ] **Step 1: Write the failing tests** — append to `tests/test_editor_backlog.py`:
+- [x] **Step 1: Write the failing tests** — append to `tests/test_editor_backlog.py`:
 
 ```python
 def _two_steps(ed):
@@ -1389,12 +1389,12 @@ def test_non_step_press_is_ignored(qapp):
     ed.finish_step_drag()                # must not raise
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `QT_QPA_PLATFORM=offscreen .venv/bin/pytest tests/test_editor_backlog.py -v -k step`
 Expected: FAIL — `AttributeError: 'EditorWindow' object has no attribute 'note_step_press'`
 
-- [ ] **Step 3: Implement** — in `wondershot/editor.py`:
+- [x] **Step 3: Implement** — in `wondershot/editor.py`:
 
 (a) New command after `StyleCommand`:
 
@@ -1488,12 +1488,12 @@ In `mouseReleaseEvent`, add `self.editor.finish_step_drag()` immediately after t
         ev.accept()
 ```
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `QT_QPA_PLATFORM=offscreen .venv/bin/pytest tests/test_editor_backlog.py tests/test_editor.py -v`
 Expected: ALL PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add wondershot/editor.py tests/test_editor_backlog.py
@@ -1510,7 +1510,7 @@ GUI-glue/verification task — no new failing test (justification: it adds no be
 - Modify: `ROADMAP.md` (one appended backlog line — shared file, append-only)
 - Test stubs only if the grep below finds a problem — then fix per the landmine rule.
 
-- [ ] **Step 1: Confirm no new settings keys are read during widget construction.** Duplicated duck-typed `_Settings`/`_FakeSettings` stubs live in ELEVEN files (verified on main): `tests/test_capture_crop.py`, `tests/test_capture_window_mode.py`, `tests/test_countdown.py`, `tests/test_editor_sidecar.py`, `tests/test_gallery_sidecar.py`, `tests/test_gallery_trash.py`, `tests/test_hide_for_capture.py`, `tests/test_quickbar.py`, `tests/test_record_sync.py`, `tests/test_tray_tooltip.py`, `tests/test_settings_dialog_ai.py`. The grep below is authoritative — if it finds stubs in files not listed here, those count too. Run:
+- [x] **Step 1: Confirm no new settings keys are read during widget construction.** Duplicated duck-typed `_Settings`/`_FakeSettings` stubs live in ELEVEN files (verified on main): `tests/test_capture_crop.py`, `tests/test_capture_window_mode.py`, `tests/test_countdown.py`, `tests/test_editor_sidecar.py`, `tests/test_gallery_sidecar.py`, `tests/test_gallery_trash.py`, `tests/test_hide_for_capture.py`, `tests/test_quickbar.py`, `tests/test_record_sync.py`, `tests/test_tray_tooltip.py`, `tests/test_settings_dialog_ai.py`. The grep below is authoritative — if it finds stubs in files not listed here, those count too. Run:
 
 ```bash
 grep -rln "class _Settings\|class _FakeSettings" tests/
@@ -1519,18 +1519,18 @@ git diff main -- wondershot/ | grep -n "settings\." || true
 
 Expected: the only `settings.` reads added by this branch are `s.ai_endpoint`, `s.ai_api_key`, `s.ai_model` inside `ai_simplify` — read *after* a click, behind the `ai_configured` `getattr` guard, never during construction. **If anything else shows up, extend every listed stub before proceeding.**
 
-- [ ] **Step 2: Record the edge-snapping deferral in ROADMAP.md** (shared file — APPEND-ONLY: add one line to the backlog section, never reorder/edit existing lines, so the parallel track 4b can also append without conflict):
+- [x] **Step 2: Record the edge-snapping deferral in ROADMAP.md** (shared file — APPEND-ONLY: add one line to the backlog section, never reorder/edit existing lines, so the parallel track 4b can also append without conflict):
 
 ```
 - Editor: text-box edge snapping (spec batch-4 Track 4a item) — deferred from the simplifier/editor-backlog track; needs a design call on what snaps to what.
 ```
 
-- [ ] **Step 3: Run the full suite**
+- [x] **Step 3: Run the full suite**
 
 Run: `QT_QPA_PLATFORM=offscreen .venv/bin/pytest tests/ -q`
 Expected: 277 pre-existing tests + ~25 new ones, ALL PASS, zero skips introduced by this branch.
 
-- [ ] **Step 4: Commit anything outstanding** (the ROADMAP line; plus stub edits if Step 1 forced any):
+- [x] **Step 4: Commit anything outstanding** (the ROADMAP line; plus stub edits if Step 1 forced any):
 
 ```bash
 git status --short
@@ -1546,3 +1546,14 @@ git add tests/ && git commit -m "test: extend settings stubs for new editor keys
 - **Spec coverage:** simplifier (Tasks 2-4: vision LLM → typed regions → editable filled RectItems, single macro, non-destructive, redact-pattern AIJob+dialog ✓); text alignment serialized + panel + undoable (Task 6 ✓); style-change undo (Task 5 ✓); blur variant of pixelate, serializable + toolbar (Tasks 7-9 ✓); step renumbering by badge drop (Task 10 ✓); rotate-cursor polish — already shipped, explicitly no-op ✓; test_items_serialize.py extended in Tasks 1, 6, 8 ✓; shared-stub landmine handled in Task 11 (all 11 stub files listed; grep authoritative) ✓; edge snapping IS in the track 4a brief but is deliberately deferred pending a design call — recorded via a mandatory append-only ROADMAP.md backlog line in Task 11 and flagged for the orchestrator ✓; cross-track boundary (4b's files untouched; shared files append-only) stated in scope notes ✓.
 - **Type consistency:** `Region(rect: QRect, kind: str)` used identically in simplify.py, editor, and tests; `apply_style`'s `align` kwarg matches `get_style`'s `"align"` key; `GaussianBlurItem(base_provider, rect, radius)` matches dispatcher and tests; `RectItem(..., fill=...)` keyword used consistently.
 - **Placeholder scan:** no TBDs; every code step carries the actual code; the two GUI-glue exemptions (Task 10 step 3d, Task 11) carry explicit justifications.
+
+---
+
+## Manual Checklist (live-only verification, not runnable offscreen/headless)
+
+- [ ] AI Simplify end-to-end against a real vision endpoint (Settings → AI configured, e.g. llava): run on a real screenshot, confirm regions become editable filled rects and one Ctrl+Z removes them all.
+- [ ] Cancel button on the "Simplifying UI…" progress dialog actually aborts the job.
+- [ ] Blur tool visual check on a real capture: drag a region, confirm soft gaussian look (vs pixelate), resize/move regenerates the patch live.
+- [ ] Text alignment buttons visual check: boxed text (drag-created) re-flows left/center/right; auto-width labels visibly unaffected (expected Qt behavior).
+- [ ] Step badge drag-onto-badge with a real mouse: numbers swap, dragged badge snaps back; drag to empty space stays a plain move.
+- [ ] "blurfx" toolbar icon: verify the theme provides it (falls back to text-only otherwise); pick an alternative theme icon if it renders empty.

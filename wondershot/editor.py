@@ -40,6 +40,7 @@ from .items import (
     ArrowItem,
     EllipseItem,
     FreehandItem,
+    GaussianBlurItem,
     HandleItem,
     HighlightItem,
     LineItem,
@@ -80,6 +81,7 @@ class Tool(enum.Enum):
     TEXT = "text"
     STEP = "step"
     PIXELATE = "pixelate"
+    BLUR = "blur"
     CROP = "crop"
     CUTOUT_V = "cutout_v"  # removes a vertical band, joins left+right
     CUTOUT_H = "cutout_h"  # removes a horizontal band, joins top+bottom
@@ -227,6 +229,68 @@ class GripCommand(QUndoCommand):
         self.editor.apply_snapshot(self.item, self.before)
 
 
+class StyleCommand(QUndoCommand):
+    """Undo entry for a properties-panel restyle (color / stroke / font
+    size / alignment). The before-state per item comes from get_style,
+    whose keys are exactly apply_style's kwargs. Consecutive changes to
+    the same items with the same kwarg shape merge (spinbox arrow-hold)."""
+
+    _ID = 0xE57         # arbitrary, shared by all StyleCommands
+
+    def __init__(self, editor: "EditorWindow", items, kwargs: dict):
+        super().__init__("restyle")
+        from .items import get_style
+        self.editor = editor
+        self.items = list(items)
+        self.kwargs = dict(kwargs)
+        self.before = [dict(get_style(i)) for i in self.items]
+
+    def id(self) -> int:  # noqa: A003
+        return self._ID
+
+    def mergeWith(self, other) -> bool:  # noqa: N802
+        if (other.items == self.items
+                and set(other.kwargs) == set(self.kwargs)):
+            self.kwargs = dict(other.kwargs)
+            return True
+        return False
+
+    def redo(self):
+        from .items import apply_style
+        for it in self.items:
+            apply_style(it, **self.kwargs)
+
+    def undo(self):
+        from .items import apply_style
+        for it, b in zip(self.items, self.before):
+            apply_style(it, **b)
+
+
+class SwapStepNumbersCommand(QUndoCommand):
+    """Drop one step badge onto another: the two numbers swap and the
+    dragged badge snaps back to where it started — the gesture is a
+    renumber, not a move (otherwise two badges would overlap)."""
+
+    def __init__(self, editor: "EditorWindow", dragged, target,
+                 dragged_start: QPointF):
+        super().__init__("swap step numbers")
+        self.editor = editor
+        self.a, self.b = dragged, target
+        self.a_start = QPointF(dragged_start)
+
+    def redo(self):
+        self.a.number, self.b.number = self.b.number, self.a.number
+        self.a.setPos(self.a_start)
+        self.a.update()
+        self.b.update()
+
+    def undo(self):
+        self.a.number, self.b.number = self.b.number, self.a.number
+        self.a.setPos(self.a_start)
+        self.a.update()
+        self.b.update()
+
+
 class CanvasView(QGraphicsView):
     def __init__(self, editor: "EditorWindow"):
         super().__init__(editor.scene)
@@ -267,6 +331,9 @@ class CanvasView(QGraphicsView):
             super().wheelEvent(ev)
 
     def mousePressEvent(self, ev):  # noqa: N802
+        if ev.button() == Qt.LeftButton:
+            self.editor.note_step_press(
+                self.itemAt(ev.position().toPoint()))
         if self.editor.tool == Tool.SELECT or ev.button() != Qt.LeftButton:
             super().mousePressEvent(ev)
             return
@@ -294,9 +361,11 @@ class CanvasView(QGraphicsView):
         if self._passthrough:
             self._passthrough = False
             super().mouseReleaseEvent(ev)
+            self.editor.finish_step_drag()
             return
         if self.editor.tool == Tool.SELECT or ev.button() != Qt.LeftButton:
             super().mouseReleaseEvent(ev)
+            self.editor.finish_step_drag()
             return
         if self.editor.drawing:
             self.editor.end_draw(self.mapToScene(ev.position().toPoint()))
@@ -363,6 +432,7 @@ class EditorWindow(QMainWindow):
         self._overlay: QGraphicsRectItem | None = None
         self._handles: list[HandleItem] = []
         self._adjusting = False
+        self._step_drag = None  # (StepItem, press pos) during a badge drag
         self.scene.selectionChanged.connect(self._rebuild_handles)
 
         self._build_toolbar()
@@ -556,6 +626,7 @@ class EditorWindow(QMainWindow):
             (Tool.TEXT, "Text", "draw-text", "T"),
             (Tool.STEP, "Step", "format-list-ordered", "N"),
             (Tool.PIXELATE, "Pixelate", "view-private", "X"),
+            (Tool.BLUR, "Blur", "blurfx", "B"),
             (Tool.CROP, "Crop", "transform-crop", "C"),
             (Tool.CUTOUT_V, "Cut |", "edit-cut", "U"),
             (Tool.CUTOUT_H, "Cut —", "edit-cut", "Shift+U"),
@@ -599,6 +670,12 @@ class EditorWindow(QMainWindow):
             "Find and pixelate sensitive text (Settings → AI)")
         self.redact_action.triggered.connect(self.ai_redact)
         tb.addAction(self.redact_action)
+
+        self.simplify_action = self._act("AI Simplify", "image-x-generic")
+        self.simplify_action.setToolTip(
+            "Replace UI regions with clean editable blocks (Settings → AI)")
+        self.simplify_action.triggered.connect(self.ai_simplify)
+        tb.addAction(self.simplify_action)
 
         from . import bgremove
         self.bg_action = self._act("Remove BG", "edit-clear-all")
@@ -763,6 +840,60 @@ class EditorWindow(QMainWindow):
         self.statusBar().showMessage(msg, 8000)
         return len(clamped)
 
+    def ai_simplify(self) -> None:
+        from .aiclient import ai_configured
+        from . import simplify
+        if not (self.settings and ai_configured(self.settings)):
+            self.statusBar().showMessage(
+                "Configure an AI endpoint in Settings → AI first", 6000)
+            return
+        s = self.settings
+        image = self.base_image.copy()  # snapshot off the GUI thread's state
+        endpoint, key, model = s.ai_endpoint, s.ai_api_key, s.ai_model
+        self._start_ai_job(
+            lambda: simplify.simplify_regions(image, endpoint, key, model),
+            "Simplifying UI…", self._simplify_done)
+
+    def _simplify_done(self, regions, error: str) -> None:
+        if error:
+            QMessageBox.warning(self, "Wondershot",
+                                f"AI Simplify failed: {error}")
+            return
+        self.apply_simplify_regions(regions or [])
+
+    def apply_simplify_regions(self, regions) -> int:
+        """Region -> filled RectItem objects, one undo macro, never
+        destructive: text runs get a neutral gray block, chrome gets the
+        region's dominant color, images get the dominant color plus a
+        slightly darker outline. Everything stays editable afterwards."""
+        from . import simplify
+        img_rect = QRect(0, 0, self.base_image.width(),
+                         self.base_image.height())
+        kept: list[tuple[QRect, str]] = []
+        for reg in regions:
+            c = QRect(reg.rect).intersected(img_rect)
+            if c.width() >= 4 and c.height() >= 4:
+                kept.append((c, reg.kind))
+        if kept:
+            self.undo_stack.beginMacro("AI simplify")
+            try:
+                for c, kind in kept:
+                    if kind == "text":
+                        fill = QColor(simplify.TEXT_FILL)
+                    else:
+                        fill = simplify.dominant_color(self.base_image, c)
+                    pen = fill.darker(115) if kind == "image" else QColor(fill)
+                    item = RectItem(QRectF(c), pen, 1, fill=fill)
+                    self.undo_stack.push(
+                        AddItemCommand(self, item, "AI simplify"))
+            finally:
+                self.undo_stack.endMacro()
+        msg = (f"AI Simplify: replaced {len(kept)} region(s) — every block "
+               "is editable; Ctrl+Z undoes them all" if kept
+               else "AI Simplify: no regions found")
+        self.statusBar().showMessage(msg, 8000)
+        return len(kept)
+
     def remove_background(self) -> None:
         from . import bgremove
         if not bgremove.available():
@@ -871,6 +1002,26 @@ class EditorWindow(QMainWindow):
         self.font_spin.valueChanged.connect(self._font_changed)
         form.addRow("Text size", self.font_spin)
 
+        from PySide6.QtWidgets import QHBoxLayout, QToolButton
+        align_w = QWidget(w)
+        align_lay = QHBoxLayout(align_w)
+        align_lay.setContentsMargins(0, 0, 0, 0)
+        self.align_buttons: dict[str, QToolButton] = {}
+        for name, icon in (("left", "format-justify-left"),
+                           ("center", "format-justify-center"),
+                           ("right", "format-justify-right")):
+            b = QToolButton(align_w)
+            b.setIcon(QIcon.fromTheme(icon))
+            b.setToolTip(f"Align {name}")
+            b.setCheckable(True)
+            b.setAutoExclusive(True)
+            b.clicked.connect(lambda _=False, a=name: self._align_changed(a))
+            align_lay.addWidget(b)
+            self.align_buttons[name] = b
+        self.align_buttons["left"].setChecked(True)
+        self._align_widget = align_w
+        form.addRow("Align", align_w)
+
         from PySide6.QtWidgets import QCheckBox
         effects_title = QLabel("<b>Effects</b>", w)
         form.addRow(effects_title)
@@ -929,6 +1080,7 @@ class EditorWindow(QMainWindow):
             text = self.tool in (Tool.TEXT, Tool.SELECT)
         self._panel_form.setRowVisible(self.width_spin, stroke)
         self._panel_form.setRowVisible(self.font_spin, text)
+        self._panel_form.setRowVisible(self._align_widget, text)
 
     def _selected_annotations(self):
         return [i for i in self.scene.selectedItems() if is_annotation(i)]
@@ -950,17 +1102,16 @@ class EditorWindow(QMainWindow):
                 self.width_spin.setValue(style["width"])
             if "font_size" in style and style["font_size"] > 0:
                 self.font_spin.setValue(style["font_size"])
+            if "align" in style:
+                self.align_buttons[style["align"]].setChecked(True)
         finally:
             self._syncing_panel = False
 
     def _apply_to_selection(self, **kwargs) -> None:
-        from .items import apply_style
         items = self._selected_annotations()
         if not items:
             return
-        for item in items:
-            apply_style(item, **kwargs)
-        self.undo_stack.resetClean()  # restyling counts as an edit
+        self.undo_stack.push(StyleCommand(self, items, kwargs))
 
     def _pick_color(self) -> None:
         c = QColorDialog.getColor(self.color, self, "Annotation color")
@@ -1006,6 +1157,11 @@ class EditorWindow(QMainWindow):
             self.settings.font_size = size
         self._apply_to_selection(font_size=size)
 
+    def _align_changed(self, align: str) -> None:
+        if self._syncing_panel:
+            return
+        self._apply_to_selection(align=align)
+
     # -- tools -------------------------------------------------------------
 
     def set_tool(self, tool: Tool) -> None:
@@ -1020,6 +1176,7 @@ class EditorWindow(QMainWindow):
             Tool.TEXT: "Click for a label, or drag a box for wrapped text",
             Tool.STEP: "Click to stamp the next number",
             Tool.PIXELATE: "Drag a rectangle to pixelate",
+            Tool.BLUR: "Drag a rectangle to blur",
         }
         self._hint.setText(hints.get(tool, ""))
 
@@ -1072,7 +1229,7 @@ class EditorWindow(QMainWindow):
             self.undo_stack.push(AddItemCommand(self, item, "add step"))
             self._select_only(item)
             return
-        elif t in (Tool.TEXT, Tool.PIXELATE, Tool.CROP,
+        elif t in (Tool.TEXT, Tool.PIXELATE, Tool.BLUR, Tool.CROP,
                    Tool.CUTOUT_V, Tool.CUTOUT_H):
             self._overlay = QGraphicsRectItem()
             pen = QPen(QColor(0, 150, 255), 1, Qt.DashLine)
@@ -1112,7 +1269,7 @@ class EditorWindow(QMainWindow):
                 return
             self.undo_stack.push(AddItemCommand(self, item))
             self._select_only(item)
-        elif t in (Tool.TEXT, Tool.PIXELATE, Tool.CROP,
+        elif t in (Tool.TEXT, Tool.PIXELATE, Tool.BLUR, Tool.CROP,
                    Tool.CUTOUT_V, Tool.CUTOUT_H):
             overlay, self._overlay = self._overlay, None
             if overlay is not None:
@@ -1125,6 +1282,8 @@ class EditorWindow(QMainWindow):
                 return
             if t == Tool.PIXELATE:
                 self._apply_pixelate(rect)
+            elif t == Tool.BLUR:
+                self._apply_blur(rect)
             elif t == Tool.CROP:
                 self._apply_crop(rect)
             else:
@@ -1336,6 +1495,15 @@ class EditorWindow(QMainWindow):
         self.undo_stack.push(AddItemCommand(self, item, "pixelate"))
         self._select_only(item)
 
+    def _apply_blur(self, rect: QRect) -> None:
+        img = self.base_image
+        clamped = rect.intersected(QRect(0, 0, img.width(), img.height()))
+        if clamped.width() < 4 or clamped.height() < 4:
+            return
+        item = GaussianBlurItem(lambda: self.base_image, QRectF(clamped))
+        self.undo_stack.push(AddItemCommand(self, item, "blur"))
+        self._select_only(item)
+
     def _apply_crop(self, rect: QRect) -> None:
         flat = self.flattened()
         # pre-op FLATTENED image: a crop folds annotations into the base,
@@ -1364,6 +1532,32 @@ class EditorWindow(QMainWindow):
         items = [i for i in self.scene.selectedItems() if is_annotation(i)]
         if items:
             self.undo_stack.push(RemoveItemsCommand(self, items))
+
+    def note_step_press(self, item) -> None:
+        """Called by the view on mouse-press with the item under the
+        cursor; remembers a StepItem's start position for the
+        drop-to-swap gesture."""
+        self._step_drag = ((item, QPointF(item.pos()))
+                           if isinstance(item, StepItem) else None)
+
+    def finish_step_drag(self) -> None:
+        """Called by the view on mouse-release: if the pressed badge
+        moved onto another badge, swap their numbers (undoable)."""
+        drag, self._step_drag = self._step_drag, None
+        if drag is None:
+            return
+        item, start = drag
+        if item.scene() is not self.scene or item.pos() == start:
+            return
+        targets = [i for i in item.collidingItems()
+                   if isinstance(i, StepItem)]
+        if not targets:
+            return
+        target = min(targets, key=lambda t: (t.scenePos()
+                                             - item.scenePos()
+                                             ).manhattanLength())
+        self.undo_stack.push(
+            SwapStepNumbersCommand(self, item, target, start))
 
     def copy_to_clipboard(self) -> None:
         QGuiApplication.clipboard().setImage(self.flattened())

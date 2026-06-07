@@ -108,3 +108,43 @@ def bottom_fade(image: QImage, height: int) -> QImage:
     p.fillRect(QRect(0, out.height() - h, out.width(), h), QBrush(grad))
     p.end()
     return out
+
+
+def blurred_patch(image: QImage, rect: QRect, radius: int = 12) -> QImage:
+    """Gaussian-blurred copy of just `rect` of `image`.
+
+    Rendered via QGraphicsBlurEffect on a throwaway offscreen scene (the
+    only gaussian Qt ships); requires a QApplication, so the widget
+    imports stay local and the module import stays widget-free. The
+    source is padded by `radius` then cropped back, so edge pixels blur
+    against their real neighbors instead of transparency.
+    """
+    from PySide6.QtCore import QRectF
+    from PySide6.QtGui import QPixmap
+    from PySide6.QtWidgets import (
+        QApplication, QGraphicsBlurEffect, QGraphicsPixmapItem,
+        QGraphicsScene,
+    )
+    if not isinstance(QApplication.instance(), QApplication):
+        # QGraphicsScene segfaults under a bare QGuiApplication (or no
+        # app at all). Null patch -> PixelateItem's gray-rect fallback.
+        return QImage()
+    r = rect.normalized().intersected(image.rect())
+    if r.isEmpty():
+        return QImage()
+    pr = r.adjusted(-radius, -radius, radius, radius).intersected(
+        image.rect())
+    region = image.copy(pr)
+    scene = QGraphicsScene()
+    item = QGraphicsPixmapItem(QPixmap.fromImage(region))
+    effect = QGraphicsBlurEffect()
+    effect.setBlurRadius(radius)
+    item.setGraphicsEffect(effect)
+    scene.addItem(item)
+    out = QImage(region.size(), QImage.Format_ARGB32_Premultiplied)
+    out.fill(Qt.transparent)
+    p = QPainter(out)
+    scene.render(p, QRectF(0, 0, region.width(), region.height()),
+                 QRectF(0, 0, region.width(), region.height()))
+    p.end()
+    return out.copy(r.x() - pr.x(), r.y() - pr.y(), r.width(), r.height())

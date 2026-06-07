@@ -190,24 +190,31 @@ class LineItem(_NoSelectionBox, QGraphicsPathItem):
 
 
 class RectItem(QGraphicsRectItem):
-    def __init__(self, rect: QRectF, color: QColor, width: int):
+    def __init__(self, rect: QRectF, color: QColor, width: int,
+                 fill: QColor | None = None):
         super().__init__(rect)
         _mark(self)
         self.setPen(QPen(color, width, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
-        self.setBrush(Qt.NoBrush)
+        self._fill = QColor(fill) if fill is not None else None
+        self.setBrush(QBrush(self._fill) if self._fill is not None
+                      else Qt.NoBrush)
 
     def to_dict(self) -> dict:
         r = self.rect()
-        return {"type": "rect",
-                "rect": [r.x(), r.y(), r.width(), r.height()],
-                "color": _color_str(self.pen().color()),
-                "width": self.pen().width(), **_transform_dict(self)}
+        d = {"type": "rect",
+             "rect": [r.x(), r.y(), r.width(), r.height()],
+             "color": _color_str(self.pen().color()),
+             "width": self.pen().width(), **_transform_dict(self)}
+        if self._fill is not None:
+            d["fill"] = _color_str(self._fill)
+        return d
 
     @classmethod
     def from_dict(cls, d: dict) -> "RectItem":
         r = d["rect"]
+        fill = QColor(d["fill"]) if d.get("fill") else None
         item = cls(QRectF(r[0], r[1], r[2], r[3]),
-                   QColor(d["color"]), int(d["width"]))
+                   QColor(d["color"]), int(d["width"]), fill=fill)
         _apply_transform(item, d)
         return item
 
@@ -296,6 +303,10 @@ class FreehandItem(QGraphicsPathItem):
         return item
 
 
+_TEXT_ALIGN = {"left": Qt.AlignLeft, "center": Qt.AlignHCenter,
+               "right": Qt.AlignRight}
+
+
 class TextItem(QGraphicsTextItem):
     def __init__(self, pos: QPointF, color: QColor, point_size: int = 18):
         super().__init__()
@@ -306,7 +317,20 @@ class TextItem(QGraphicsTextItem):
         font.setPointSize(point_size)
         font.setBold(True)
         self.setFont(font)
+        self._align = "left"
         self.setTextInteractionFlags(Qt.TextEditorInteraction)
+
+    def set_alignment(self, align: str) -> None:
+        """left / center / right — visible once the item has a textWidth
+        (auto-width labels hug their text, so there is nothing to align)."""
+        self._align = align if align in _TEXT_ALIGN else "left"
+        opt = self.document().defaultTextOption()
+        opt.setAlignment(_TEXT_ALIGN[self._align])
+        self.document().setDefaultTextOption(opt)
+        self.update()
+
+    def alignment(self) -> str:
+        return self._align
 
     def start_editing(self) -> None:
         self.setTextInteractionFlags(Qt.TextEditorInteraction)
@@ -327,6 +351,7 @@ class TextItem(QGraphicsTextItem):
                 "color": _color_str(self.defaultTextColor()),
                 "family": f.family(), "point_size": f.pointSize(),
                 "bold": f.bold(), "text_width": self.textWidth(),
+                "align": self._align,
                 **_transform_dict(self)}
 
     @classmethod
@@ -344,6 +369,7 @@ class TextItem(QGraphicsTextItem):
             item.setTextWidth(tw)
         # restored items are not mid-edit; double-click re-enables editing
         item.setTextInteractionFlags(Qt.NoTextInteraction)
+        item.set_alignment(d.get("align", "left"))
         _apply_transform(item, d)
         return item
 
@@ -554,6 +580,7 @@ def get_style(item) -> dict:
     elif isinstance(item, TextItem):
         style["color"] = item.defaultTextColor()
         style["font_size"] = item.font().pointSize()
+        style["align"] = item.alignment()
     elif isinstance(item, HighlightItem):
         c = item.brush().color()
         c.setAlpha(255)
@@ -565,7 +592,8 @@ def get_style(item) -> dict:
 
 
 def apply_style(item, color: QColor | None = None, width: int | None = None,
-                font_size: int | None = None) -> None:
+                font_size: int | None = None,
+                align: str | None = None) -> None:
     """Apply color / stroke width / font size to any annotation item."""
     if isinstance(item, ArrowItem):
         item.set_style(color, width)
@@ -580,6 +608,8 @@ def apply_style(item, color: QColor | None = None, width: int | None = None,
             f = item.font()
             f.setPointSize(font_size)
             item.setFont(f)
+        if align is not None:
+            item.set_alignment(align)
     elif isinstance(item, HighlightItem):
         if color is not None:
             c = QColor(color)
@@ -636,14 +666,18 @@ class PixelateItem(QGraphicsItem):
         return item
 
     def _regen(self) -> None:
-        from . import imageops
         base = self._base_provider()
         if base is None or base.isNull():
             self._patch = None
             return
         scene_rect = self.mapRectToScene(self._rect.normalized()).toRect()
-        patch = imageops.pixelated_patch(base, scene_rect, self._block)
-        self._patch = None if patch.isNull() else patch
+        patch = self._patch_for(base, scene_rect)
+        self._patch = None if patch is None or patch.isNull() else patch
+
+    def _patch_for(self, base, scene_rect):
+        """Render the region patch — subclasses swap the filter."""
+        from . import imageops
+        return imageops.pixelated_patch(base, scene_rect, self._block)
 
     def itemChange(self, change, value):  # noqa: N802
         if change == QGraphicsItem.ItemPositionHasChanged:
@@ -666,6 +700,41 @@ class PixelateItem(QGraphicsItem):
             painter.drawRect(r)
 
 
+class GaussianBlurItem(PixelateItem):
+    """Live gaussian blur of the base image under it — the soft variant
+    of PixelateItem; identical move/resize/serialize behavior."""
+
+    # Class-attribute default: PySide forbids touching self before the
+    # base __init__, and super().__init__ already runs _regen -> needs
+    # _radius readable. Non-default radii regenerate once more below.
+    _radius = 12
+
+    def __init__(self, base_provider, rect: QRectF, radius: int = 12):
+        super().__init__(base_provider, rect)
+        if int(radius) != self._radius:
+            self._radius = int(radius)
+            self._regen()
+            self.update()
+
+    def _patch_for(self, base, scene_rect):
+        from . import imageops
+        return imageops.blurred_patch(base, scene_rect, self._radius)
+
+    def to_dict(self) -> dict:
+        r = self._rect
+        return {"type": "blur",
+                "rect": [r.x(), r.y(), r.width(), r.height()],
+                "radius": self._radius, **_transform_dict(self)}
+
+    @classmethod
+    def from_dict(cls, d: dict, base_provider) -> "GaussianBlurItem":
+        r = d["rect"]
+        item = cls(base_provider, QRectF(r[0], r[1], r[2], r[3]),
+                   radius=int(d.get("radius", 12)))
+        _apply_transform(item, d)
+        return item
+
+
 def item_from_dict(d: dict, base_provider=None):
     """Rebuild a live annotation item from its serialized dict.
 
@@ -674,10 +743,11 @@ def item_from_dict(d: dict, base_provider=None):
     base_provider callable to regenerate its patch.
     """
     t = d.get("type")
-    if t == "pixelate":
+    if t in ("pixelate", "blur"):
         if base_provider is None:
             return None
-        return PixelateItem.from_dict(d, base_provider)
+        cls = PixelateItem if t == "pixelate" else GaussianBlurItem
+        return cls.from_dict(d, base_provider)
     cls = _ITEM_TYPES.get(t)
     return cls.from_dict(d) if cls is not None else None
 

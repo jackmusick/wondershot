@@ -198,3 +198,75 @@ def test_arrow_rotation_roundtrip_exactly(qapp):
     assert out.rotation() == 287.123456789
     assert out.mapToScene(out.endpoints()[1]) \
         == item.mapToScene(item.endpoints()[1])
+
+
+def test_rect_fill_roundtrip(qapp):
+    from PySide6.QtCore import Qt
+    from wondershot.items import RectItem
+    item = RectItem(QRectF(1, 2, 30, 20), QColor("#202020"), 1,
+                    fill=QColor("#c8c8c8"))
+    assert item.brush().style() != Qt.NoBrush
+    out = roundtrip(item)
+    assert out.brush().color() == QColor("#c8c8c8")
+    assert out.brush().style() != Qt.NoBrush
+    assert out.pen().color() == QColor("#202020")
+
+
+def test_rect_without_fill_stays_hollow(qapp):
+    from PySide6.QtCore import Qt
+    from wondershot.items import RectItem
+    item = RectItem(QRectF(0, 0, 10, 10), QColor("red"), 3)
+    d = item.to_dict()
+    assert "fill" not in d              # old sidecars stay byte-identical
+    out = roundtrip(item)
+    assert out.brush().style() == Qt.NoBrush
+
+
+def test_text_alignment_roundtrip(qapp):
+    from wondershot.items import TextItem
+    from PySide6.QtCore import Qt
+    item = TextItem(QPointF(0, 0), QColor("red"))
+    item.setPlainText("centered")
+    item.setTextWidth(200.0)
+    item.set_alignment("center")
+    d = item.to_dict()
+    assert d["align"] == "center"
+    out = roundtrip(item)
+    assert out.alignment() == "center"
+    assert out.document().defaultTextOption().alignment() \
+        & Qt.AlignHCenter
+
+
+def test_text_alignment_defaults_left_for_old_sidecars(qapp):
+    from wondershot.items import TextItem, item_from_dict
+    item = TextItem(QPointF(0, 0), QColor("red"))
+    assert item.alignment() == "left"
+    d = item.to_dict()
+    del d["align"]                       # sidecar written by an older build
+    out = item_from_dict(d)
+    assert out.alignment() == "left"
+
+
+def test_blur_roundtrip_uses_base_provider(qapp):
+    from PySide6.QtGui import QImage
+    from wondershot.items import GaussianBlurItem, PixelateItem
+    base = QImage(200, 150, QImage.Format_ARGB32_Premultiplied)
+    base.fill(QColor("orange"))
+    item = GaussianBlurItem(lambda: base, QRectF(10.0, 12.0, 80.0, 40.0),
+                            radius=7)
+    assert isinstance(item, PixelateItem)   # editor grips ride on this
+    d = item.to_dict()
+    assert d["type"] == "blur"
+    assert d["radius"] == 7
+    out = roundtrip(item, base_provider=lambda: base)
+    assert isinstance(out, GaussianBlurItem)
+    assert out.rect() == QRectF(10.0, 12.0, 80.0, 40.0)
+    assert out._radius == 7
+    assert out._patch is not None, "patch must regenerate from the provider"
+
+
+def test_blur_without_provider_is_skipped(qapp):
+    from wondershot.items import item_from_dict
+    d = {"type": "blur", "rect": [0, 0, 10, 10], "radius": 12,
+         "pos": [0, 0], "rotation": 0.0, "origin": [0, 0]}
+    assert item_from_dict(d) is None
