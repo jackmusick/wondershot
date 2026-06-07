@@ -292,7 +292,7 @@ Same pure-function discipline as `redact.parse_bboxes`: the LLM returns normaliz
 - Modify: `wondershot/simplify.py`
 - Test: `tests/test_simplify.py`
 
-- [ ] **Step 1: Write the failing tests** — append to `tests/test_simplify.py`:
+- [x] **Step 1: Write the failing tests** — append to `tests/test_simplify.py`:
 
 ```python
 def test_parse_regions_normalized_to_pixels(qapp):
@@ -355,12 +355,12 @@ def test_simplify_regions_pipeline_calls_chat(qapp, monkeypatch):
     assert regions == [simplify.Region(QRect(0, 0, 100, 50), "text")]
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `QT_QPA_PLATFORM=offscreen .venv/bin/pytest tests/test_simplify.py -v`
 Expected: the 5 new tests FAIL with `ImportError: cannot import name 'parse_regions'` (the 3 Task-2 tests still pass)
 
-- [ ] **Step 3: Implement** — append to `wondershot/simplify.py`:
+- [x] **Step 3: Implement** — append to `wondershot/simplify.py`:
 
 ```python
 REGION_PROMPT = (
@@ -421,12 +421,12 @@ def simplify_regions(image, endpoint: str, api_key: str,
     return parse_regions(reply, image.width(), image.height())
 ```
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `QT_QPA_PLATFORM=offscreen .venv/bin/pytest tests/test_simplify.py -v`
 Expected: 8 PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add wondershot/simplify.py tests/test_simplify.py
