@@ -128,3 +128,11 @@ def test_trim_args_reencode_fallback_encoder():
                            "/l/.rendering/in-trimmed.mp4",
                            reencode=True, encoder="mpeg4")
     assert "-q:v" in args and "-crf" not in args
+
+
+def test_blur_strength_parameter():
+    graph, _ = build_blur_filter(
+        [Redaction(QRect(0, 0, 100, 100), 0.0, 1.0)],
+        blur=30, video_w=640, video_h=360)
+    assert "boxblur=30" in graph
+    assert "boxblur=14" not in graph

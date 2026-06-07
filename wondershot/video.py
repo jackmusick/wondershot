@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QSlider,
+    QSpinBox,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -496,6 +497,19 @@ class VideoPane(QWidget):
         self.apply_btn.clicked.connect(self._apply_blurs)
         self.apply_btn.hide()
 
+        self.blur_strength_label = QLabel("Strength", self)
+        self.blur_strength_label.hide()
+        self.blur_strength_spin = QSpinBox(self)
+        self.blur_strength_spin.setRange(2, 60)
+        self.blur_strength_spin.setToolTip(
+            "Blur radius used for the render — the boxes show an "
+            "approximate live preview (the rendered blur is the "
+            "ffmpeg boxblur, which can differ slightly)")
+        self.blur_strength_spin.setValue(settings.video_blur_strength)
+        self.blur_strength_spin.valueChanged.connect(
+            self._blur_strength_changed)
+        self.blur_strength_spin.hide()
+
         self.trim_btn = QPushButton("Trim", self)
         self.trim_btn.setIcon(QIcon.fromTheme("edit-cut"))
         self.trim_btn.setCheckable(True)
@@ -533,6 +547,8 @@ class VideoPane(QWidget):
         controls.addSpacing(12)
         controls.addWidget(self.blur_btn)
         controls.addWidget(self.apply_btn)
+        controls.addWidget(self.blur_strength_label)
+        controls.addWidget(self.blur_strength_spin)
         controls.addWidget(self.trim_btn)
         controls.addWidget(self.trim_accurate)
         controls.addWidget(self.trim_apply_btn)
@@ -693,6 +709,10 @@ class VideoPane(QWidget):
         self.overlay.set_active(on)
         self._sync_video_surface()
 
+    def _blur_strength_changed(self, v: int) -> None:
+        self.settings.video_blur_strength = v
+        self.overlay.update()  # the preview (true blur) repaints live
+
     def _trim_mode(self, on: bool) -> None:
         if on and self.redactions:
             self.trim_btn.setChecked(False)
@@ -758,6 +778,8 @@ class VideoPane(QWidget):
         has = bool(self.redactions)
         self.redact_box.setVisible(has)
         self.apply_btn.setVisible(has)
+        self.blur_strength_label.setVisible(has)
+        self.blur_strength_spin.setVisible(has)
         self.apply_btn.setText(f"Apply blurs ({len(self.redactions)})")
         if not has:
             self.range_bar.hide()
@@ -866,6 +888,7 @@ class VideoPane(QWidget):
         self.blur_btn.setChecked(False)
         self.blur_btn.setEnabled(not on)
         self.apply_btn.setEnabled(not on)
+        self.blur_strength_spin.setEnabled(not on)
         self.redact_box.setVisible(not on and bool(self.redactions))
         self.range_bar.setVisible(not on and bool(self.redactions))
         if on:
@@ -889,6 +912,7 @@ class VideoPane(QWidget):
         vs = sink.videoSize() if sink else None
         graph, out_label = build_blur_filter(
             self.redactions,
+            blur=self.blur_strength_spin.value(),
             video_w=vs.width() if vs else 0,
             video_h=vs.height() if vs else 0)
         base, ext = os.path.splitext(os.path.basename(self.path))

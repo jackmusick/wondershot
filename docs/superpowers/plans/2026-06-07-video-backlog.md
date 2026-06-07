@@ -147,7 +147,7 @@ def test_video_tool_values_survive_string_storage(tmp_path):
 - Modify: `tests/test_video_filter.py` (append)
 - Create: `tests/test_video_pane.py`
 
-- [ ] **Write the characterization test** for the existing `blur` parameter (this test passes immediately — it pins the contract the UI is about to depend on; the failing tests come next). Append to `tests/test_video_filter.py`:
+- [x] **Write the characterization test** for the existing `blur` parameter (this test passes immediately — it pins the contract the UI is about to depend on; the failing tests come next). Append to `tests/test_video_filter.py`:
 
 ```python
 def test_blur_strength_parameter():
@@ -158,7 +158,7 @@ def test_blur_strength_parameter():
     assert "boxblur=14" not in graph
 ```
 
-- [ ] **Write the failing pane tests** — create `tests/test_video_pane.py`:
+- [x] **Write the failing pane tests** — create `tests/test_video_pane.py`:
 
 ```python
 import os
@@ -268,9 +268,9 @@ def test_apply_blurs_passes_strength_to_filter(qapp, tmp_path, monkeypatch):
     assert FakeProc.last[0] == "/usr/bin/ffmpeg"  # via ffmpegutil seam
 ```
 
-- [ ] **Run, expect failure:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_video_pane.py tests/test_video_filter.py -q` → the 5 pane tests fail (`AttributeError: ... no attribute 'blur_strength_spin'`); all filter tests including the new characterization pass.
+- [x] **Run, expect failure:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_video_pane.py tests/test_video_filter.py -q` → the 5 pane tests fail (`AttributeError: ... no attribute 'blur_strength_spin'`); all filter tests including the new characterization pass.
 
-- [ ] **Implement** — four edits in `wondershot/video.py`:
+- [x] **Implement** — four edits in `wondershot/video.py`:
 
   1. Add `QSpinBox` to the `QtWidgets` import block (line 23–33), keeping alphabetical order:
 
@@ -344,9 +344,9 @@ from PySide6.QtWidgets import (
             video_h=vs.height() if vs else 0)
 ```
 
-- [ ] **Run:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_video_pane.py tests/test_video_filter.py -q` → all pass (5 pane + 15 filter: 14 existing + the characterization test).
-- [ ] **Full suite:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q` → 195 passed.
-- [ ] **Commit:** `git add wondershot/video.py tests/test_video_pane.py tests/test_video_filter.py && git commit -m "Video: blur strength control wired into the boxblur render"`
+- [x] **Run:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_video_pane.py tests/test_video_filter.py -q` → all pass (5 pane + 15 filter: 14 existing + the characterization test).
+- [x] **Full suite:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q` → 195 passed.
+- [x] **Commit:** `git add wondershot/video.py tests/test_video_pane.py tests/test_video_filter.py && git commit -m "Video: blur strength control wired into the boxblur render"`
 
 ---
 
