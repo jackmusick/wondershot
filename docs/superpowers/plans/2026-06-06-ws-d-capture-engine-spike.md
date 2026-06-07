@@ -1086,7 +1086,7 @@ Defensive posture (per `hotkey.py`'s KWin landmine: a mistyped D-Bus call once a
 **Files:**
 - Modify: `ROADMAP.md` (append at end of file, after the "Platform landmines" section)
 
-- [ ] Append the following to the END of `ROADMAP.md` (the executor fills the blanks after performing the manual tests in Tasks 7 and 8 on the Fedora/KDE box):
+- [x] Append the following to the END of `ROADMAP.md` (the executor fills the blanks after performing the manual tests in Tasks 7 and 8 on the Fedora/KDE box):
   ```markdown
 
   ## WS-D capture-engine spike findings (2026-06-06)
@@ -1117,13 +1117,13 @@ Defensive posture (per `hotkey.py`'s KWin landmine: a mistyped D-Bus call once a
   - Blocking gaps (e.g. need libei bindings, need Enable+barriers): ____
   - **Verdict: step capture LINUX-VIABLE / WINDOWS-FIRST**: ____
   ```
-- [ ] Final full verification:
+- [x] Final full verification:
   ```bash
   .venv/bin/python -m pytest tests/ -q
   QT_QPA_PLATFORM=offscreen .venv/bin/python -c "import wondershot.stitch, wondershot.scrollsource, wondershot.cli; print('imports ok')"
   ```
   Expected: full suite green (including all of `tests/test_stitch.py`), `imports ok`.
-- [ ] Commit:
+- [x] Commit:
   ```bash
   git add ROADMAP.md
   git commit -m "WS-D: append spike findings template to ROADMAP (executor fills after manual runs)"
