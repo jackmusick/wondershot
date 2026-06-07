@@ -374,7 +374,7 @@
 - Modify: `wondershot/stitch.py` (append)
 - Modify: `tests/test_stitch.py` (append)
 
-- [ ] Write the failing tests — this is the load-bearing reconstruction proof. Append to `tests/test_stitch.py`:
+- [x] Write the failing tests — this is the load-bearing reconstruction proof. Append to `tests/test_stitch.py`:
   ```python
   def _window_frames(tall: np.ndarray, viewport: int, offsets):
       """Simulate a user scrolling: viewport-sized windows of a tall page."""
@@ -445,11 +445,11 @@
       assert np.array_equal(qimage_to_rgb(st.result()), a)
       assert st.frames_dropped == 1
   ```
-- [ ] Run — must fail with `ImportError: cannot import name 'ScrollStitcher'`:
+- [x] Run — must fail with `ImportError: cannot import name 'ScrollStitcher'`:
   ```bash
   .venv/bin/python -m pytest tests/test_stitch.py -q
   ```
-- [ ] Implement. Append to `wondershot/stitch.py`:
+- [x] Implement. Append to `wondershot/stitch.py`:
   ```python
   # -- accumulator -----------------------------------------------------------
 
@@ -510,16 +510,16 @@
               return QImage()
           return rgb_to_qimage(self._canvas)
   ```
-- [ ] Run the full stitch suite, expected pass (all tasks 2-5 tests):
+- [x] Run the full stitch suite, expected pass (all tasks 2-5 tests):
   ```bash
   .venv/bin/python -m pytest tests/test_stitch.py -q
   ```
   Gotcha if `test_stitcher_drops_no_motion_frames` fails on the count: offsets `[0, 0, 40, 40, 40, 80]` give one duplicate of frame 0 and two duplicates of the 40-frame = 3 drops, 3 used. If reconstruction fails on the header test: remember bands lock on the first DIFFERING pair (frames at offsets 0 and 35), and the canvas (frame 0) is re-cropped at that moment.
-- [ ] Run the whole repo suite to confirm nothing else broke:
+- [x] Run the whole repo suite to confirm nothing else broke:
   ```bash
   .venv/bin/python -m pytest tests/ -q
   ```
-- [ ] Commit:
+- [x] Commit:
   ```bash
   git add wondershot/stitch.py tests/test_stitch.py
   git commit -m "WS-D: ScrollStitcher with synthetic end-to-end reconstruction (TDD)"

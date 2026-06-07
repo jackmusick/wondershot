@@ -103,3 +103,73 @@ def test_static_bands_identical_frames_returns_zero():
     from wondershot.stitch import static_bands, to_gray
     g = to_gray(make_rgb(height=200, width=40, seed=9))
     assert static_bands(g, g) == (0, 0)
+
+
+def _window_frames(tall: np.ndarray, viewport: int, offsets):
+    """Simulate a user scrolling: viewport-sized windows of a tall page."""
+    from wondershot.stitch import rgb_to_qimage
+    return [rgb_to_qimage(tall[o:o + viewport]) for o in offsets]
+
+
+def test_stitcher_reconstructs_tall_image():
+    from wondershot.stitch import ScrollStitcher, qimage_to_rgb
+    tall = make_rgb(height=900, width=120, seed=10)
+    offsets = [0, 30, 60, 95, 140, 200, 260, 300]
+    st = ScrollStitcher()
+    for f in _window_frames(tall, viewport=200, offsets=offsets):
+        st.add_frame(f)
+    out = qimage_to_rgb(st.result())
+    expected = tall[0:offsets[-1] + 200]   # rows 0..500
+    assert out.shape == expected.shape
+    assert np.array_equal(out, expected)
+    assert st.frames_used == len(offsets)
+
+
+def test_stitcher_drops_no_motion_frames():
+    from wondershot.stitch import ScrollStitcher, qimage_to_rgb
+    tall = make_rgb(height=600, width=80, seed=11)
+    frames = _window_frames(tall, 200, [0, 0, 40, 40, 40, 80])
+    st = ScrollStitcher()
+    for f in frames:
+        st.add_frame(f)
+    out = qimage_to_rgb(st.result())
+    assert np.array_equal(out, tall[0:280])
+    assert st.frames_dropped == 3
+
+
+def test_stitcher_strips_fixed_header_and_footer():
+    from wondershot.stitch import ScrollStitcher, qimage_to_rgb, rgb_to_qimage
+    tall = make_rgb(height=700, width=100, seed=12)
+    header = make_rgb(height=18, width=100, seed=13)
+    footer = make_rgb(height=22, width=100, seed=14)
+    st = ScrollStitcher()
+    for o in [0, 35, 70, 110]:
+        st.add_frame(rgb_to_qimage(
+            _frame_with_chrome(tall[o:o + 160], header, footer)))
+    out = qimage_to_rgb(st.result())
+    assert np.array_equal(out, tall[0:110 + 160])
+
+
+def test_stitcher_single_frame_passthrough():
+    from wondershot.stitch import ScrollStitcher, qimage_to_rgb, rgb_to_qimage
+    arr = make_rgb(height=150, width=60, seed=15)
+    st = ScrollStitcher()
+    st.add_frame(rgb_to_qimage(arr))
+    assert np.array_equal(qimage_to_rgb(st.result()), arr)
+
+
+def test_stitcher_empty_result_is_null_image():
+    from wondershot.stitch import ScrollStitcher
+    assert ScrollStitcher().result().isNull()
+
+
+def test_stitcher_scene_change_does_not_append_garbage():
+    """detect_offset -> None must not vstack unrelated content."""
+    from wondershot.stitch import ScrollStitcher, qimage_to_rgb, rgb_to_qimage
+    a = make_rgb(height=200, width=60, seed=16)
+    b = make_rgb(height=200, width=60, seed=17)
+    st = ScrollStitcher()
+    st.add_frame(rgb_to_qimage(a))
+    st.add_frame(rgb_to_qimage(b))
+    assert np.array_equal(qimage_to_rgb(st.result()), a)
+    assert st.frames_dropped == 1

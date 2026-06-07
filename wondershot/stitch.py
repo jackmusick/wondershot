@@ -111,3 +111,63 @@ def static_bands(prev: np.ndarray, cur: np.ndarray,
     if header + footer >= h:
         return (0, 0)
     return (header, footer)
+
+
+# -- accumulator -----------------------------------------------------------
+
+class ScrollStitcher:
+    """Accumulates scrolled viewport frames into one tall image.
+
+    Feed frames via add_frame() in capture order; read the tall
+    QImage from result(). Pure image math — safe to unit test and
+    to reuse unchanged on Windows/macOS (WS-E).
+    """
+
+    def __init__(self, band: int = 64, col_step: int = 4):
+        self.band = band
+        self.col_step = col_step      # column subsampling for matching
+        self._canvas: np.ndarray | None = None     # (H, W, 3) uint8
+        self._prev_gray: np.ndarray | None = None  # full-res gray
+        self._header = 0
+        self._footer = 0
+        self._bands_locked = False
+        self.frames_used = 0
+        self.frames_dropped = 0
+
+    def add_frame(self, img: QImage) -> None:
+        rgb = qimage_to_rgb(img)
+        gray = to_gray(rgb)
+        if self._canvas is None:
+            self._canvas = rgb
+            self._prev_gray = gray
+            self.frames_used += 1
+            return
+        if float(np.abs(gray - self._prev_gray).mean()) < 1.0:
+            self.frames_dropped += 1   # no motion: drop
+            return
+        if not self._bands_locked:
+            # First moving pair defines the fixed chrome; freeze it
+            # and re-crop the canvas (which is just frame 0 so far).
+            self._header, self._footer = static_bands(
+                self._prev_gray, gray)
+            self._bands_locked = True
+            self._canvas = self._crop(self._canvas)
+        d = detect_offset(
+            self._crop(self._prev_gray)[:, ::self.col_step],
+            self._crop(gray)[:, ::self.col_step],
+            band=self.band)
+        self._prev_gray = gray   # always resync, even on a miss
+        if not d:                # None (scene change) or 0 (no scroll)
+            self.frames_dropped += 1
+            return
+        self._canvas = np.vstack([self._canvas, self._crop(rgb)[-d:]])
+        self.frames_used += 1
+
+    def _crop(self, arr: np.ndarray) -> np.ndarray:
+        end = arr.shape[0] - self._footer
+        return arr[self._header:end]
+
+    def result(self) -> QImage:
+        if self._canvas is None:
+            return QImage()
+        return rgb_to_qimage(self._canvas)
