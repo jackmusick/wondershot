@@ -459,8 +459,14 @@ class ScreenRecorder(QObject):
             "handle_token": GLib.Variant("s", token),
             "types": GLib.Variant("u", 3),        # monitor | window
             "multiple": GLib.Variant("b", False),
-            # 4 = METADATA (halo composites it), 2 = EMBEDDED (baked in).
-            "cursor_mode": GLib.Variant("u", 4 if self._halo else 2),
+            # 4 = METADATA (cursor delivered as spa_meta_cursor for the
+            # halo to composite), 2 = EMBEDDED (baked into frames).
+            # METADATA is PARKED: spa_meta_cursor isn't reachable through
+            # PyGObject, so _draw_halo is a no-op. Requesting mode 4 while
+            # the draw does nothing would yield a recording with NO cursor
+            # at all — strictly worse. Stay on EMBEDDED until the source
+            # works; flip to `4 if self._halo else 2` then.
+            "cursor_mode": GLib.Variant("u", 2),
             "persist_mode": GLib.Variant("u", 2),  # remember permanently
         }
         restore = self._restore_token()

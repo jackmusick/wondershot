@@ -97,12 +97,15 @@ def test_description_with_halo_inserts_cairooverlay():
     assert desc.index("cairooverlay") < desc.index("x264enc")
 
 
-def test_halo_sets_cursor_mode_metadata():
-    """With halo on, SelectSources must request cursor_mode=4 (METADATA)."""
+def test_cursor_mode_stays_embedded_while_halo_parked():
+    """spa_meta_cursor is unreachable via PyGObject, so the halo draw is a
+    no-op. SelectSources must therefore ALWAYS request cursor_mode=2
+    (EMBEDDED) — even with _halo set — so a recording never ends up with
+    no cursor at all. Flip to 4-when-halo only when the source works."""
     from tests.test_record import FakeSettings
     from wondershot.record import ScreenRecorder
     rec = ScreenRecorder(FakeSettings("/tmp"))
-    rec._halo = True
+    rec._halo = True  # even so, metadata mode must NOT be requested yet
     captured = {}
 
     def fake_call(method, args):
@@ -114,7 +117,7 @@ def test_halo_sets_cursor_mode_metadata():
     rec._on_request = lambda token, cb: None
     rec._restore_token = lambda: ""
     rec._created({"session_handle": "/s"})
-    assert captured["cursor_mode"] == 4
+    assert captured["cursor_mode"] == 2
 
 
 def test_no_halo_keeps_cursor_mode_embedded():

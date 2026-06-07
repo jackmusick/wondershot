@@ -189,6 +189,13 @@ class SettingsDialog(QDialog):
 
         self.halo_check = QCheckBox("Show cursor halo in screen recordings")
         self.halo_check.setChecked(settings.record_cursor_halo)
+        # Parked: the halo composite needs spa_meta_cursor, which isn't
+        # reachable through PyGObject yet (see record.py). Disabled so it
+        # can't be enabled into a no-op — recordings keep the embedded
+        # cursor meanwhile.
+        self.halo_check.setEnabled(False)
+        self.halo_check.setToolTip(
+            "Coming soon — the recorder keeps the system cursor for now")
         form.addRow("", self.halo_check)
 
         self.countdown_spin = QSpinBox()
