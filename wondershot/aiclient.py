@@ -63,9 +63,13 @@ def parse_response(body: bytes | str) -> str:
         msg = err.get("message", str(err)) if isinstance(err, dict) else str(err)
         raise OSError(msg)
     try:
-        return data["choices"][0]["message"]["content"]
+        content = data["choices"][0]["message"]["content"]
     except (KeyError, IndexError, TypeError) as e:
         raise OSError("unexpected chat response shape") from e
+    if not isinstance(content, str):
+        # e.g. null content (tool-call-only reply) or content-parts list
+        raise OSError("unexpected chat response shape")
+    return content
 
 
 def chat(endpoint: str, api_key: str, model: str, prompt: str,

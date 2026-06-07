@@ -87,6 +87,19 @@ def test_parse_response_rejects_garbage_shape():
         parse_response(b'{"choices": []}')
 
 
+def test_parse_response_rejects_non_string_content():
+    from wondershot.aiclient import parse_response
+    null_content = json.dumps({"choices": [{"message": {
+        "role": "assistant", "content": None}}]}).encode()
+    with pytest.raises(OSError, match="unexpected"):
+        parse_response(null_content)
+    parts_content = json.dumps({"choices": [{"message": {
+        "role": "assistant",
+        "content": [{"type": "text", "text": "x"}]}}]}).encode()
+    with pytest.raises(OSError, match="unexpected"):
+        parse_response(parts_content)
+
+
 def test_chat_round_trip_with_canned_http(monkeypatch):
     """chat() builds the request and parses the canned response —
     urlopen is replaced, no network."""

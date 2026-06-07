@@ -329,7 +329,8 @@ class SettingsDialog(QDialog):
     def _ai_test_done(self, reply, error: str) -> None:
         self.ai_test_btn.setEnabled(True)
         if error:
-            self.ai_test_status.setText(f"<i>{error}</i>")
+            import html
+            self.ai_test_status.setText(f"<i>{html.escape(error)}</i>")
         else:
             self.ai_test_status.setText(f"OK — replied: {str(reply)[:40]}")
 
