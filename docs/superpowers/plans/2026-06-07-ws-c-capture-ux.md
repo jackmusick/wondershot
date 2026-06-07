@@ -691,7 +691,7 @@ def test_apply_writes_quick_bar_settings(qapp, tmp_path):
 - Create: `wondershot/kwin.py`
 - Create: `tests/test_kwin.py`
 
-- [ ] Write the failing test:
+- [x] Write the failing test:
 
 ```python
 # tests/test_kwin.py
@@ -855,8 +855,8 @@ def test_crop_file_failure_paths(qapp, tmp_path):
     assert QImage(p).width() == 50
 ```
 
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_kwin.py -q` — expect `ModuleNotFoundError: No module named 'wondershot.kwin'`.
-- [ ] Implement — create `wondershot/kwin.py`:
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_kwin.py -q` — expect `ModuleNotFoundError: No module named 'wondershot.kwin'`.
+- [x] Implement — create `wondershot/kwin.py`:
 
 ```python
 """KWin scripting D-Bus: KDE probe + active-window frame geometry.
@@ -1007,8 +1007,8 @@ def crop_file_to_global_rect(path: str, rect: QRect, virtual: QRect) -> bool:
     return img.copy(target).save(path)
 ```
 
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_kwin.py -q` — expect all of Task 6's tests passing (the `ActiveWindowQuery` tests arrive in Task 7).
-- [ ] Commit: `git add wondershot/kwin.py tests/test_kwin.py && git commit -m "WS-C: kwin.py pure layer — probe, script text, call builders, crop math"`
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_kwin.py -q` — expect all of Task 6's tests passing (the `ActiveWindowQuery` tests arrive in Task 7).
+- [x] Commit: `git add wondershot/kwin.py tests/test_kwin.py && git commit -m "WS-C: kwin.py pure layer — probe, script text, call builders, crop math"`
 
 ---
 
