@@ -188,11 +188,13 @@ class ScrollStitcher:
     to reuse unchanged on Windows/macOS (WS-E).
     """
 
-    def __init__(self, band: int = 64, col_step: int = 4):
+    def __init__(self, band: int = 64, col_step: int = 4,
+                 min_confidence: float = 0.6):
         self.band = band
-        self.col_step = col_step      # column subsampling for matching
+        self.col_step = col_step      # kept for API compat; v2 ignores it
+        self.min_confidence = min_confidence
         self._canvas: np.ndarray | None = None     # (H, W, 3) uint8
-        self._prev_gray: np.ndarray | None = None  # full-res gray
+        self._prev_gray: np.ndarray | None = None  # gray of the last STITCHED frame
         self._header = 0
         self._footer = 0
         self._bands_locked = False
@@ -223,10 +225,16 @@ class ScrollStitcher:
         d, confidence = detect_offset(
             self._crop(self._prev_gray), self._crop(gray),
             band=self.band)
-        self._prev_gray = gray   # always resync, even on a miss
-        if not d:                # None (scene change) or 0 (no scroll)
+        if not d or confidence < self.min_confidence:
+            # None (scene change / mid-animation blur), 0 (no
+            # scroll), or a low-confidence match: dropping the frame
+            # beats a misaligned seam. Do NOT resync the reference —
+            # the offset is measured against the last STITCHED frame
+            # so the canvas stays contiguous; resyncing to a dropped
+            # frame would append rows with a content gap.
             self.frames_dropped += 1
             return
+        self._prev_gray = gray
         self._canvas = np.vstack([self._canvas, self._crop(rgb)[-d:]])
         self.frames_used += 1
 

@@ -224,3 +224,36 @@ def test_stitcher_scene_change_does_not_append_garbage():
     st.add_frame(rgb_to_qimage(b))
     assert np.array_equal(qimage_to_rgb(st.result()), a)
     assert st.frames_dropped == 1
+
+
+def test_stitcher_drops_low_confidence_frames():
+    """min_confidence above what detect_offset can ever report (1.0
+    is the max) forces every moving pair onto the drop path — the
+    canvas must stay at frame 0 rather than risk a misaligned seam."""
+    from wondershot.stitch import ScrollStitcher, qimage_to_rgb
+    tall = make_rgb(height=600, width=80, seed=30)
+    st = ScrollStitcher(min_confidence=1.1)
+    for f in _window_frames(tall, 200, [0, 40, 80]):
+        st.add_frame(f)
+    assert np.array_equal(qimage_to_rgb(st.result()), tall[0:200])
+    assert st.frames_used == 1
+    assert st.frames_dropped == 2
+
+
+def test_stitcher_matches_against_last_stitched_frame():
+    """A dropped frame (here: unrelated content) must not become the
+    match reference — the next clean frame re-matches against the
+    last STITCHED frame, so the canvas stays gap-free. Under v1's
+    'always resync' the clean frame would match the garbage frame
+    and be dropped (or worse, mis-appended)."""
+    from wondershot.stitch import ScrollStitcher, qimage_to_rgb, rgb_to_qimage
+    tall = make_rgb(height=600, width=80, seed=31)
+    garbage = make_rgb(height=200, width=80, seed=32)
+    st = ScrollStitcher()
+    st.add_frame(rgb_to_qimage(tall[0:200]))
+    st.add_frame(rgb_to_qimage(garbage))          # dropped: no match
+    st.add_frame(rgb_to_qimage(tall[60:260]))     # must still stitch
+    out = qimage_to_rgb(st.result())
+    assert np.array_equal(out, tall[0:260])
+    assert st.frames_used == 2
+    assert st.frames_dropped == 1
