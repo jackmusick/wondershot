@@ -79,16 +79,8 @@ class CaptureWindow(QWidget):
         form.addRow("Delay", self.delay_spin)
         left.addLayout(form)
 
-        if sys.platform != "win32":
-            # Linux: the hotkey is user-bound (KGlobalAccel landmine — we
-            # never auto-register). Windows registers its own hotkey, so
-            # the hint would be wrong noise there. Keep it out of the
-            # layout's width: tooltip carries the command.
-            from . import launcher_command
-            hint = QLabel("Hotkey: bindable in System Settings")
-            hint.setToolTip(f"Bind a shortcut to: {launcher_command()}")
-            hint.setStyleSheet("color: palette(mid); font-size: 8pt;")
-            left.addWidget(hint)
+        # Hotkey UX lives in Settings → General now (QKeySequenceEdit;
+        # app-owned registration on Windows) — no hint label here.
         left.addStretch(1)
         root.addLayout(left)
 

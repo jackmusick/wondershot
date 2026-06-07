@@ -132,6 +132,20 @@ class Settings:
     def capture_delay(self, value: int) -> None:
         self._s.setValue("capture_delay", int(value))
 
+    @property
+    def hotkey_capture(self) -> str:
+        """Global capture chord (QKeySequence portable string).
+
+        Owned by the app on Windows (RegisterHotKey). On KDE the value is
+        informational — registration stays manual (KGlobalAccel landmine:
+        never auto-register)."""
+        return str(self._s.value("hotkey_capture",
+                                 "Ctrl+Shift+Print") or "Ctrl+Shift+Print")
+
+    @hotkey_capture.setter
+    def hotkey_capture(self, value: str) -> None:
+        self._s.setValue("hotkey_capture", str(value))
+
     # -- output effects (applied at save/flatten; persisted defaults) -------
 
     @property

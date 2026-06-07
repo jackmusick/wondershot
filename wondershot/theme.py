@@ -23,7 +23,14 @@ def dark_palette() -> QPalette:
     window = QColor(53, 53, 53)
     base = QColor(35, 35, 35)
     text = QColor(220, 220, 220)
-    disabled = QColor(127, 127, 127)
+    # Secondary/disabled text must stay readable on the dark window —
+    # Jack 2026-06-07: "Disabled labels are really hard to read in dark
+    # mode" (Qt's derived Mid was near-black on near-black; 127-gray
+    # disabled text was barely better).
+    disabled = QColor(150, 150, 150)
+    # color: palette(mid) is our de-emphasized-label idiom (hints,
+    # provider notes, "Wondershot Built-In") — pin it readable.
+    p.setColor(QPalette.Mid, QColor(160, 160, 160))
     p.setColor(QPalette.Window, window)
     p.setColor(QPalette.WindowText, text)
     p.setColor(QPalette.Base, base)

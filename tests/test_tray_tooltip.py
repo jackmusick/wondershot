@@ -43,7 +43,7 @@ def make_app(qapp, tmp_path, monkeypatch):
     monkeypatch.setattr(appmod, "Settings",
                         lambda: _Settings(str(tmp_path)))
     monkeypatch.setattr(appmod, "create_hotkey_backend",
-                        lambda parent=None: NullHotkeyBackend())
+                        lambda parent=None, settings=None: NullHotkeyBackend())
     return appmod.GrabbitApp(qapp)
 
 

@@ -99,7 +99,7 @@ def make_app(qapp, tmp_path, monkeypatch):
         lambda n=next(_counter): f"wondershot-cd-{os.getpid()}-{n}")
     monkeypatch.setattr(appmod, "Settings", lambda: settings)
     monkeypatch.setattr(appmod, "create_hotkey_backend",
-                        lambda parent=None: NullHotkeyBackend())
+                        lambda parent=None, settings=None: NullHotkeyBackend())
     return appmod.GrabbitApp(qapp), settings
 
 

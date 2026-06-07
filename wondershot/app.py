@@ -111,7 +111,7 @@ class GrabbitApp(QObject):
             lambda m: self.tray.showMessage("Wondershot", m, self.icon, 3000))
         self.recorder.tick.connect(self._on_recording_tick)
 
-        self.hotkey = create_hotkey_backend(self)
+        self.hotkey = create_hotkey_backend(self, settings=self.settings)
         self.hotkey.pressed.connect(lambda: self.trigger_capture("region"))
         self.hotkey.register()
 
@@ -472,6 +472,11 @@ class GrabbitApp(QObject):
                               self.icon, 5000)
 
     def _on_settings_applied(self) -> None:
+        # Re-register the global hotkey if the chord changed (Windows;
+        # no-op elsewhere — Linux registration stays manual).
+        rebind = getattr(self.hotkey, "rebind", None)
+        if rebind is not None:
+            rebind()
         # A live bubble should switch to the newly chosen camera without
         # needing an off/on toggle.
         bubble = getattr(self, "bubble", None)

@@ -127,6 +127,25 @@ class SettingsDialog(QDialog):
         extra_row.addWidget(add_extra)
         form.addRow("Also watch:", extra_row)
 
+        # capture hotkey — the app owns registration on Windows; on KDE
+        # registration stays manual (KGlobalAccel landmine: never
+        # auto-register), so the row explains where to bind instead.
+        import sys as _sys
+        from PySide6.QtGui import QKeySequence as _QKS
+        from PySide6.QtWidgets import QKeySequenceEdit
+        self.hotkey_edit = QKeySequenceEdit(_QKS(settings.hotkey_capture))
+        self.hotkey_edit.setClearButtonEnabled(True)
+        if _sys.platform == "win32":
+            self.hotkey_edit.setToolTip(
+                "Global capture shortcut (applies when you hit OK)")
+        else:
+            from . import launcher_command
+            self.hotkey_edit.setEnabled(False)
+            self.hotkey_edit.setToolTip(
+                "On KDE, bind a custom shortcut to: "
+                f"{launcher_command()} (System Settings → Shortcuts)")
+        form.addRow("Capture hotkey:", self.hotkey_edit)
+
         # backend
         self.backend_combo = QComboBox()
         self.backend_combo.addItem("Auto (Spectacle if available)", "auto")
@@ -697,6 +716,10 @@ class SettingsDialog(QDialog):
         self.settings.library_dir = self.dir_edit.text()
         self.settings.extra_dirs = new_extras
         self.settings.backend = self.backend_combo.currentData()
+        if self.hotkey_edit.isEnabled():  # Windows-owned registration
+            chord = self.hotkey_edit.keySequence().toString()
+            if chord:  # cleared field keeps the previous chord
+                self.settings.hotkey_capture = chord
         self.settings.camera_device = self.camera_combo.currentData()
         self.settings.mic_device = self.mic_combo.currentData()
         self.settings.mic_enabled = self.mic_check.isChecked()

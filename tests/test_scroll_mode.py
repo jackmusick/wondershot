@@ -71,7 +71,7 @@ def make_app(qapp, tmp_path, monkeypatch, scroll_ok=True):
     monkeypatch.setattr(appmod, "Settings",
                         lambda: _Settings(str(tmp_path)))
     monkeypatch.setattr(appmod, "create_hotkey_backend",
-                        lambda parent=None: NullHotkeyBackend())
+                        lambda parent=None, settings=None: NullHotkeyBackend())
     monkeypatch.setattr(appmod, "scroll_capture_available",
                         lambda: scroll_ok)
     monkeypatch.setattr(scrollmod, "ScrollCaptureController",

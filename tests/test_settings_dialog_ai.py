@@ -20,6 +20,7 @@ class _FakeSettings:
         self.library_dir = str(tmp)
         self.extra_dirs = []
         self.backend = "auto"
+        self.hotkey_capture = "Ctrl+Shift+Print"
         self.camera_device = ""
         self.mic_device = ""
         self.mic_enabled = True

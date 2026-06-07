@@ -93,10 +93,58 @@ class KGlobalAccelBackend(HotkeyBackend):
 MOD_CONTROL = 0x0002
 MOD_SHIFT = 0x0004
 MOD_NOREPEAT = 0x4000
+MOD_ALT = 0x0001
+MOD_WIN = 0x0008
 VK_SNAPSHOT = 0x2C   # PrintScreen
 WM_HOTKEY = 0x0312
 WM_QUIT = 0x0012
 HOTKEY_ID = 1
+
+# Qt key name -> virtual-key code, for keys whose VK isn't ord(char).
+_VK_NAMED = {
+    "PRINT": VK_SNAPSHOT, "SYSREQ": VK_SNAPSHOT,
+    "SPACE": 0x20, "TAB": 0x09, "RETURN": 0x0D, "ENTER": 0x0D,
+    "ESC": 0x1B, "ESCAPE": 0x1B, "BACKSPACE": 0x08,
+    "INS": 0x2D, "INSERT": 0x2D, "DEL": 0x2E, "DELETE": 0x2E,
+    "HOME": 0x24, "END": 0x23, "PGUP": 0x21, "PGDOWN": 0x22,
+    "UP": 0x26, "DOWN": 0x28, "LEFT": 0x25, "RIGHT": 0x27,
+    "PAUSE": 0x13, "SCROLLLOCK": 0x91,
+    **{f"F{i}": 0x6F + i for i in range(1, 25)},  # F1=0x70
+}
+
+
+def qt_to_win(chord: str) -> tuple[int, int] | None:
+    """Portable QKeySequence string -> (win32 modifiers, vk), or None.
+
+    Pure (no ctypes calls) so the converter is testable everywhere.
+    Only single-chord sequences make sense for RegisterHotKey.
+    """
+    parts = [p.strip() for p in chord.split("+") if p.strip()]
+    if not parts:
+        return None
+    mods = 0
+    key = None
+    for p in parts:
+        up = p.upper()
+        if up == "CTRL":
+            mods |= MOD_CONTROL
+        elif up == "SHIFT":
+            mods |= MOD_SHIFT
+        elif up == "ALT":
+            mods |= MOD_ALT
+        elif up in ("META", "WIN"):
+            mods |= MOD_WIN
+        elif key is None:
+            key = up
+        else:
+            return None  # two non-modifier keys: not a hotkey chord
+    if key is None:
+        return None
+    if key in _VK_NAMED:
+        return mods, _VK_NAMED[key]
+    if len(key) == 1 and (key.isalpha() or key.isdigit()):
+        return mods, ord(key)  # VK for A-Z/0-9 == ASCII uppercase
+    return None
 
 
 class _MSG(ctypes.Structure):
@@ -111,8 +159,11 @@ class _MSG(ctypes.Structure):
 class _WinHotkeyThread(QThread):
     hotkey = Signal()
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, mods=MOD_CONTROL | MOD_SHIFT,
+                 vk=VK_SNAPSHOT):
         super().__init__(parent)
+        self._mods = mods
+        self._vk = vk
         self._registered = threading.Event()
         self._ok = False
         self._native_tid = 0
@@ -131,8 +182,7 @@ class _WinHotkeyThread(QThread):
         kernel32 = ctypes.windll.kernel32
         self._native_tid = kernel32.GetCurrentThreadId()
         self._ok = bool(user32.RegisterHotKey(
-            None, HOTKEY_ID, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT,
-            VK_SNAPSHOT))
+            None, HOTKEY_ID, self._mods | MOD_NOREPEAT, self._vk))
         self._registered.set()
         if not self._ok:
             return  # e.g. another app owns the chord; backend stays inactive
@@ -144,20 +194,36 @@ class _WinHotkeyThread(QThread):
 
 
 class WinHotkeyBackend(HotkeyBackend):
-    """Global Ctrl+Shift+PrintScreen via user32.RegisterHotKey."""
+    """Settings-driven global hotkey via user32.RegisterHotKey.
 
-    def __init__(self, parent=None):
+    The chord comes from settings.hotkey_capture (QKeySequence string,
+    editable in Settings → General); rebind() re-registers live after
+    the user changes it. Unparseable/conflicting chords leave the
+    backend inactive rather than crashing."""
+
+    def __init__(self, parent=None, settings=None):
         super().__init__(parent)
+        self.settings = settings
         self._thread = None
+
+    def _chord(self) -> tuple[int, int]:
+        chord = getattr(self.settings, "hotkey_capture", "") or ""
+        return qt_to_win(chord) or (MOD_CONTROL | MOD_SHIFT, VK_SNAPSHOT)
 
     def register(self) -> bool:
         if self._thread is not None:
             return self.active
-        self._thread = _WinHotkeyThread(self)
+        mods, vk = self._chord()
+        self._thread = _WinHotkeyThread(self, mods=mods, vk=vk)
         self._thread.hotkey.connect(self.pressed)
         self._thread.start()
         self.active = self._thread.wait_registered(2000)
         return self.active
+
+    def rebind(self) -> bool:
+        """Re-register after settings.hotkey_capture changed."""
+        self.stop()
+        return self.register()
 
     def stop(self) -> None:
         if self._thread is not None:
@@ -167,9 +233,9 @@ class WinHotkeyBackend(HotkeyBackend):
             self.active = False
 
 
-def create_hotkey_backend(parent=None) -> HotkeyBackend:
+def create_hotkey_backend(parent=None, settings=None) -> HotkeyBackend:
     if sys.platform.startswith("linux"):
         return KGlobalAccelBackend(parent)
     if sys.platform == "win32":
-        return WinHotkeyBackend(parent)
+        return WinHotkeyBackend(parent, settings=settings)
     return NullHotkeyBackend(parent)
