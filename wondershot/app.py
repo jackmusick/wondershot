@@ -15,6 +15,7 @@ from .capture import CaptureManager, unique_path, timestamp_name
 from .editor import EditorWindow
 from .gallery import GalleryWindow
 from .hotkey import create_hotkey_backend
+from .scrollsource import scroll_capture_available
 from .settings import Settings
 
 
@@ -90,6 +91,11 @@ class GrabbitApp(QObject):
         self.kwin_ok = kwin_available()
         self.gallery.kwin_ok = self.kwin_ok  # gates the CaptureWindow button
 
+        self.scroll_ok = scroll_capture_available()
+        self.gallery.scroll_ok = self.scroll_ok  # gates the panel button
+        self._scroll = None        # ScrollCaptureController while running
+        self._scroll_pill = None   # ScrollStopPill while running
+
         self.icon = make_app_icon()
         qapp.setWindowIcon(self.icon)
         self.tray = self._build_tray()
@@ -122,6 +128,12 @@ class GrabbitApp(QObject):
             a = QAction("Capture window", menu)
             a.setToolTip("Grab the active window (no picker, KDE only)")
             a.triggered.connect(lambda: self.trigger_capture("window-auto"))
+            menu.addAction(a)
+        if self.scroll_ok:
+            a = QAction("Scrolling capture", menu)
+            a.setToolTip("Scroll a window; Wondershot stitches one tall "
+                         "image — trigger again while scrolling to finish")
+            a.triggered.connect(self._scroll_tray_action)
             menu.addAction(a)
         menu.addSeparator()
         self.record_action = QAction("Record screen…", menu)
@@ -168,6 +180,7 @@ class GrabbitApp(QObject):
             "fullscreen": self.capture.capture_fullscreen,
             "window": self.capture.capture_window,
             "window-auto": self.capture.capture_active_window,
+            "scroll": self._begin_scroll,
         }[mode]
         QTimer.singleShot(delay, fn)
 
@@ -232,6 +245,66 @@ class GrabbitApp(QObject):
         # reuses the editor's async upload + clipboard flow; outcome toasts
         # arrive via the existing share_status → tray connection (line 90)
         self.gallery.editor.share_path(path, provider)
+
+    # -- scroll capture --------------------------------------------------------
+
+    def _scroll_tray_action(self) -> None:
+        # The tray entry is the SECOND finish path (spec Addendum 2
+        # Track 4b: "Ctrl+click tray or click Stop to finish"): while a
+        # scroll session runs, triggering it again finishes the capture.
+        # Deliberately NOT routed through trigger_capture, which would
+        # clobber _gallery_was_visible mid-session.
+        if self._scroll is not None:
+            self._finish_scroll()
+        else:
+            self.trigger_capture("scroll")
+
+    def _begin_scroll(self) -> None:
+        if self._scroll is not None:
+            return  # one scroll session at a time
+        from .scrollsource import ScrollCaptureController
+        ctl = ScrollCaptureController(self.settings, parent=self)
+        ctl.started.connect(self._on_scroll_started)
+        ctl.captured.connect(self._on_scroll_captured)
+        ctl.failed.connect(self._on_scroll_failed)
+        self._scroll = ctl
+        ctl.start()
+
+    def _on_scroll_started(self) -> None:
+        from .capture_window import ScrollStopPill
+        pill = ScrollStopPill()
+        pill.setAttribute(Qt.WA_DeleteOnClose, True)
+        pill.stop_requested.connect(self._finish_scroll)
+        self._scroll_pill = pill
+        pill.show()
+
+    def _finish_scroll(self) -> None:
+        self._close_scroll_pill()
+        if self._scroll is not None:
+            self._scroll.stop()
+
+    def _close_scroll_pill(self) -> None:
+        pill, self._scroll_pill = self._scroll_pill, None
+        if pill is not None:
+            try:
+                pill.close()
+            except RuntimeError:
+                pass  # already deleted (WA_DeleteOnClose)
+
+    def _release_scroll(self) -> None:
+        self._close_scroll_pill()
+        ctl, self._scroll = self._scroll, None
+        if ctl is not None:
+            ctl.deleteLater()
+
+    def _on_scroll_captured(self, path: str) -> None:
+        self._release_scroll()
+        self._on_captured(path)  # the normal captured path: clipboard,
+        # rescan/select, preview-or-quick-bar, tray toast — all inherited.
+
+    def _on_scroll_failed(self, message: str) -> None:
+        self._release_scroll()
+        self._on_capture_failed(message)
 
     # -- recording / camera bubble -----------------------------------------
 

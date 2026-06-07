@@ -126,7 +126,7 @@ docs/superpowers/plans/2026-06-07-desktop-checklist.md  # MODIFY: manual items
 
 ### Step 1.1: Failing tests for availability + controller
 
-- [ ] Create `tests/test_scrollcontroller.py`:
+- [x] Create `tests/test_scrollcontroller.py`:
 
 ```python
 """ScrollCaptureController: the testable mode state machine behind the
@@ -272,12 +272,12 @@ def test_availability_gate_is_a_function_not_kde(qapp):
     assert isinstance(scroll_capture_available(), bool)
 ```
 
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_scrollcontroller.py -x -q`
-- [ ] Expected failure: `ImportError: cannot import name 'ScrollCaptureController' from 'wondershot.scrollsource'`
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_scrollcontroller.py -x -q`
+- [x] Expected failure: `ImportError: cannot import name 'ScrollCaptureController' from 'wondershot.scrollsource'`
 
 ### Step 1.2: Implement
 
-- [ ] In `wondershot/scrollsource.py`, after the `ScreenCastFrameSource` class
+- [x] In `wondershot/scrollsource.py`, after the `ScreenCastFrameSource` class
   (before the `run_scroll_spike` section), add:
 
 ```python
@@ -374,11 +374,11 @@ class ScrollCaptureController(QObject):
         self._stitcher = None
 ```
 
-- [ ] `QObject` is needed in the imports: change the QtCore import line to
+- [x] `QObject` is needed in the imports: change the QtCore import line to
   `from PySide6.QtCore import QObject, QTimer, Signal`.
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_scrollcontroller.py tests/test_scrollsource.py -x -q`
-- [ ] Expected: all pass.
-- [ ] Commit: `git add -A && git commit -m "Scroll capture: availability gate + ScrollCaptureController state machine"`
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_scrollcontroller.py tests/test_scrollsource.py -x -q`
+- [x] Expected: all pass.
+- [x] Commit: `git add -A && git commit -m "Scroll capture: availability gate + ScrollCaptureController state machine"`
 
 ---
 
@@ -388,7 +388,7 @@ class ScrollCaptureController(QObject):
 
 ### Step 2.1: Failing tests
 
-- [ ] Create `tests/test_scroll_pill.py`:
+- [x] Create `tests/test_scroll_pill.py`:
 
 ```python
 """The scroll-capture stop pill: one affordance (click to finish),
@@ -440,12 +440,12 @@ def test_window_flags_frameless_on_top(qapp):
     assert flags & Qt.WindowStaysOnTopHint
 ```
 
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_scroll_pill.py -x -q`
-- [ ] Expected failure: `ImportError: cannot import name 'ScrollStopPill'`
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_scroll_pill.py -x -q`
+- [x] Expected failure: `ImportError: cannot import name 'ScrollStopPill'`
 
 ### Step 2.2: Implement
 
-- [ ] In `wondershot/capture_window.py`, after the `CaptureWindow` class (and
+- [x] In `wondershot/capture_window.py`, after the `CaptureWindow` class (and
   before the quick-bar section), add:
 
 ```python
@@ -499,9 +499,9 @@ class ScrollStopPill(QWidget):
             super().keyPressEvent(ev)
 ```
 
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_scroll_pill.py -x -q`
-- [ ] Expected: pass.
-- [ ] Commit: `git add -A && git commit -m "Scroll capture: frameless stop pill (compositor-placed)"`
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_scroll_pill.py -x -q`
+- [x] Expected: pass.
+- [x] Commit: `git add -A && git commit -m "Scroll capture: frameless stop pill (compositor-placed)"`
 
 ---
 
@@ -512,7 +512,7 @@ class ScrollStopPill(QWidget):
 
 ### Step 3.1: Failing tests
 
-- [ ] Append to `tests/test_capture_window_mode.py`:
+- [x] Append to `tests/test_capture_window_mode.py`:
 
 ```python
 def _scroll_buttons(w):
@@ -537,12 +537,12 @@ def test_scroll_button_hidden_without_probe(qapp):
     assert not _scroll_buttons(w)
 ```
 
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_capture_window_mode.py -x -q`
-- [ ] Expected failure: `TypeError: CaptureWindow.__init__() got an unexpected keyword argument 'scroll_mode'`
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_capture_window_mode.py -x -q`
+- [x] Expected failure: `TypeError: CaptureWindow.__init__() got an unexpected keyword argument 'scroll_mode'`
 
 ### Step 3.2: Implement
 
-- [ ] `wondershot/capture_window.py` — `CaptureWindow.__init__` signature:
+- [x] `wondershot/capture_window.py` — `CaptureWindow.__init__` signature:
 
 ```python
     def __init__(self, settings, parent=None, window_mode: bool = False,
@@ -552,7 +552,7 @@ def test_scroll_button_hidden_without_probe(qapp):
   and update the docstring comment on the signal:
   `capture_requested = Signal(str)  # "region" | "fullscreen" | "window-auto" | "scroll" | "record"`
 
-- [ ] In the secondary-buttons block, insert the Scrolling entry between
+- [x] In the secondary-buttons block, insert the Scrolling entry between
   Window and Record:
 
 ```python
@@ -564,7 +564,7 @@ def test_scroll_button_hidden_without_probe(qapp):
         secondary.append(("Record", "record"))
 ```
 
-- [ ] `wondershot/gallery.py` — in `_open_capture_window`, pass the gate
+- [x] `wondershot/gallery.py` — in `_open_capture_window`, pass the gate
   (mirrors `kwin_ok`, which `app.py` sets after construction):
 
 ```python
@@ -577,10 +577,10 @@ def test_scroll_button_hidden_without_probe(qapp):
   mode through `capture_requested` → `app.trigger_capture`, which is exactly
   the hide-our-windows-first routing scroll needs (study note: this is the
   same path `"window-auto"` rides).
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_capture_window_mode.py tests/test_hide_for_capture.py -x -q`
-- [ ] Expected: pass (hide_for_capture tests prove the panel construction
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_capture_window_mode.py tests/test_hide_for_capture.py -x -q`
+- [x] Expected: pass (hide_for_capture tests prove the panel construction
   still works with the duck-typed `_Settings` stub — no new settings reads).
-- [ ] Commit: `git add -A && git commit -m "Capture panel: Scrolling button gated on scroll availability"`
+- [x] Commit: `git add -A && git commit -m "Capture panel: Scrolling button gated on scroll availability"`
 
 ---
 
@@ -590,7 +590,7 @@ def test_scroll_button_hidden_without_probe(qapp):
 
 ### Step 4.1: Failing tests
 
-- [ ] Create `tests/test_scroll_mode.py` (make_app pattern copied from
+- [x] Create `tests/test_scroll_mode.py` (make_app pattern copied from
   `tests/test_tray_tooltip.py` — same stub, same monkeypatches):
 
 ```python
@@ -779,12 +779,12 @@ def test_tray_action_finishes_running_scroll(qapp, tmp_path, monkeypatch):
     assert app._scroll_pill is None  # pill closed by the finish path
 ```
 
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_scroll_mode.py -x -q`
-- [ ] Expected failure: `AttributeError: <module 'wondershot.app'> has no attribute 'scroll_capture_available'` (the monkeypatch target doesn't exist yet).
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_scroll_mode.py -x -q`
+- [x] Expected failure: `AttributeError: <module 'wondershot.app'> has no attribute 'scroll_capture_available'` (the monkeypatch target doesn't exist yet).
 
 ### Step 4.2: Implement
 
-- [ ] `wondershot/app.py` — add to the module imports:
+- [x] `wondershot/app.py` — add to the module imports:
 
 ```python
 from .scrollsource import scroll_capture_available
@@ -793,7 +793,7 @@ from .scrollsource import scroll_capture_available
   (scrollsource only imports PySide6 + the gi-guarded `record`, so this is
   headless-safe; the heavy gi/Gst/numpy probes run inside the function.)
 
-- [ ] In `GrabbitApp.__init__`, right after the `kwin_ok` block:
+- [x] In `GrabbitApp.__init__`, right after the `kwin_ok` block:
 
 ```python
         self.scroll_ok = scroll_capture_available()
@@ -806,7 +806,7 @@ from .scrollsource import scroll_capture_available
   existing `self.tray = self._build_tray()` line comes later) — verify the
   insertion sits above it, since the tray menu reads `self.scroll_ok`.
 
-- [ ] In `_build_tray`, after the `kwin_ok` "Capture window" block:
+- [x] In `_build_tray`, after the `kwin_ok` "Capture window" block:
 
 ```python
         if self.scroll_ok:
@@ -817,7 +817,7 @@ from .scrollsource import scroll_capture_available
             menu.addAction(a)
 ```
 
-- [ ] In `trigger_capture`, add the mode entry:
+- [x] In `trigger_capture`, add the mode entry:
 
 ```python
         fn = {
@@ -829,7 +829,7 @@ from .scrollsource import scroll_capture_available
         }[mode]
 ```
 
-- [ ] Add the scroll section after `_share_from_bar` (before the recording
+- [x] Add the scroll section after `_share_from_bar` (before the recording
   section):
 
 ```python
@@ -898,13 +898,13 @@ from .scrollsource import scroll_capture_available
   `.scrollsource` at call time, so the test monkeypatch on the scrollsource
   module attribute takes effect.
 
-- [ ] Run the new tests plus every existing GrabbitApp-constructing suite
+- [x] Run the new tests plus every existing GrabbitApp-constructing suite
   (they exercise the new `__init__`/tray code against the duck-typed stubs):
   `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_scroll_mode.py tests/test_tray_tooltip.py tests/test_countdown.py tests/test_record_sync.py tests/test_quickbar.py -x -q`
-- [ ] Expected: all pass. (If a stub-based test crashes on a missing settings
+- [x] Expected: all pass. (If a stub-based test crashes on a missing settings
   attribute, you have accidentally read a new settings key — see the
   shared-stub rule in Task 8 step 2 and fix EVERY stub.)
-- [ ] Commit: `git add -A && git commit -m "Scroll capture mode: tray entry, trigger_capture routing, stop-pill lifecycle"`
+- [x] Commit: `git add -A && git commit -m "Scroll capture mode: tray entry, trigger_capture routing, stop-pill lifecycle"`
 
 ---
 
@@ -917,7 +917,7 @@ from .scrollsource import scroll_capture_available
 The flag already exists (`cli.py` line 48 + dispatch at line 62); this test
 pins it so later CLI churn can't silently drop the debugging harness.
 
-- [ ] Create `tests/test_cli_scroll_spike.py`:
+- [x] Create `tests/test_cli_scroll_spike.py`:
 
 ```python
 """--scroll-spike must stay: it is the scroll-capture debugging harness
@@ -932,27 +932,27 @@ def test_scroll_spike_flag_dispatches(monkeypatch):
     assert main(["--scroll-spike"]) == 42
 ```
 
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_cli_scroll_spike.py -x -q`
-- [ ] Expected: PASSES immediately (the flag exists). This is a pin, not TDD
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_cli_scroll_spike.py -x -q`
+- [x] Expected: PASSES immediately (the flag exists). This is a pin, not TDD
   — justification: no production change is being made to cli.py; the test
   exists to make removal a visible failure.
-- [ ] Commit: `git add -A && git commit -m "Pin --scroll-spike CLI flag with a regression test"`
+- [x] Commit: `git add -A && git commit -m "Pin --scroll-spike CLI flag with a regression test"`
 
 ### Step 5.2: snegg availability verdict (evidence step, no code)
 
-- [ ] Run: `.venv/bin/pip install snegg`
-- [ ] Expected output: `ERROR: No matching distribution found for snegg`
+- [x] Run: `.venv/bin/pip install snegg`
+- [x] Expected output: `ERROR: No matching distribution found for snegg`
   (plan-prep verification 2026-06-07: `https://pypi.org/pypi/snegg/json`
   returns HTTP 404 — snegg lives on gitlab.freedesktop.org/libinput/snegg
   and is not published to PyPI).
-- [ ] Decision (already reflected in this plan): do NOT add a
+- [x] Decision (already reflected in this plan): do NOT add a
   `wondershot[stepcapture]` extra — an extra pointing at a non-existent PyPI
   dist breaks `pip install wondershot[stepcapture]` outright, and an empty
   extra is a lie. The EI client ships as `wondershot/ei.py` (Task 6) using
   stdlib ctypes against the system `libei.so.1` (Fedora package `libei`;
   1.5.0 is installed on Jack's box) — zero pip dependencies. Record the
   verdict + pip error line in ROADMAP (Task 8 step 3).
-- [ ] If, against expectation, the install SUCCEEDS: stop, add
+- [x] If, against expectation, the install SUCCEEDS: stop, add
   `stepcapture = ["snegg"]` to `[project.optional-dependencies]`, prefer
   snegg in the probe (it is already the first branch in `observe_events`),
   and SKIP Task 6 — note the deviation in the final report.
@@ -975,7 +975,7 @@ ei_seat_bind_capabilities, ei_unref — all present).
 
 ### Step 6.1: Failing tests
 
-- [ ] Create `tests/test_ei.py`:
+- [x] Create `tests/test_ei.py`:
 
 ```python
 """EI receive-path state machine against a fake 'lib' (the feasible
@@ -1161,12 +1161,12 @@ def test_open_libei_loads_real_library_if_present():
         assert getattr(lib, sym) is not None
 ```
 
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_ei.py -x -q`
-- [ ] Expected failure: `ModuleNotFoundError: No module named 'wondershot.ei'`
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_ei.py -x -q`
+- [x] Expected failure: `ModuleNotFoundError: No module named 'wondershot.ei'`
 
 ### Step 6.2: Implement
 
-- [ ] Create `wondershot/ei.py`:
+- [x] Create `wondershot/ei.py`:
 
 ```python
 """Minimal ctypes binding for the libei RECEIVE path (EI client).
@@ -1327,10 +1327,10 @@ class EiButtonReader:
             self._ctx = None
 ```
 
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_ei.py -x -q`
-- [ ] Expected: all pass (the integration smoke passes on Jack's box, skips
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_ei.py -x -q`
+- [x] Expected: all pass (the integration smoke passes on Jack's box, skips
   where libei is absent).
-- [ ] Commit: `git add -A && git commit -m "ei.py: ctypes libei receive-path binding (snegg not on PyPI)"`
+- [x] Commit: `git add -A && git commit -m "ei.py: ctypes libei receive-path binding (snegg not on PyPI)"`
 
 ---
 
@@ -1353,15 +1353,15 @@ GLib.Variant types, finite timeouts, GLib.Error caught per step.
 
 ### Step 7.1: Store the first zone, add barrier + Enable steps
 
-- [ ] In `Probe.__init__`, add `self.zone: tuple | None = None`.
-- [ ] In `get_zones`, after `zones = results.get("zones") or []`, add:
+- [x] In `Probe.__init__`, add `self.zone: tuple | None = None`.
+- [x] In `get_zones`, after `zones = results.get("zones") or []`, add:
 
 ```python
         if zones:
             self.zone = zones[0]  # (uint32 w, uint32 h, int32 x, int32 y)
 ```
 
-- [ ] Add two methods after `get_zones`:
+- [x] Add two methods after `get_zones`:
 
 ```python
     def set_barriers(self) -> bool:
@@ -1419,7 +1419,7 @@ GLib.Variant types, finite timeouts, GLib.Error caught per step.
 
 ### Step 7.2: EI event loop in observe_events
 
-- [ ] Replace the body of `observe_events` so the fallback chain is
+- [x] Replace the body of `observe_events` so the fallback chain is
   snegg → `wondershot.ei` → raw read. Keep the snegg branch verbatim, and
   replace the current `except ImportError:` raw-read block with:
 
@@ -1479,7 +1479,7 @@ GLib.Variant types, finite timeouts, GLib.Error caught per step.
         reader.close()
 ```
 
-- [ ] In `main()`, wire the new steps between `get_zones` and `connect_eis`:
+- [x] In `main()`, wire the new steps between `get_zones` and `connect_eis`:
 
 ```python
         probe.get_zones()
@@ -1492,13 +1492,13 @@ GLib.Variant types, finite timeouts, GLib.Error caught per step.
             os.close(fd)
 ```
 
-- [ ] Sanity check (no portal calls — just import/compile):
+- [x] Sanity check (no portal calls — just import/compile):
   `python3 -m py_compile spikes/inputcapture_probe.py && python3 -c "import ast; ast.parse(open('spikes/inputcapture_probe.py').read())"`
-- [ ] Run the FULL suite to prove nothing regressed:
+- [x] Run the FULL suite to prove nothing regressed:
   `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q`
-- [ ] Expected: all green. The probe itself is NOT run here — it is the final
+- [x] Expected: all green. The probe itself is NOT run here — it is the final
   manual checklist item.
-- [ ] Commit: `git add -A && git commit -m "Probe: barriers + Enable + ctypes-EI event loop (handshake + buttons w/ timestamps)"`
+- [x] Commit: `git add -A && git commit -m "Probe: barriers + Enable + ctypes-EI event loop (handshake + buttons w/ timestamps)"`
 
 ---
 
@@ -1509,13 +1509,13 @@ GLib.Variant types, finite timeouts, GLib.Error caught per step.
 
 ### Step 8.1: Full suite
 
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q`
-- [ ] Expected: everything green (main had 277 tests; this plan adds ~25).
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q`
+- [x] Expected: everything green (main had 277 tests; this plan adds ~25).
 
 ### Step 8.2: Shared settings-stub audit (mandatory — crashed the batch-3 merge)
 
-- [ ] Run: `grep -rln "class _Settings\|class _FakeSettings\|class FakeSettings" tests/`
-- [ ] For EVERY file that grep lists — on main today that is 13 files
+- [x] Run: `grep -rln "class _Settings\|class _FakeSettings\|class FakeSettings" tests/`
+- [x] For EVERY file that grep lists — on main today that is 13 files
   (`test_capture_crop`, `test_capture_window_mode`, `test_scrollsource`,
   `test_quickbar`, `test_gallery_sidecar`, `test_editor_sidecar`,
   `test_tray_tooltip`, `test_settings_dialog_ai`, `test_record`,
@@ -1535,7 +1535,7 @@ existing line** (append-only confinement; same rule batch 3 used). Append a
 new dated subsection at the END of the file instead of rewriting the
 existing WS-D findings prose.
 
-- [ ] Append to the end of `ROADMAP.md` (substitute the actual run date
+- [x] Append to the end of `ROADMAP.md` (substitute the actual run date
   for the dates below):
 
 ```
@@ -1566,7 +1566,7 @@ existing WS-D findings prose.
 
 ### Step 8.4: Manual checklist additions
 
-- [ ] Append to `docs/superpowers/plans/2026-06-07-desktop-checklist.md`
+- [x] Append to `docs/superpowers/plans/2026-06-07-desktop-checklist.md`
   (keep its numbering style):
 
 ```
@@ -1608,6 +1608,6 @@ existing WS-D findings prose.
 
 ### Step 8.5: Final verification + commit
 
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q` — green.
-- [ ] Run: `.venv/bin/python -c "import wondershot.ei, wondershot.scrollsource, wondershot.app"` — imports clean.
-- [ ] Commit: `git add -A && git commit -m "Track 4b: ROADMAP EI/scroll verdicts + manual checklist items"`
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q` — green.
+- [x] Run: `.venv/bin/python -c "import wondershot.ei, wondershot.scrollsource, wondershot.app"` — imports clean.
+- [x] Commit: `git add -A && git commit -m "Track 4b: ROADMAP EI/scroll verdicts + manual checklist items"`
