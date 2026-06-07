@@ -772,7 +772,7 @@ git commit -m "Trim mode: in/out handles on the range timeline, stream-copy defa
 - Branch A only — Modify: `wondershot/settings.py` (new property after `noise_suppression`, ~line 97), `wondershot/settings_dialog.py` (General tab ~line 176, `apply()` ~line 602), `wondershot/record.py` (`_created` ~line 172, `_gst_args` ~line 228); Test: `tests/test_record.py`
 - Branch B only — Modify: `ROADMAP.md` (WS-A cursor halo bullet, ~lines 107–108)
 
-- [ ] **Step 7.1 — Probe the stack (no production code).** Run and capture output of each:
+- [x] **Step 7.1 — Probe the stack (no production code).** Run and capture output of each:
 
 ```
 # 1. Does the portal offer metadata cursor mode? (bitmask: 1=hidden, 2=embedded, 4=metadata)
@@ -790,7 +790,7 @@ rpm -q pipewire-gstreamer
 
 Then the empirical check: temporarily hardcode `"cursor_mode": GLib.Variant("u", 4)` in `record.py` `_created` (line ~182), run `python -m wondershot`, record 5 seconds while moving the mouse, and inspect the output: with metadata mode the cursor should be ABSENT from the frames (confirming the portal honored it) and there is no element in our pipeline string that could receive its coordinates. Revert the hardcode immediately after.
 
-- [ ] **Step 7.2 — Record the transcript.** Create `spikes/cursor_halo_probe.md` containing: the exact commands above, their verbatim output, the recorded-clip observation (cursor present/absent), and one paragraph stating which branch the evidence selects and why. Commit:
+- [x] **Step 7.2 — Record the transcript.** Create `spikes/cursor_halo_probe.md` containing: the exact commands above, their verbatim output, the recorded-clip observation (cursor present/absent), and one paragraph stating which branch the evidence selects and why. Commit:
 ```
 git add spikes/cursor_halo_probe.md
 git commit -m "Cursor halo spike: probe transcript for portal metadata cursor mode in gst-launch pipeline"
