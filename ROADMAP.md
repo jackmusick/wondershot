@@ -345,6 +345,28 @@ The Linux `ScreenRecorder` no longer shells out to `gst-launch-1.0 -e`;
   callback fires in-process, and pause/resume continuity all pass on the
   dev box (GStreamer 1.26.11). CI without gi skips them.
 
+### Region recording (in-process, D2) — SHIPPED with a v1 constraint
+
+Tray "Record region…" + gallery toolbar "Record region" grab a fullscreen
+still, show the existing `wincapture.RegionOverlay`, and on `selected` set
+`recorder._crop = crop_props(...)` then start the normal recording; the
+crop is applied in-pipeline (`videocrop` after `videoconvert`). The portal
+still streams the whole monitor — we crop downstream. `_crop` is per-
+session (reset in `_cleanup`) so a later full-screen recording is uncropped.
+
+Deviations from the plan:
+- The plan said `grab_fullscreen` is "portable Qt via QGuiApplication"; in
+  reality `wincapture.grab_fullscreen` uses `mss` (the Windows extra, not
+  installed on the Linux dev venv). The grab is behind the `_region_grab`
+  seam (overridden in tests) and only runs on a live desktop, so the suite
+  doesn't need it; on Linux it will need `mss` (X11) or a Wayland-safe grab
+  at runtime — flagged as a checklist item rather than wired here.
+- Multi-monitor: crop coords are assumed to be in the same pixel space as
+  the portal stream. v1 is correct for the primary/single-monitor case; a
+  rect spanning the virtual desktop while the portal streams one monitor
+  would be offset. Documented in the desktop checklist (item 16) for a
+  follow-up; not solved here (needs a live multi-monitor portal session).
+
 ### Cursor halo (in-process) — PARKED (cursor source), wiring SHIPPED
 
 Shipped: the `record_cursor_halo` setting + dialog row, `halo_geometry`

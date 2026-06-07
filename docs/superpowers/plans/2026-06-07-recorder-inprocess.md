@@ -540,7 +540,7 @@ Expected: passes on dev box (or documented park).
 
 ---
 
-## TASK D1 — Region crop in pipeline (feature; pure math + description)
+## [x] TASK D1 — Region crop in pipeline (feature; pure math + description)
 
 - **Pure crop math** in `record.py` + `test_record_pure.py`:
   ```python
@@ -564,7 +564,7 @@ Expected: pass.
 
 ---
 
-## TASK D2 — Region pick UI (feature; reuse RegionOverlay)
+## [x] TASK D2 — Region pick UI (feature; reuse RegionOverlay)
 
 - New flow: "Record region…" entry in the tray menu (and a gallery toolbar entry). On trigger: grab a fullscreen still (reuse `wincapture.grab_fullscreen` — it lives in `wincapture.py`, NOT `capture.py`, and is portable Qt via `QGuiApplication`), show `wincapture.RegionOverlay(image)` (portable Qt — `selected(QRect)` in image pixels, `cancelled()`), then on `selected` set `recorder._crop = crop_props((rect.x,rect.y,rect.w,rect.h), image.width(), image.height())` and call the normal start (`_begin_recording`). On cancel, do nothing.
 - Multi-monitor: the overlay covers `virtualGeometry`; the grabbed still is the virtual desktop, so crop coords are in stream/virtual pixels — matches what pipewiresrc casts when the monitor selection equals the picked screen. (If the portal stream is a single monitor while the rect spans the virtual desktop, document the offset handling in ROADMAP; for v1 constrain region recording to the primary screen and note it.)
@@ -578,7 +578,7 @@ Expected: pass.
 
 ---
 
-## TASK E — Docs + final verification
+## [x] TASK E — Docs + final verification
 
 - `ROADMAP.md`: add an "In-process recorder (2026-06-07)" note under Platform landmines summarizing: subprocess→`Gst.parse_launch`, bus-driven lifecycle, the `videorate` no-PTS fix preserved verbatim, EOS-via-bus finalize, and `force_stop()` escalation replacing the double-SIGINT/SIGKILL ladder. Record the cursor-halo (B2) and pause/resume (C3) outcomes (shipped vs parked-with-findings).
 - Append to `docs/superpowers/plans/2026-06-07-desktop-checklist.md` (non-blocking, live-desktop): real recording finalizes a playable mp4; cursor halo visible (if shipped); pause/resume yields a continuous playable mp4; region crop matches the picked rect; tray+toolbar pause/stop both work and both reset.

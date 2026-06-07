@@ -88,6 +88,38 @@ headlessly.
   moves. Record the verdict in ROADMAP WS-D findings — step capture's
   design is gated on it.
 
+## In-process recorder (2026-06-07, branch session/recorder-inproc)
+
+All headless/live-with-videotestsrc checks pass on the dev box
+(GStreamer 1.26.11); these need a real portal/desktop session and so are
+human-eye only. Nothing here blocks the build.
+
+13. Real recording finalizes a playable mp4: tray "Record screen…" → pick
+    a monitor → record a few seconds → Stop. The mp4 lands in the library
+    and plays (ffprobe: h264, sane duration). This exercises the REAL
+    pipewiresrc → videorate → x264enc → mp4mux path that the videotestsrc
+    smoke can't (no-PTS landmine only fires on a live PipeWire stream).
+14. Pause/resume yields a continuous playable mp4: start recording, Pause
+    (tray or toolbar), wait a few seconds, Resume, Stop. Confirm: the
+    elapsed clock froze while paused, both controls relabeled in lockstep,
+    and the saved mp4 plays end-to-end with no freeze/no negative-PTS warn
+    (ffprobe). This is the C3 risk validated against a real desktop.
+15. Tray + toolbar stop/pause both work and both reset: stop from the tray
+    after pausing from the toolbar (and vice-versa); both controls return
+    to idle.
+16. Region crop matches the picked rect: tray "Record region…" → drag a
+    rectangle → the saved mp4's dimensions equal the picked rect (videocrop
+    borders). NOTE multi-monitor: v1 assumes the picked rect is in the same
+    pixel space as the portal stream (primary/single monitor). If the
+    portal streams one monitor while the rect spans the virtual desktop,
+    the crop will be offset — confirm on a single monitor first; record
+    multi-monitor behavior for the offset follow-up.
+17. Cursor halo (PARKED — only if the source is later unparked): with
+    "Show cursor halo" ON, confirm cursor_mode=4 (METADATA) is negotiated
+    and whether spa_meta_cursor (x,y) is readable off the buffer via gi.
+    Today the halo draw callback is a no-op (no gi path to the cursor
+    meta) — this check is the gate for unparking compositing.
+
 ## Windows (win11-pam VM) — WS-E definition of done (2026-06-07)
 
 Executed on the VM's real interactive console session (developer, session 1).

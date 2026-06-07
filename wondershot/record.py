@@ -686,6 +686,7 @@ class ScreenRecorder(QObject):
         self.paused = False
         self._paused_at = None
         self._paused_total = 0.0
+        self._crop = None  # region crop is per-session (D2)
         self._close_session()
 
 

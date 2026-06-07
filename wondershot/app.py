@@ -88,6 +88,7 @@ class GrabbitApp(QObject):
         self.gallery.settings_applied.connect(self._on_settings_applied)
         self.gallery.capture_requested.connect(self.trigger_capture)
         self.gallery.record_requested.connect(self._begin_recording)
+        self.gallery.record_region_requested.connect(self.record_region)
         self._editors: list[EditorWindow] = []
         self._gallery_was_visible = False
 
@@ -149,6 +150,11 @@ class GrabbitApp(QObject):
         self.pause_action.setEnabled(False)
         self.pause_action.setVisible(False)
         menu.addAction(self.pause_action)
+        self.region_action = QAction("Record region…", menu)
+        self.region_action.setToolTip(
+            "Pick a rectangle, then record only that area")
+        self.region_action.triggered.connect(self.record_region)
+        menu.addAction(self.region_action)
         self.bubble_action = QAction(QIcon.fromTheme("camera-web"),
                                      "Camera", menu)
         self.bubble_action.setCheckable(True)
@@ -344,6 +350,53 @@ class GrabbitApp(QObject):
         cd.cancelled.connect(self._countdown_cancelled)
         self._countdown = cd
         cd.show()
+
+    # -- region recording (D2) -------------------------------------------
+
+    def record_region(self) -> None:
+        """Pick a rectangle on a fullscreen still, then record only that
+        area (cropped in-pipeline via videocrop). The portal still streams
+        the whole monitor; we crop downstream."""
+        if self.recorder.recording or getattr(self.recorder, "_busy", False):
+            return
+        img, _virt = self._region_grab()
+        if img is None:
+            return
+        ov = self._region_overlay(img)
+        ov.selected.connect(lambda rect: self._region_record_selected(img, rect))
+        ov.cancelled.connect(self._region_record_cancelled)
+        self._region_ov = ov
+        if hasattr(ov, "show_on_desktop"):
+            ov.show_on_desktop()
+
+    def _region_grab(self):
+        """Grab the fullscreen still. Seam for tests. Live-desktop only."""
+        try:
+            from .wincapture import grab_fullscreen
+            return grab_fullscreen()
+        except Exception as e:
+            self.tray.showMessage("Wondershot — region recording",
+                                  f"could not grab the screen: {e}",
+                                  self.icon, 4000)
+            return None, None
+
+    def _region_overlay(self, img):
+        """Build the region picker. Seam for tests."""
+        from .wincapture import RegionOverlay
+        return RegionOverlay(img)
+
+    def _region_record_selected(self, img, rect) -> None:
+        self._region_ov = None
+        if rect.isEmpty():
+            return  # degenerate mapping; treat as cancel
+        from .record import crop_props
+        self.recorder._crop = crop_props(
+            (rect.x(), rect.y(), rect.width(), rect.height()),
+            img.width(), img.height())
+        self._begin_recording()
+
+    def _region_record_cancelled(self) -> None:
+        self._region_ov = None
 
     def _countdown_finished(self) -> None:
         self._countdown = None

@@ -336,6 +336,7 @@ class GalleryWindow(QMainWindow):
     oauth_callback = Signal(str)  # wondershot://auth?... redirect URL
     capture_requested = Signal(str)  # routed through app.trigger_capture
     record_requested = Signal()  # start a recording (app owns countdown/start)
+    record_region_requested = Signal()  # pick a rect, record only that area
 
     def __init__(self, settings, capture, recorder=None, parent=None):
         super().__init__(parent)
@@ -655,6 +656,12 @@ class GalleryWindow(QMainWindow):
         self.pause_action.setEnabled(False)
         self.pause_action.setVisible(False)
         tb.addAction(self.pause_action)
+        self.region_action = self._tb_act(
+            "Record region", "select-rectangular",
+            self.record_region_requested.emit)
+        self.region_action.setToolTip(
+            "Pick a rectangle, then record only that area")
+        tb.addAction(self.region_action)
         self._bubble_anchor = tb.addSeparator()
         self.main_toolbar = tb
         tb.addAction(self._tb_act("Open in window", "window-new",
