@@ -71,6 +71,22 @@ def build_blur_filter(redactions, blur: int = 14,
     return ";".join(parts), cur
 
 
+def build_frame_grab_args(src: str, position_s: float, out: str) -> list[str]:
+    """ffmpeg args extracting one frame at position_s seconds.
+
+    -ss before -i = fast input seek; with -frames:v 1 the decoder lands on
+    the frame at/just after the seek point. This sidesteps grabbing from
+    QVideoSink, whose Wayland subsurface frames aren't reliably readable.
+    """
+    return ["-y", "-ss", f"{position_s:.3f}", "-i", src,
+            "-frames:v", "1", out]
+
+
+def frame_output_name(src_name: str) -> str:
+    """'<video-stem>-frame.png' library name for a grabbed frame."""
+    return f"{os.path.splitext(src_name)[0]}-frame.png"
+
+
 _encoder_cache: str | None = None
 
 

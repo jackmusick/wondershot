@@ -55,3 +55,23 @@ def test_pick_encoder_falls_back_when_ffmpeg_missing(monkeypatch):
 
     monkeypatch.setattr(ffmpegutil, "run_ffmpeg", boom)
     assert video.pick_encoder() == "mpeg4"
+
+def test_frame_grab_args():
+    from wondershot.video import build_frame_grab_args
+    args = build_frame_grab_args(
+        "/lib/Recording.mp4", 12.3456, "/lib/.rendering/Recording-frame.png")
+    assert args == ["-y", "-ss", "12.346", "-i", "/lib/Recording.mp4",
+                    "-frames:v", "1", "/lib/.rendering/Recording-frame.png"]
+
+
+def test_frame_grab_at_zero():
+    from wondershot.video import build_frame_grab_args
+    args = build_frame_grab_args("/lib/a.webm", 0.0, "/lib/a-frame.png")
+    assert args[1:3] == ["-ss", "0.000"]
+
+
+def test_frame_output_name():
+    from wondershot.video import frame_output_name
+    assert frame_output_name("Recording_20260606_1.mp4") == \
+        "Recording_20260606_1-frame.png"
+    assert frame_output_name("clip.webm") == "clip-frame.png"

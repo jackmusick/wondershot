@@ -313,7 +313,7 @@ git commit -m "Route all existing ffmpeg call sites through ffmpegutil"
 - Modify: `wondershot/video.py` (add two module-level functions after `build_blur_filter`, ~line 70)
 - Test: `tests/test_video_filter.py` (extend)
 
-- [ ] **Step 3.1 — Write the failing tests.** Append to `tests/test_video_filter.py`:
+- [x] **Step 3.1 — Write the failing tests.** Append to `tests/test_video_filter.py`:
 
 ```python
 def test_frame_grab_args():
@@ -337,9 +337,9 @@ def test_frame_output_name():
     assert frame_output_name("clip.webm") == "clip-frame.png"
 ```
 
-- [ ] **Step 3.2 — Run them, expect failure.** `python -m pytest tests/test_video_filter.py -q` → 3 new tests fail with `ImportError: cannot import name 'build_frame_grab_args'`.
+- [x] **Step 3.2 — Run them, expect failure.** `python -m pytest tests/test_video_filter.py -q` → 3 new tests fail with `ImportError: cannot import name 'build_frame_grab_args'`.
 
-- [ ] **Step 3.3 — Implement.** In `wondershot/video.py`, after `build_blur_filter` (before the `_encoder_cache` line):
+- [x] **Step 3.3 — Implement.** In `wondershot/video.py`, after `build_blur_filter` (before the `_encoder_cache` line):
 
 ```python
 def build_frame_grab_args(src: str, position_s: float, out: str) -> list[str]:
@@ -358,9 +358,9 @@ def frame_output_name(src_name: str) -> str:
     return f"{os.path.splitext(src_name)[0]}-frame.png"
 ```
 
-- [ ] **Step 3.4 — Run tests.** `python -m pytest tests/test_video_filter.py -q` → all pass. Full suite: `python -m pytest tests/ -q` → all pass.
+- [x] **Step 3.4 — Run tests.** `python -m pytest tests/test_video_filter.py -q` → all pass. Full suite: `python -m pytest tests/ -q` → all pass.
 
-- [ ] **Step 3.5 — Commit.**
+- [x] **Step 3.5 — Commit.**
 ```
 git add wondershot/video.py tests/test_video_filter.py
 git commit -m "Frame grab: pure ffmpeg arg builder + output naming"
