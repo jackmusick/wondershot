@@ -1,5 +1,6 @@
 import os
 import subprocess
+import sys
 import time
 
 import pytest
@@ -7,6 +8,12 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication
+
+pytestmark = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="recorder tests drive POSIX subprocesses (true/sleep, SIGINT-as-EOS);"
+           " the recorder itself is Linux-only (portal/PipeWire/gst)",
+)
 
 
 @pytest.fixture(scope="session")

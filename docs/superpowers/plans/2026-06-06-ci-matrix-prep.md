@@ -51,7 +51,7 @@ The recorder tests (`tests/test_record.py`) spawn `subprocess.Popen(["true"])` a
 
 **Steps:**
 
-- [ ] **Add module-level Windows skip to `tests/test_record.py`.** This is a test-infrastructure change, not feature code, so there is no failing-test-first step — the verification is that the Linux suite still collects and passes every recorder test (no accidental skips on Linux). The file currently starts:
+- [x] **Add module-level Windows skip to `tests/test_record.py`.** This is a test-infrastructure change, not feature code, so there is no failing-test-first step — the verification is that the Linux suite still collects and passes every recorder test (no accidental skips on Linux). The file currently starts:
   ```python
   import os
   import subprocess
@@ -84,7 +84,7 @@ The recorder tests (`tests/test_record.py`) spawn `subprocess.Popen(["true"])` a
   ```
   Gotcha: `pytestmark` must be module-level and assigned after `pytest` is imported. With this skip active, Windows never imports `wondershot.record` from this file (the heavy imports are inside test helpers, e.g. `make_recorder`), which is fine — `record.py` is import-safe everywhere anyway (`gi` is in try/except).
 
-- [ ] **Guard the permission assertion in `tests/test_msgraph.py`.** Line 13 currently reads:
+- [x] **Guard the permission assertion in `tests/test_msgraph.py`.** Line 13 currently reads:
   ```python
       assert oct(os.stat(msgraph.token_path()).st_mode & 0o777) == "0o600"
   ```
@@ -95,13 +95,13 @@ The recorder tests (`tests/test_record.py`) spawn `subprocess.Popen(["true"])` a
   ```
   Only the one assertion is gated — the rest of `test_token_cache_roundtrip` (save/load/account) still runs on Windows.
 
-- [ ] **Run the full suite on Linux and confirm nothing got skipped here:**
+- [x] **Run the full suite on Linux and confirm nothing got skipped here:**
   ```bash
   .venv/bin/pytest tests/ -v
   ```
   Expected: all tests pass, `tests/test_record.py` shows `PASSED` (not `SKIPPED`) for all 4 recorder tests, `test_token_cache_roundtrip` passes.
 
-- [ ] **Commit:**
+- [x] **Commit:**
   ```bash
   git add tests/test_record.py tests/test_msgraph.py
   git commit -m "tests: honest Windows skips for POSIX-only recorder/perm assertions"

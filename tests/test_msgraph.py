@@ -10,7 +10,8 @@ def test_token_cache_roundtrip(tmp_path, monkeypatch):
     msgraph.save_tokens({"access_token": "at", "refresh_token": "rt",
                          "expires_in": 3600}, "client", "jack@example.com")
     assert msgraph.connected_account() == "jack@example.com"
-    assert oct(os.stat(msgraph.token_path()).st_mode & 0o777) == "0o600"
+    if os.name == "posix":
+        assert oct(os.stat(msgraph.token_path()).st_mode & 0o777) == "0o600"
     t = msgraph.load_tokens()
     assert t["refresh_token"] == "rt"
     assert t["expires_at"] > time.time()
