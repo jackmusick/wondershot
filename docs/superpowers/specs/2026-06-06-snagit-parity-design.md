@@ -305,3 +305,64 @@ Jack's app after each merge. ONE consolidated checklist at the end
 (replaces/extends docs/superpowers/plans/2026-06-07-desktop-checklist.md).
 GitHub repo creation + CI-triggering push: requires Jack's explicit OK
 (publishing) — held as the single open question.
+
+---
+
+# Addendum 3 (2026-06-07): WS-E — Windows port, VM-driven
+
+Goal directive from Jack: complete the roadmap through a WORKING Windows
+version on the win11-pam VM (copied from the dev box to this host;
+libvirt/KVM/default-net verified ready). The agent drives the VM over
+SSH/PowerShell end-to-end — including visual verification by
+screenshotting the VM's desktop (PowerShell CopyFromScreen → scp → image
+read), so no human in the loop for the build-test cycle.
+
+## Architecture decisions (pinned)
+
+- **Stills backend (`WinCaptureManager`)**: `mss` (pure-ctypes pip dep) for
+  fullscreen grabs. Active-window mode via ctypes
+  `user32.GetForegroundWindow` + `DwmGetWindowAttribute(EXTENDED_FRAME_BOUNDS)`
+  (the kwin.py analog, trivially fakeable in tests). Region mode: WE OWN THE
+  SCREEN on Windows — frameless fullscreen Qt overlay showing the grabbed
+  frame with rubber-band selection (portable Qt code; doubles as the future
+  owned region picker that Wayland denies us).
+- **Recorder backend (`WinScreenRecorder`)**: ffmpeg `ddagrab` (Desktop
+  Duplication; hw path) with `gdigrab` fallback, audio via `dshow`; args
+  built like the existing gst string, run through `ffmpegutil` + QProcess
+  with the same watchdog/stopping/salvage semantics as Linux. NO GStreamer
+  on Windows.
+- **Hotkeys**: `RegisterHotKey` ctypes loop behind the existing
+  `HotkeyBackend` seam.
+- **Backend selection**: `sys.platform` factory in capture.py/record.py
+  mirroring `create_hotkey_backend`; Linux behavior byte-identical.
+- **Already portable, expect to just work**: editor, gallery, video player
+  (QtMultimedia→ffmpeg on Windows), sidecars, AI stack, quick bar, settings,
+  trim/GIF/frame-grab (all ffmpeg via ffmpegutil PATH discovery).
+- **Out of scope for "working version"**: installer/packaging (runs from a
+  synced checkout + venv python in the VM), code signing, step capture
+  Windows backend (follow-up), tray autostart.
+
+## VM workflow
+
+- Copy repo to VM per deploy: `git bundle` or tar over scp (no GitHub
+  remote). Provision once: winget install Python 3.12+, ffmpeg; pip install
+  -e ".[spike]" pytest.
+- Verification ladder per milestone: (1) import smoke + pytest over SSH
+  (CI guards already make the suite Windows-honest); (2) launch the app in
+  the VM's logged-in session, screenshot the desktop, READ the screenshot;
+  (3) scripted capture/record smoke writing into the library, file
+  assertions over SSH.
+- Definition of done for the goal: on the VM — app launches with tray,
+  hotkey fires a capture, region/fullscreen/window capture produce correct
+  PNGs in the library, recording produces a playable mp4, editor
+  annotates + sidecar-persists, suite green (Windows skips honest).
+
+## Sequencing
+
+1. Batch 4 merges first (owns cli.py/capture_window.py surfaces).
+2. VM: define domain from dumped XML (path fixups), boot, snapshot
+   "pristine", provision, baseline suite run.
+3. Plan→review→execute→review workflow for the backends (worktree), with
+   on-VM verification steps embedded in the plan.
+4. Iterate on-VM until the definition of done holds; consolidated checklist
+   updated; windev skill updated (VM now lives on this host too).
