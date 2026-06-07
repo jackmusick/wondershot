@@ -46,6 +46,7 @@ class Probe:
         self.loop = GLib.MainLoop()
         self.session: str | None = None
         self.zone_set: int | None = None
+        self.zone: tuple | None = None
 
     # -- plumbing (mirrors wondershot/record.py) ----------------------
 
@@ -157,9 +158,63 @@ class Probe:
             finding("GetZones FAILED")
             return False
         zones = results.get("zones") or []
+        if zones:
+            self.zone = zones[0]  # (uint32 w, uint32 h, int32 x, int32 y)
         self.zone_set = results.get("zone_set")
         finding(f"GetZones OK: zones={zones} zone_set={self.zone_set}")
         return bool(zones)
+
+    def set_barriers(self) -> bool:
+        """One barrier along the LEFT edge of the first zone: shoving
+        the pointer against the left screen edge activates capture."""
+        if self.zone is None or self.zone_set is None:
+            finding("no zones/zone_set — skipping SetPointerBarriers")
+            return False
+        w, h, x, y = self.zone
+        token = self._token()
+        barrier = {
+            "barrier_id": GLib.Variant("u", 1),
+            # vertical barrier: x1 == x2 (portal spec)
+            "position": GLib.Variant("(iiii)", (x, y, x, y + h - 1)),
+        }
+        results = self._call_with_response(
+            "SetPointerBarriers",
+            GLib.Variant("(oa{sv}aa{sv}u)", (
+                self.session,
+                {"handle_token": GLib.Variant("s", token)},
+                [barrier],
+                self.zone_set)),
+            token)
+        if results is None:
+            finding("SetPointerBarriers FAILED")
+            return False
+        failed = list(results.get("failed_barriers") or [])
+        finding(f"SetPointerBarriers OK (failed_barriers={failed})")
+        return 1 not in failed
+
+    def enable(self) -> bool:
+        """Enable is a plain method (no Request/Response dance)."""
+        try:
+            self.conn.call_sync(
+                BUS, PATH, IFACE, "Enable",
+                GLib.Variant("(oa{sv})", (self.session, {})),
+                None, Gio.DBusCallFlags.NONE, TIMEOUT_MS, None)
+        except GLib.Error as e:
+            finding(f"Enable FAILED: {e.message}")
+            return False
+        finding("Enable OK — PUSH THE POINTER AGAINST THE LEFT SCREEN "
+                "EDGE to activate capture")
+        return True
+
+    def watch_activation(self) -> None:
+        """Print Activated/Deactivated findings as they happen."""
+        def on_signal(_c, _s, _p, _i, member, params):
+            finding(f"{member}: {params.unpack()}")
+
+        for member in ("Activated", "Deactivated", "Disabled"):
+            self.conn.signal_subscribe(
+                BUS, IFACE, member, PATH, None,
+                Gio.DBusSignalFlags.NONE, on_signal)
 
     def connect_eis(self) -> int:
         try:
@@ -178,11 +233,38 @@ class Probe:
         """Try to see pointer-button events on the EIS fd."""
         try:
             import snegg.ei  # python libei bindings, if installed
+            have_snegg = True
         except ImportError:
-            finding("no python libei bindings (snegg) installed — "
-                    "cannot speak the EI protocol from Python here")
-            # Honest fallback: EI requires a client handshake, so a
-            # raw read should yield nothing; prove/record that.
+            have_snegg = False
+        if have_snegg:
+            finding("snegg (python libei) present — attempting real "
+                    "event observation for 10s; CLICK SOME BUTTONS NOW")
+            ctx = snegg.ei.Receiver.create_for_fd(fd=fd, name="ws-probe")
+            deadline = GLib.get_monotonic_time() + 10_000_000
+            saw = 0
+            while GLib.get_monotonic_time() < deadline:
+                r, _, _ = select.select([ctx.fd], [], [], 0.5)
+                if not r:
+                    continue
+                ctx.dispatch()
+                for ev in ctx.events:
+                    if ev.event_type == snegg.ei.EventType.BUTTON_BUTTON:
+                        saw += 1
+                        finding(f"pointer BUTTON event observed: "
+                                f"button={ev.button} state={ev.is_press}")
+            finding(f"observed {saw} button events"
+                    if saw else "no button events observed (capture may "
+                    "need Enable + pointer barriers + activation)")
+            return
+
+        # snegg is not on PyPI (verified 2026-06-07) — use the ctypes
+        # binding shipped with wondershot (wondershot/ei.py).
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+        try:
+            from wondershot.ei import EiButtonReader
+            reader = EiButtonReader(fd, name=b"ws-probe")
+        except OSError as e:
+            finding(f"libei unusable ({e}) — falling back to raw read")
             os.set_blocking(fd, False)
             r, _, _ = select.select([fd], [], [], 3.0)
             if r:
@@ -191,27 +273,34 @@ class Probe:
                         "handshake (unexpected — investigate)")
             else:
                 finding("raw fd silent without EI handshake (expected); "
-                        "event observation needs libei (C) or snegg — "
                         "fd plumbing itself works")
             return
-        finding("snegg (python libei) present — attempting real "
-                "event observation for 10s; CLICK SOME BUTTONS NOW")
-        ctx = snegg.ei.Receiver.create_for_fd(fd=fd, name="ws-probe")
-        deadline = GLib.get_monotonic_time() + 10_000_000
+
+        finding("ctypes libei (wondershot.ei) loaded — observing for "
+                "15s; ACTIVATE CAPTURE (left edge) AND CLICK NOW")
+        deadline = GLib.get_monotonic_time() + 15_000_000
         saw = 0
         while GLib.get_monotonic_time() < deadline:
-            r, _, _ = select.select([ctx.fd], [], [], 0.5)
+            r, _, _ = select.select([reader.fd], [], [], 0.5)
             if not r:
                 continue
-            ctx.dispatch()
-            for ev in ctx.events:
-                if ev.event_type == snegg.ei.EventType.BUTTON_BUTTON:
-                    saw += 1
-                    finding(f"pointer BUTTON event observed: "
-                            f"button={ev.button} state={ev.is_press}")
-        finding(f"observed {saw} button events"
-                if saw else "no button events observed (capture may "
-                "need Enable + pointer barriers + activation)")
+            for ev in reader.dispatch():
+                saw += 1
+                finding(f"pointer BUTTON event: button={ev.button:#x} "
+                        f"press={ev.is_press} t={ev.time_us}us")
+            if reader.connected and saw == 0:
+                pass  # handshake done; waiting on activation + clicks
+            if reader.disconnected:
+                finding("EIS disconnected us")
+                break
+        finding(f"EIS handshake completed (connected={reader.connected}); "
+                f"observed {saw} button events")
+        if saw:
+            finding("MANUAL CHECK REQUIRED: while those clicks were "
+                    "observed, did the app under the pointer ALSO "
+                    "receive them? (interception semantics — record "
+                    "the answer in ROADMAP WS-D findings)")
+        reader.close()
 
     def close(self) -> None:
         if self.session:
@@ -239,8 +328,11 @@ def main() -> int:
         if not probe.create_session():
             return 1
         probe.get_zones()
+        probe.watch_activation()
+        probe.set_barriers()
         fd = probe.connect_eis()
         if fd >= 0:
+            probe.enable()
             probe.observe_events(fd)
             os.close(fd)
         return 0

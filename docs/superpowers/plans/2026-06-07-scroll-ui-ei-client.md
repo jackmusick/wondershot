@@ -1353,15 +1353,15 @@ GLib.Variant types, finite timeouts, GLib.Error caught per step.
 
 ### Step 7.1: Store the first zone, add barrier + Enable steps
 
-- [ ] In `Probe.__init__`, add `self.zone: tuple | None = None`.
-- [ ] In `get_zones`, after `zones = results.get("zones") or []`, add:
+- [x] In `Probe.__init__`, add `self.zone: tuple | None = None`.
+- [x] In `get_zones`, after `zones = results.get("zones") or []`, add:
 
 ```python
         if zones:
             self.zone = zones[0]  # (uint32 w, uint32 h, int32 x, int32 y)
 ```
 
-- [ ] Add two methods after `get_zones`:
+- [x] Add two methods after `get_zones`:
 
 ```python
     def set_barriers(self) -> bool:
@@ -1419,7 +1419,7 @@ GLib.Variant types, finite timeouts, GLib.Error caught per step.
 
 ### Step 7.2: EI event loop in observe_events
 
-- [ ] Replace the body of `observe_events` so the fallback chain is
+- [x] Replace the body of `observe_events` so the fallback chain is
   snegg → `wondershot.ei` → raw read. Keep the snegg branch verbatim, and
   replace the current `except ImportError:` raw-read block with:
 
@@ -1479,7 +1479,7 @@ GLib.Variant types, finite timeouts, GLib.Error caught per step.
         reader.close()
 ```
 
-- [ ] In `main()`, wire the new steps between `get_zones` and `connect_eis`:
+- [x] In `main()`, wire the new steps between `get_zones` and `connect_eis`:
 
 ```python
         probe.get_zones()
@@ -1492,13 +1492,13 @@ GLib.Variant types, finite timeouts, GLib.Error caught per step.
             os.close(fd)
 ```
 
-- [ ] Sanity check (no portal calls — just import/compile):
+- [x] Sanity check (no portal calls — just import/compile):
   `python3 -m py_compile spikes/inputcapture_probe.py && python3 -c "import ast; ast.parse(open('spikes/inputcapture_probe.py').read())"`
-- [ ] Run the FULL suite to prove nothing regressed:
+- [x] Run the FULL suite to prove nothing regressed:
   `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q`
-- [ ] Expected: all green. The probe itself is NOT run here — it is the final
+- [x] Expected: all green. The probe itself is NOT run here — it is the final
   manual checklist item.
-- [ ] Commit: `git add -A && git commit -m "Probe: barriers + Enable + ctypes-EI event loop (handshake + buttons w/ timestamps)"`
+- [x] Commit: `git add -A && git commit -m "Probe: barriers + Enable + ctypes-EI event loop (handshake + buttons w/ timestamps)"`
 
 ---
 
