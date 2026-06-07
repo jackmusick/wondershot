@@ -9,8 +9,10 @@ import pytest
 
 @pytest.fixture(scope="session", autouse=True)
 def qapp():
-    from PySide6.QtGui import QGuiApplication
-    app = QGuiApplication.instance() or QGuiApplication([])
+    # Full QApplication (not QGuiApplication): this file is collected before
+    # the widget-based editor tests, which need the widgets-capable instance.
+    from PySide6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication([])
     yield app
 
 

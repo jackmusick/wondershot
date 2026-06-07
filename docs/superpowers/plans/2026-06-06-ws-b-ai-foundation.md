@@ -486,7 +486,7 @@ class AIJob(QRunnable):
 - Modify: `wondershot/settings_dialog.py` — add tab after line 198 (`tabs.addTab(self._build_share_tab(), "Sharing")`), new methods after `_build_share_tab` (~line 267), three writes in `apply()` (~line 611)
 - Test: `tests/test_settings_dialog_ai.py` (create)
 
-- [ ] Write the failing test:
+- [x] Write the failing test:
 
 ```python
 # tests/test_settings_dialog_ai.py
@@ -560,8 +560,8 @@ def test_ai_test_button_requires_endpoint_and_model(qapp, tmp_path,
     assert "endpoint" in dlg.ai_test_status.text()
 ```
 
-- [ ] Run and confirm failure: `python -m pytest tests/test_settings_dialog_ai.py -q` — expect `AttributeError: 'SettingsDialog' object has no attribute 'ai_endpoint'`.
-- [ ] Implement. In `wondershot/settings_dialog.py`, directly after the line `tabs.addTab(self._build_share_tab(), "Sharing")` (~line 198) add:
+- [x] Run and confirm failure: `python -m pytest tests/test_settings_dialog_ai.py -q` — expect `AttributeError: 'SettingsDialog' object has no attribute 'ai_endpoint'`.
+- [x] Implement. In `wondershot/settings_dialog.py`, directly after the line `tabs.addTab(self._build_share_tab(), "Sharing")` (~line 198) add:
 
 ```python
         tabs.addTab(self._build_ai_tab(), "AI")
@@ -645,8 +645,8 @@ def test_ai_test_button_requires_endpoint_and_model(qapp, tmp_path,
         self.settings.ai_model = self.ai_model.text().strip()
 ```
 
-- [ ] Run tests: `python -m pytest tests/test_settings_dialog_ai.py -q` — expect 2 passed. Also run `python -m pytest tests/ -q` to confirm nothing else broke.
-- [ ] Commit: `git add wondershot/settings_dialog.py tests/test_settings_dialog_ai.py && git commit -m "WS-B: AI settings tab with async test-connection"`
+- [x] Run tests: `python -m pytest tests/test_settings_dialog_ai.py -q` — expect 2 passed. Also run `python -m pytest tests/ -q` to confirm nothing else broke.
+- [x] Commit: `git add wondershot/settings_dialog.py tests/test_settings_dialog_ai.py && git commit -m "WS-B: AI settings tab with async test-connection"`
 
 ---
 
