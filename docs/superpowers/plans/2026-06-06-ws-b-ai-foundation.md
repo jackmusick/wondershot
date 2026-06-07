@@ -408,7 +408,7 @@ def ai_configured(settings) -> bool:
 - Modify: `wondershot/aiclient.py` (append at end of file)
 - Test: `tests/test_aiclient.py` (append)
 
-- [ ] Write the failing tests (append to `tests/test_aiclient.py`):
+- [x] Write the failing tests (append to `tests/test_aiclient.py`):
 
 ```python
 def test_aijob_emits_result(qapp):
@@ -439,8 +439,8 @@ def test_aijob_cancel_suppresses_emit(qapp):
     assert got == []
 ```
 
-- [ ] Run and confirm failure: `python -m pytest tests/test_aiclient.py -q` — expect `ImportError: cannot import name 'AIJob'`.
-- [ ] Implement — append to `wondershot/aiclient.py`:
+- [x] Run and confirm failure: `python -m pytest tests/test_aiclient.py -q` — expect `ImportError: cannot import name 'AIJob'`.
+- [x] Implement — append to `wondershot/aiclient.py`:
 
 ```python
 # -- background execution (mirror of share.ShareJob) -------------------------
@@ -475,8 +475,8 @@ class AIJob(QRunnable):
             self.emitter.done.emit(result, "")
 ```
 
-- [ ] Run tests: `python -m pytest tests/test_aiclient.py -q` — expect 13 passed.
-- [ ] Commit: `git add wondershot/aiclient.py tests/test_aiclient.py && git commit -m "WS-B: AIJob — cancelable QRunnable mirroring ShareJob"`
+- [x] Run tests: `python -m pytest tests/test_aiclient.py -q` — expect 13 passed.
+- [x] Commit: `git add wondershot/aiclient.py tests/test_aiclient.py && git commit -m "WS-B: AIJob — cancelable QRunnable mirroring ShareJob"`
 
 ---
 

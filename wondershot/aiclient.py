@@ -103,3 +103,35 @@ def ai_configured(settings) -> bool:
     """Endpoint + model are required; the key is optional (local LLMs)."""
     return bool(getattr(settings, "ai_endpoint", "")
                 and getattr(settings, "ai_model", ""))
+
+
+# -- background execution (mirror of share.ShareJob) -------------------------
+
+
+class _AISignal(QObject):
+    done = Signal(object, str)  # (result, error) — exactly one is meaningful
+
+
+class AIJob(QRunnable):
+    """Run `fn()` off the GUI thread; emitter.done fires on the GUI thread.
+
+    Setting .cancel discards the outcome (the in-flight HTTP call itself
+    is not aborted — it just gets dropped on completion), which is what a
+    progress dialog's Cancel button needs.
+    """
+
+    def __init__(self, fn):
+        super().__init__()
+        self.fn = fn
+        self.cancel = False
+        self.emitter = _AISignal()
+
+    def run(self) -> None:
+        try:
+            result = self.fn()
+        except Exception as e:  # noqa: BLE001 — surface anything to the UI
+            if not self.cancel:
+                self.emitter.done.emit(None, str(e))
+            return
+        if not self.cancel:
+            self.emitter.done.emit(result, "")

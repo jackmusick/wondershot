@@ -147,3 +147,31 @@ def test_ai_configured():
     assert not ai_configured(s)          # model still missing
     s.ai_model = "llava"
     assert ai_configured(s)              # key optional (local servers)
+
+
+def test_aijob_emits_result(qapp):
+    from wondershot.aiclient import AIJob
+    got = []
+    job = AIJob(lambda: 42)
+    job.emitter.done.connect(lambda result, error: got.append((result, error)))
+    job.run()  # synchronous call — direct connection delivers immediately
+    assert got == [(42, "")]
+
+
+def test_aijob_emits_error_string(qapp):
+    from wondershot.aiclient import AIJob
+    got = []
+    job = AIJob(lambda: (_ for _ in ()).throw(OSError("boom")))
+    job.emitter.done.connect(lambda result, error: got.append((result, error)))
+    job.run()
+    assert got == [(None, "boom")]
+
+
+def test_aijob_cancel_suppresses_emit(qapp):
+    from wondershot.aiclient import AIJob
+    got = []
+    job = AIJob(lambda: 1)
+    job.emitter.done.connect(lambda result, error: got.append((result, error)))
+    job.cancel = True
+    job.run()
+    assert got == []
