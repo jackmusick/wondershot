@@ -239,15 +239,41 @@ Documented gaps / landmines:
   stays a real, salvaged failure. On GPU hardware ddagrab wins first try.
   (Added in response to code review — the originally-claimed fallback
   didn't exist; 4 regression tests now guard it.)
-- **Cursor capture**: unsupported (mss/BitBlt); toggle disabled.
-- **Window mode = active window only** (no compositor window picker).
 - **Mic** depends on dshow devices (VM has none → records video-only).
 - **Scroll capture**: gated off on Windows (needs the WS-D FrameSource).
-- **Hotkey**: fixed Ctrl+Shift+PrintScreen, no rebinding UI.
-- **Packaging/installer/signing/autostart**: out of scope (runs from
-  the checkout + venv).
 - VM toolchain note: staged `setuptools>=68` was required for
   `pip install -e` (VM shipped 65.5.0); also stage on fresh VMs.
+
+### WS-E Windows parity backlog (Jack, 2026-06-07: gaps NOT acceptable)
+
+These three shipped as v1 gaps but are Snagit table-stakes — committed
+work, not accepted limitations:
+- **Cursor in stills** (S/M): mss/BitBlt omits the cursor; composite it
+  ourselves via ctypes `GetCursorInfo` + `DrawIconEx` onto the grabbed
+  bitmap, honoring the existing cursor toggle (re-enable it on Windows).
+- **Window picker** (M): Snagit-style hover-highlight + click-to-pick —
+  `EnumWindows`/`WindowFromPoint` + highlight overlay; we already get
+  exact bounds via DWMWA_EXTENDED_FRAME_BOUNDS for the active window.
+- **Hotkey rebinding** (S/M): `QKeySequenceEdit` row in Settings + Qt→
+  win32 modifier mapping into the existing `RegisterHotKey` backend.
+  (Linux stays manual-bind — KGlobalAccel landmine — Windows rebinds.)
+
+### Packaging direction (decided 2026-06-07)
+
+- **Windows**: PyInstaller one-dir → Inno Setup silent installer
+  (`/VERYSILENT`) → winget manifest (`microsoft/winget-pkgs`); updates
+  via `winget upgrade`. Blocker with lead time + cost: code signing
+  (SmartScreen + winget moderation) — Azure Trusted Signing (~$10/mo)
+  or an OV cert. Resolves the PyInstaller-vs-briefcase deferred call.
+- **Linux now**: `curl | sh` installer script — check distro deps
+  (python3-gobject, gstreamer pipewire plugin, ffmpeg), venv with
+  `--system-site-packages`, pip install, run `--install-desktop`;
+  self-update via re-running pip.
+- **Linux end-state**: Flatpak on Flathub (auto-updates, portals are
+  native to the sandbox). Costs: GStreamer/gi in the manifest, sandbox
+  holes for ffmpeg/tesseract/KWin-scripting D-Bus.
+- Implication: avoid compiled C extensions where ctypes works (cursor
+  halo pw_stream reader, libei) — keeps every package pure-Python.
 
 ### InputCapture portal probe findings
 
