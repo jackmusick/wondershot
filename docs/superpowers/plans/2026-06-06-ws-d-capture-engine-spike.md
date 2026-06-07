@@ -802,7 +802,7 @@ Naming note: the spec suggests `--scroll-capture-spike`; this plan deliberately 
 
 Defensive posture (per `hotkey.py`'s KWin landmine: a mistyped D-Bus call once aborted the compositor): the probe only ever calls `org.freedesktop.portal.Desktop` (the xdg-desktop-portal daemon — a separate process from KWin, so a bad call kills a request, not the session), every option is an explicitly typed `GLib.Variant` (portals demand uint32-typed options; that's why this uses Gio, not QtDBus), every call has a finite timeout and is wrapped in `try/except GLib.Error`, and the script never registers anything with KGlobalAccel.
 
-- [ ] Create `spikes/inputcapture_probe.py`:
+- [x] Create `spikes/inputcapture_probe.py`:
   ```python
   #!/usr/bin/env python3
   """WS-D spike: probe org.freedesktop.portal.InputCapture on this box.
@@ -1059,7 +1059,7 @@ Defensive posture (per `hotkey.py`'s KWin landmine: a mistyped D-Bus call once a
   if __name__ == "__main__":
       sys.exit(main())
   ```
-- [ ] Automated check (syntax only — stated above, no unit tests for this standalone probe):
+- [x] Automated check (syntax only — stated above, no unit tests for this standalone probe):
   ```bash
   .venv/bin/python -m py_compile spikes/inputcapture_probe.py && echo "compiles"
   ```
@@ -1073,7 +1073,7 @@ Defensive posture (per `hotkey.py`'s KWin landmine: a mistyped D-Bus call once a
   - Portal present but `CreateSession FAILED` / response code 2 → present-but-nonfunctional; record the code.
   - Full chain to `ConnectToEIS OK` + the snegg/raw-read finding → record how far event observation got.
   - If a permission dialog appears, accept it. The probe never touches KWin directly; worst case is a failed portal request.
-- [ ] Commit:
+- [x] Commit:
   ```bash
   git add spikes/inputcapture_probe.py
   git commit -m "WS-D: standalone InputCapture portal probe (manual run; defensive D-Bus)"
