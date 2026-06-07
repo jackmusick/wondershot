@@ -975,7 +975,7 @@ ei_seat_bind_capabilities, ei_unref — all present).
 
 ### Step 6.1: Failing tests
 
-- [ ] Create `tests/test_ei.py`:
+- [x] Create `tests/test_ei.py`:
 
 ```python
 """EI receive-path state machine against a fake 'lib' (the feasible
@@ -1161,12 +1161,12 @@ def test_open_libei_loads_real_library_if_present():
         assert getattr(lib, sym) is not None
 ```
 
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_ei.py -x -q`
-- [ ] Expected failure: `ModuleNotFoundError: No module named 'wondershot.ei'`
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_ei.py -x -q`
+- [x] Expected failure: `ModuleNotFoundError: No module named 'wondershot.ei'`
 
 ### Step 6.2: Implement
 
-- [ ] Create `wondershot/ei.py`:
+- [x] Create `wondershot/ei.py`:
 
 ```python
 """Minimal ctypes binding for the libei RECEIVE path (EI client).
@@ -1327,10 +1327,10 @@ class EiButtonReader:
             self._ctx = None
 ```
 
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_ei.py -x -q`
-- [ ] Expected: all pass (the integration smoke passes on Jack's box, skips
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_ei.py -x -q`
+- [x] Expected: all pass (the integration smoke passes on Jack's box, skips
   where libei is absent).
-- [ ] Commit: `git add -A && git commit -m "ei.py: ctypes libei receive-path binding (snegg not on PyPI)"`
+- [x] Commit: `git add -A && git commit -m "ei.py: ctypes libei receive-path binding (snegg not on PyPI)"`
 
 ---
 
