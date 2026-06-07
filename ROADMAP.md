@@ -258,6 +258,20 @@ work, not accepted limitations:
   win32 modifier mapping into the existing `RegisterHotKey` backend.
   (Linux stays manual-bind — KGlobalAccel landmine — Windows rebinds.)
 
+### Packaging — Windows pipeline VERIFIED end-to-end (2026-06-07)
+
+On the win11-pam VM, the full chain works: PyInstaller one-dir
+(`packaging/windows/wondershot.spec`, repo root on pathex — editable
+install hook is invisible to freezing) → frozen `--selftest` passes →
+Inno (`installer.iss`) builds a 75 MB `WondershotSetup-0.1.0.exe` →
+`/VERYSILENT` per-user install → INSTALLED exe `--selftest` passes →
+`wondershot://` scheme registered (unblocks OneDrive browser sign-in).
+CI (`ci.yml`) + release (`release.yml`) authored; first live run needs
+the GitHub repo (Jack approved public; blocked on `gh auth refresh`).
+Flatpak manifest drafted (`packaging/flatpak/`); CI builds the bundle,
+Flathub needs flatpak-pip-generator conversion. Unsigned for now
+(SmartScreen "More info → Run anyway"); Azure Trusted Signing later.
+
 ### Packaging direction (decided 2026-06-07)
 
 - **Windows**: PyInstaller one-dir → Inno Setup silent installer
