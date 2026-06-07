@@ -43,7 +43,7 @@ def test_qimage_to_rgb_handles_other_formats():
 
 
 def test_to_gray_shape_and_range():
-    from wondershot.stitch import qimage_to_rgb, to_gray
+    from wondershot.stitch import to_gray
     arr = make_rgb()
     g = to_gray(arr)
     assert g.shape == (60, 40)
