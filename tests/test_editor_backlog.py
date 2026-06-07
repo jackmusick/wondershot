@@ -102,3 +102,37 @@ def test_panel_sync_reflects_selected_text_alignment(qapp):
     n = ed.undo_stack.count()
     ed._sync_panel()
     assert ed.undo_stack.count() == n
+
+
+def test_blur_tool_draws_a_blur_item(qapp):
+    from wondershot.editor import Tool
+    from wondershot.items import GaussianBlurItem
+    ed = make_editor(qapp)
+    ed.set_tool(Tool.BLUR)
+    ed.begin_draw(QPointF(20, 20))
+    ed.update_draw(QPointF(120, 90))
+    ed.end_draw(QPointF(120, 90))
+    blurs = [i for i in ed.scene.items() if isinstance(i, GaussianBlurItem)]
+    assert len(blurs) == 1
+    assert blurs[0].rect() == QRectF(20, 20, 100, 70)
+    ed.undo_stack.undo()
+    assert [i for i in ed.scene.items()
+            if isinstance(i, GaussianBlurItem)] == []
+
+
+def test_blur_tool_on_toolbar_with_shortcut(qapp):
+    from wondershot.editor import Tool
+    ed = make_editor(qapp)
+    act = ed._tool_actions[Tool.BLUR]
+    assert act.text() == "Blur"
+    assert act.shortcut().toString() == "B"
+
+
+def test_blur_item_gets_corner_grips(qapp):
+    from wondershot.items import GaussianBlurItem
+    ed = make_editor(qapp)
+    item = GaussianBlurItem(lambda: ed.base_image, QRectF(10, 10, 60, 40))
+    ed.scene.addItem(item)
+    item.setSelected(True)
+    roles = {h.role for h in ed._handles}
+    assert roles == {"tl", "tr", "bl", "br"}

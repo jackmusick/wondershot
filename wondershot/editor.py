@@ -40,6 +40,7 @@ from .items import (
     ArrowItem,
     EllipseItem,
     FreehandItem,
+    GaussianBlurItem,
     HandleItem,
     HighlightItem,
     LineItem,
@@ -80,6 +81,7 @@ class Tool(enum.Enum):
     TEXT = "text"
     STEP = "step"
     PIXELATE = "pixelate"
+    BLUR = "blur"
     CROP = "crop"
     CUTOUT_V = "cutout_v"  # removes a vertical band, joins left+right
     CUTOUT_H = "cutout_h"  # removes a horizontal band, joins top+bottom
@@ -593,6 +595,7 @@ class EditorWindow(QMainWindow):
             (Tool.TEXT, "Text", "draw-text", "T"),
             (Tool.STEP, "Step", "format-list-ordered", "N"),
             (Tool.PIXELATE, "Pixelate", "view-private", "X"),
+            (Tool.BLUR, "Blur", "blurfx", "B"),
             (Tool.CROP, "Crop", "transform-crop", "C"),
             (Tool.CUTOUT_V, "Cut |", "edit-cut", "U"),
             (Tool.CUTOUT_H, "Cut —", "edit-cut", "Shift+U"),
@@ -1142,6 +1145,7 @@ class EditorWindow(QMainWindow):
             Tool.TEXT: "Click for a label, or drag a box for wrapped text",
             Tool.STEP: "Click to stamp the next number",
             Tool.PIXELATE: "Drag a rectangle to pixelate",
+            Tool.BLUR: "Drag a rectangle to blur",
         }
         self._hint.setText(hints.get(tool, ""))
 
@@ -1194,7 +1198,7 @@ class EditorWindow(QMainWindow):
             self.undo_stack.push(AddItemCommand(self, item, "add step"))
             self._select_only(item)
             return
-        elif t in (Tool.TEXT, Tool.PIXELATE, Tool.CROP,
+        elif t in (Tool.TEXT, Tool.PIXELATE, Tool.BLUR, Tool.CROP,
                    Tool.CUTOUT_V, Tool.CUTOUT_H):
             self._overlay = QGraphicsRectItem()
             pen = QPen(QColor(0, 150, 255), 1, Qt.DashLine)
@@ -1234,7 +1238,7 @@ class EditorWindow(QMainWindow):
                 return
             self.undo_stack.push(AddItemCommand(self, item))
             self._select_only(item)
-        elif t in (Tool.TEXT, Tool.PIXELATE, Tool.CROP,
+        elif t in (Tool.TEXT, Tool.PIXELATE, Tool.BLUR, Tool.CROP,
                    Tool.CUTOUT_V, Tool.CUTOUT_H):
             overlay, self._overlay = self._overlay, None
             if overlay is not None:
@@ -1247,6 +1251,8 @@ class EditorWindow(QMainWindow):
                 return
             if t == Tool.PIXELATE:
                 self._apply_pixelate(rect)
+            elif t == Tool.BLUR:
+                self._apply_blur(rect)
             elif t == Tool.CROP:
                 self._apply_crop(rect)
             else:
@@ -1456,6 +1462,15 @@ class EditorWindow(QMainWindow):
             return
         item = PixelateItem(lambda: self.base_image, QRectF(clamped))
         self.undo_stack.push(AddItemCommand(self, item, "pixelate"))
+        self._select_only(item)
+
+    def _apply_blur(self, rect: QRect) -> None:
+        img = self.base_image
+        clamped = rect.intersected(QRect(0, 0, img.width(), img.height()))
+        if clamped.width() < 4 or clamped.height() < 4:
+            return
+        item = GaussianBlurItem(lambda: self.base_image, QRectF(clamped))
+        self.undo_stack.push(AddItemCommand(self, item, "blur"))
         self._select_only(item)
 
     def _apply_crop(self, rect: QRect) -> None:

@@ -1222,7 +1222,7 @@ git commit -m "feat(items): GaussianBlurItem — serializable gaussian sibling o
 - Modify: `wondershot/editor.py` (Tool enum ~line 72; items import ~line 39; toolbar `tools` list ~line 548; `set_tool` hints ~line 1015; `begin_draw`/`end_draw` overlay branches ~lines 1075/1115; new `_apply_blur` next to `_apply_pixelate` ~line 1330)
 - Test: `tests/test_editor_backlog.py`
 
-- [ ] **Step 1: Write the failing tests** — append to `tests/test_editor_backlog.py`:
+- [x] **Step 1: Write the failing tests** — append to `tests/test_editor_backlog.py`:
 
 ```python
 def test_blur_tool_draws_a_blur_item(qapp):
@@ -1259,12 +1259,12 @@ def test_blur_item_gets_corner_grips(qapp):
     assert roles == {"tl", "tr", "bl", "br"}
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `QT_QPA_PLATFORM=offscreen .venv/bin/pytest tests/test_editor_backlog.py -v -k blur`
 Expected: FAIL — `AttributeError: BLUR` on the Tool enum
 
-- [ ] **Step 3: Implement** — in `wondershot/editor.py`:
+- [x] **Step 3: Implement** — in `wondershot/editor.py`:
 
 (a) Tool enum, after `PIXELATE`:
 
@@ -1317,12 +1317,12 @@ Expected: FAIL — `AttributeError: BLUR` on the Tool enum
 
 (No `_handle_positions` change needed — `GaussianBlurItem` is a `PixelateItem`; the third test proves it.)
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `QT_QPA_PLATFORM=offscreen .venv/bin/pytest tests/test_editor_backlog.py tests/test_editor.py -v`
 Expected: ALL PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add wondershot/editor.py tests/test_editor_backlog.py
