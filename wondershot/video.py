@@ -699,6 +699,7 @@ class VideoPane(QWidget):
             self._notify("Apply or remove the pending blurs before trimming")
             return
         if on:
+            self.blur_btn.setChecked(False)  # mutual exclusion, both ways
             self.player.pause()
             dur = self.player.duration() / 1000.0
             self.trim = Redaction(QRect(), 0.0, round(max(dur, 0.1), 2))
