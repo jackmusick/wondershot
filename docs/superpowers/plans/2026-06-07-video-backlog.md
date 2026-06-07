@@ -356,7 +356,7 @@ from PySide6.QtWidgets import (
 - Modify: `wondershot/video.py` (new module-level `preview_blur` after `build_blur_filter`, line 73; `RedactOverlay.paintEvent` frost block, lines 258–262)
 - Create: `tests/test_video_preview.py`
 
-- [ ] **Write the failing tests** — create `tests/test_video_preview.py`:
+- [x] **Write the failing tests** — create `tests/test_video_preview.py`:
 
 ```python
 import os
@@ -455,9 +455,9 @@ def test_overlay_paints_blurred_region(qapp, tmp_path):
     assert outside.red() > 245
 ```
 
-- [ ] **Run, expect failure:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_video_preview.py -q` → `ImportError: cannot import name 'preview_blur'` (5 tests) and the integration test fails (frost fill paints translucent white over green, not blurred frame pixels — `inside.red()` lands near 255-blend, possibly passing by luck; the `preview_blur` import failures are the definitive red).
+- [x] **Run, expect failure:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_video_preview.py -q` → `ImportError: cannot import name 'preview_blur'` (5 tests) and the integration test fails (frost fill paints translucent white over green, not blurred frame pixels — `inside.red()` lands near 255-blend, possibly passing by luck; the `preview_blur` import failures are the definitive red).
 
-- [ ] **Implement** — two edits in `wondershot/video.py`:
+- [x] **Implement** — two edits in `wondershot/video.py`:
 
   1. Add the module-level function directly after `build_blur_filter` (after line 72, before `build_frame_grab_args`):
 
@@ -513,9 +513,9 @@ def preview_blur(img, radius: int):
 
   (The number badge and the rest of `paintEvent` are unchanged. `_blur_strength_changed` from Task 2 already calls `self.overlay.update()`, so dragging the spinbox re-blurs the preview live.)
 
-- [ ] **Run:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_video_preview.py -q` → 6 passed.
-- [ ] **Full suite:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q` → 201 passed.
-- [ ] **Commit:** `git add wondershot/video.py tests/test_video_preview.py && git commit -m "Video: frost rectangles preview the actual blur (QImage approximation)"`
+- [x] **Run:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_video_preview.py -q` → 6 passed.
+- [x] **Full suite:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q` → 201 passed.
+- [x] **Commit:** `git add wondershot/video.py tests/test_video_preview.py && git commit -m "Video: frost rectangles preview the actual blur (QImage approximation)"`
 
 ---
 

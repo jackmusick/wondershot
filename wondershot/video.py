@@ -73,6 +73,25 @@ def build_blur_filter(redactions, blur: int = 14,
     return ";".join(parts), cur
 
 
+def preview_blur(img, radius: int):
+    """Preview-only approximation of ffmpeg's boxblur for the overlay.
+
+    Downscale by a radius-derived factor with bilinear filtering, then
+    scale back up — O(pixels), pure QImage, no deps. Visually close to
+    boxblur=radius but NOT the same kernel: the ffmpeg render pass is
+    the source of truth, this only previews it. Returns the input
+    unchanged when blurring is meaningless (radius<=0, tiny/null image).
+    """
+    if radius <= 0 or img.isNull() or img.width() < 2 or img.height() < 2:
+        return img
+    factor = max(2, int(radius))
+    w = max(1, img.width() // factor)
+    h = max(1, img.height() // factor)
+    small = img.scaled(w, h, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
+    return small.scaled(img.width(), img.height(),
+                        Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
+
+
 def build_frame_grab_args(src: str, position_s: float, out: str) -> list[str]:
     """ffmpeg args extracting one frame at position_s seconds.
 
@@ -258,8 +277,16 @@ class RedactOverlay(QWidget):
                 continue
             r = self.video_to_widget(red.rect)
             color = QColor(PALETTE[i % len(PALETTE)])
+            region = red.rect.intersected(frame_img.rect())
+            if not region.isEmpty():
+                # Target the mapped *intersection*, not r: if red.rect ever
+                # exceeds the frame (size mismatch edge case), drawing the
+                # cropped copy into the full r would stretch it.
+                p.drawImage(self.video_to_widget(region), preview_blur(
+                    frame_img.copy(region),
+                    self.pane.blur_strength_spin.value()))
             p.setPen(QPen(color, 2, Qt.DashLine))
-            p.setBrush(QColor(255, 255, 255, 70))
+            p.setBrush(Qt.NoBrush)
             p.drawRect(r)
             f = p.font()
             f.setBold(True)
