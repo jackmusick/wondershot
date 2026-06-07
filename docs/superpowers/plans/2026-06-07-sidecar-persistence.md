@@ -846,7 +846,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 What lands here: state attributes, `_is_library_file`, `_images_equal`, `_record_base_push` hooks in `_apply_crop`/`_apply_cutout`/`_bg_done`, `_write_sidecar` (including truncate-on-revisit-undo, fully exercised in Task 5), the no-prompt `maybe_save`, and `save()` writing the sidecar.
 
-- [ ] **Step 4.1 — failing tests.** Create `tests/test_editor_sidecar.py`:
+- [x] **Step 4.1 — failing tests.** Create `tests/test_editor_sidecar.py`:
 
 ```python
 """Editor <-> sidecar integration: autosave, base stack, reconstruction."""
@@ -1034,7 +1034,7 @@ def test_resave_without_changes_does_not_grow_stack(qapp, tmp_path):
     assert read_sidecar(ed.path)["bases"] == 1
 ```
 
-- [ ] **Step 4.2 — run, expect failure:**
+- [x] **Step 4.2 — run, expect failure:**
 
 ```bash
 QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_editor_sidecar.py -x -q
@@ -1042,7 +1042,7 @@ QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_editor_sidecar.p
 
 Expected: first test fails — `FileNotFoundError` reading the sidecar (save() doesn't write one yet), and the prompt test fails with the `pytest.fail` message.
 
-- [ ] **Step 4.3 — implement.** All edits in `wondershot/editor.py`:
+- [x] **Step 4.3 — implement.** All edits in `wondershot/editor.py`:
 
 (a) Add the import. After the existing `from . import imageops` (line 37):
 
@@ -1258,14 +1258,14 @@ And add the new method after `save()`:
 
 (Gotcha: `getattr(stub, "effect_rounded")` returns `""` with the test stub — `bool("")`/`int("" or 0)` handle it; never call `int(...)` on the raw value.)
 
-- [ ] **Step 4.4 — run, expect pass**, then the full suite (existing `test_editor.py` exercises `save`/crop paths with `settings=None` — `_is_library_file()` is False there, so behavior is unchanged):
+- [x] **Step 4.4 — run, expect pass**, then the full suite (existing `test_editor.py` exercises `save`/crop paths with `settings=None` — `_is_library_file()` is False there, so behavior is unchanged):
 
 ```bash
 QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_editor_sidecar.py -x -q
 QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q
 ```
 
-- [ ] **Step 4.5 — commit:**
+- [x] **Step 4.5 — commit:**
 
 ```bash
 git add wondershot/editor.py tests/test_editor_sidecar.py
