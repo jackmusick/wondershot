@@ -1510,7 +1510,7 @@ GUI-glue/verification task — no new failing test (justification: it adds no be
 - Modify: `ROADMAP.md` (one appended backlog line — shared file, append-only)
 - Test stubs only if the grep below finds a problem — then fix per the landmine rule.
 
-- [ ] **Step 1: Confirm no new settings keys are read during widget construction.** Duplicated duck-typed `_Settings`/`_FakeSettings` stubs live in ELEVEN files (verified on main): `tests/test_capture_crop.py`, `tests/test_capture_window_mode.py`, `tests/test_countdown.py`, `tests/test_editor_sidecar.py`, `tests/test_gallery_sidecar.py`, `tests/test_gallery_trash.py`, `tests/test_hide_for_capture.py`, `tests/test_quickbar.py`, `tests/test_record_sync.py`, `tests/test_tray_tooltip.py`, `tests/test_settings_dialog_ai.py`. The grep below is authoritative — if it finds stubs in files not listed here, those count too. Run:
+- [x] **Step 1: Confirm no new settings keys are read during widget construction.** Duplicated duck-typed `_Settings`/`_FakeSettings` stubs live in ELEVEN files (verified on main): `tests/test_capture_crop.py`, `tests/test_capture_window_mode.py`, `tests/test_countdown.py`, `tests/test_editor_sidecar.py`, `tests/test_gallery_sidecar.py`, `tests/test_gallery_trash.py`, `tests/test_hide_for_capture.py`, `tests/test_quickbar.py`, `tests/test_record_sync.py`, `tests/test_tray_tooltip.py`, `tests/test_settings_dialog_ai.py`. The grep below is authoritative — if it finds stubs in files not listed here, those count too. Run:
 
 ```bash
 grep -rln "class _Settings\|class _FakeSettings" tests/
@@ -1519,18 +1519,18 @@ git diff main -- wondershot/ | grep -n "settings\." || true
 
 Expected: the only `settings.` reads added by this branch are `s.ai_endpoint`, `s.ai_api_key`, `s.ai_model` inside `ai_simplify` — read *after* a click, behind the `ai_configured` `getattr` guard, never during construction. **If anything else shows up, extend every listed stub before proceeding.**
 
-- [ ] **Step 2: Record the edge-snapping deferral in ROADMAP.md** (shared file — APPEND-ONLY: add one line to the backlog section, never reorder/edit existing lines, so the parallel track 4b can also append without conflict):
+- [x] **Step 2: Record the edge-snapping deferral in ROADMAP.md** (shared file — APPEND-ONLY: add one line to the backlog section, never reorder/edit existing lines, so the parallel track 4b can also append without conflict):
 
 ```
 - Editor: text-box edge snapping (spec batch-4 Track 4a item) — deferred from the simplifier/editor-backlog track; needs a design call on what snaps to what.
 ```
 
-- [ ] **Step 3: Run the full suite**
+- [x] **Step 3: Run the full suite**
 
 Run: `QT_QPA_PLATFORM=offscreen .venv/bin/pytest tests/ -q`
 Expected: 277 pre-existing tests + ~25 new ones, ALL PASS, zero skips introduced by this branch.
 
-- [ ] **Step 4: Commit anything outstanding** (the ROADMAP line; plus stub edits if Step 1 forced any):
+- [x] **Step 4: Commit anything outstanding** (the ROADMAP line; plus stub edits if Step 1 forced any):
 
 ```bash
 git status --short
@@ -1546,3 +1546,14 @@ git add tests/ && git commit -m "test: extend settings stubs for new editor keys
 - **Spec coverage:** simplifier (Tasks 2-4: vision LLM → typed regions → editable filled RectItems, single macro, non-destructive, redact-pattern AIJob+dialog ✓); text alignment serialized + panel + undoable (Task 6 ✓); style-change undo (Task 5 ✓); blur variant of pixelate, serializable + toolbar (Tasks 7-9 ✓); step renumbering by badge drop (Task 10 ✓); rotate-cursor polish — already shipped, explicitly no-op ✓; test_items_serialize.py extended in Tasks 1, 6, 8 ✓; shared-stub landmine handled in Task 11 (all 11 stub files listed; grep authoritative) ✓; edge snapping IS in the track 4a brief but is deliberately deferred pending a design call — recorded via a mandatory append-only ROADMAP.md backlog line in Task 11 and flagged for the orchestrator ✓; cross-track boundary (4b's files untouched; shared files append-only) stated in scope notes ✓.
 - **Type consistency:** `Region(rect: QRect, kind: str)` used identically in simplify.py, editor, and tests; `apply_style`'s `align` kwarg matches `get_style`'s `"align"` key; `GaussianBlurItem(base_provider, rect, radius)` matches dispatcher and tests; `RectItem(..., fill=...)` keyword used consistently.
 - **Placeholder scan:** no TBDs; every code step carries the actual code; the two GUI-glue exemptions (Task 10 step 3d, Task 11) carry explicit justifications.
+
+---
+
+## Manual Checklist (live-only verification, not runnable offscreen/headless)
+
+- [ ] AI Simplify end-to-end against a real vision endpoint (Settings → AI configured, e.g. llava): run on a real screenshot, confirm regions become editable filled rects and one Ctrl+Z removes them all.
+- [ ] Cancel button on the "Simplifying UI…" progress dialog actually aborts the job.
+- [ ] Blur tool visual check on a real capture: drag a region, confirm soft gaussian look (vs pixelate), resize/move regenerates the patch live.
+- [ ] Text alignment buttons visual check: boxed text (drag-created) re-flows left/center/right; auto-width labels visibly unaffected (expected Qt behavior).
+- [ ] Step badge drag-onto-badge with a real mouse: numbers swap, dragged badge snaps back; drag to empty space stays a plain move.
+- [ ] "blurfx" toolbar icon: verify the theme provides it (falls back to text-only otherwise); pick an alternative theme icon if it renders empty.

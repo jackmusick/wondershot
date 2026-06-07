@@ -361,3 +361,4 @@ KWin directly; worst case is a failed portal request. Copy the
   (EI protocol library) plus the interception-semantics question
   above, not platform capability. Keep Windows-first as fallback only
   if the semantics check fails.
+- Editor: text-box edge snapping (spec batch-4 Track 4a item) — deferred from the simplifier/editor-backlog track; needs a design call on what snaps to what.
