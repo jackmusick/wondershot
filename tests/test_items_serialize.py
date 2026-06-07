@@ -220,3 +220,28 @@ def test_rect_without_fill_stays_hollow(qapp):
     assert "fill" not in d              # old sidecars stay byte-identical
     out = roundtrip(item)
     assert out.brush().style() == Qt.NoBrush
+
+
+def test_text_alignment_roundtrip(qapp):
+    from wondershot.items import TextItem
+    from PySide6.QtCore import Qt
+    item = TextItem(QPointF(0, 0), QColor("red"))
+    item.setPlainText("centered")
+    item.setTextWidth(200.0)
+    item.set_alignment("center")
+    d = item.to_dict()
+    assert d["align"] == "center"
+    out = roundtrip(item)
+    assert out.alignment() == "center"
+    assert out.document().defaultTextOption().alignment() \
+        & Qt.AlignHCenter
+
+
+def test_text_alignment_defaults_left_for_old_sidecars(qapp):
+    from wondershot.items import TextItem, item_from_dict
+    item = TextItem(QPointF(0, 0), QColor("red"))
+    assert item.alignment() == "left"
+    d = item.to_dict()
+    del d["align"]                       # sidecar written by an older build
+    out = item_from_dict(d)
+    assert out.alignment() == "left"

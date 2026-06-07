@@ -69,3 +69,36 @@ def test_text_font_size_change_is_undoable(qapp):
     assert t.font().pointSize() == 30
     ed.undo_stack.undo()
     assert t.font().pointSize() == 18
+
+
+def _add_selected_text(ed, text="hello"):
+    from wondershot.items import TextItem
+    t = TextItem(QPointF(5, 5), QColor("#112233"), point_size=18)
+    t.setPlainText(text)
+    t.setTextWidth(150.0)
+    ed.scene.addItem(t)
+    ed.scene.clearSelection()
+    t.setSelected(True)
+    return t
+
+
+def test_alignment_buttons_exist_and_apply_undoably(qapp):
+    ed = make_editor(qapp)
+    t = _add_selected_text(ed)
+    assert set(ed.align_buttons) == {"left", "center", "right"}
+    ed.align_buttons["right"].click()
+    assert t.alignment() == "right"
+    ed.undo_stack.undo()
+    assert t.alignment() == "left"
+
+
+def test_panel_sync_reflects_selected_text_alignment(qapp):
+    ed = make_editor(qapp)
+    t = _add_selected_text(ed)
+    t.set_alignment("center")
+    ed._sync_panel()
+    assert ed.align_buttons["center"].isChecked()
+    # syncing must NOT push an undo command (guarded by _syncing_panel)
+    n = ed.undo_stack.count()
+    ed._sync_panel()
+    assert ed.undo_stack.count() == n

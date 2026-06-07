@@ -790,7 +790,7 @@ git commit -m "feat(editor): properties-panel restyles go on the undo stack (mer
 - Modify: `wondershot/editor.py` (`_build_panel` ~line 846, `_update_panel_rows`, `_sync_panel`)
 - Test: `tests/test_items_serialize.py`, `tests/test_editor_backlog.py`
 
-- [ ] **Step 1: Write the failing serialization tests** — append to `tests/test_items_serialize.py`:
+- [x] **Step 1: Write the failing serialization tests** — append to `tests/test_items_serialize.py`:
 
 ```python
 def test_text_alignment_roundtrip(qapp):
@@ -818,7 +818,7 @@ def test_text_alignment_defaults_left_for_old_sidecars(qapp):
     assert out.alignment() == "left"
 ```
 
-- [ ] **Step 2: Write the failing editor tests** — append to `tests/test_editor_backlog.py`:
+- [x] **Step 2: Write the failing editor tests** — append to `tests/test_editor_backlog.py`:
 
 ```python
 def _add_selected_text(ed, text="hello"):
@@ -854,12 +854,12 @@ def test_panel_sync_reflects_selected_text_alignment(qapp):
     assert ed.undo_stack.count() == n
 ```
 
-- [ ] **Step 3: Run to verify failure**
+- [x] **Step 3: Run to verify failure**
 
 Run: `QT_QPA_PLATFORM=offscreen .venv/bin/pytest tests/test_items_serialize.py tests/test_editor_backlog.py -v -k align`
 Expected: FAIL — `AttributeError: 'TextItem' object has no attribute 'set_alignment'` / no `align_buttons`
 
-- [ ] **Step 4: Implement items.py** —
+- [x] **Step 4: Implement items.py** —
 
 (a) Module-level, near the top of `TextItem`:
 
@@ -917,7 +917,7 @@ and inside the `TextItem` branch, after the font-size block:
             item.set_alignment(align)
 ```
 
-- [ ] **Step 5: Implement editor.py panel** — in `_build_panel`, after the `font_spin` row:
+- [x] **Step 5: Implement editor.py panel** — in `_build_panel`, after the `font_spin` row:
 
 ```python
         from PySide6.QtWidgets import QHBoxLayout, QToolButton
@@ -965,12 +965,12 @@ In `_sync_panel`, inside the `try:` block after the `font_size` case:
                 self.align_buttons[style["align"]].setChecked(True)
 ```
 
-- [ ] **Step 6: Run to verify pass**
+- [x] **Step 6: Run to verify pass**
 
 Run: `QT_QPA_PLATFORM=offscreen .venv/bin/pytest tests/test_items_serialize.py tests/test_editor_backlog.py tests/test_editor.py tests/test_editor_sidecar.py -v`
 Expected: ALL PASS
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add wondershot/items.py wondershot/editor.py tests/test_items_serialize.py tests/test_editor_backlog.py

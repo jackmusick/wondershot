@@ -303,6 +303,10 @@ class FreehandItem(QGraphicsPathItem):
         return item
 
 
+_TEXT_ALIGN = {"left": Qt.AlignLeft, "center": Qt.AlignHCenter,
+               "right": Qt.AlignRight}
+
+
 class TextItem(QGraphicsTextItem):
     def __init__(self, pos: QPointF, color: QColor, point_size: int = 18):
         super().__init__()
@@ -313,7 +317,20 @@ class TextItem(QGraphicsTextItem):
         font.setPointSize(point_size)
         font.setBold(True)
         self.setFont(font)
+        self._align = "left"
         self.setTextInteractionFlags(Qt.TextEditorInteraction)
+
+    def set_alignment(self, align: str) -> None:
+        """left / center / right — visible once the item has a textWidth
+        (auto-width labels hug their text, so there is nothing to align)."""
+        self._align = align if align in _TEXT_ALIGN else "left"
+        opt = self.document().defaultTextOption()
+        opt.setAlignment(_TEXT_ALIGN[self._align])
+        self.document().setDefaultTextOption(opt)
+        self.update()
+
+    def alignment(self) -> str:
+        return self._align
 
     def start_editing(self) -> None:
         self.setTextInteractionFlags(Qt.TextEditorInteraction)
@@ -334,6 +351,7 @@ class TextItem(QGraphicsTextItem):
                 "color": _color_str(self.defaultTextColor()),
                 "family": f.family(), "point_size": f.pointSize(),
                 "bold": f.bold(), "text_width": self.textWidth(),
+                "align": self._align,
                 **_transform_dict(self)}
 
     @classmethod
@@ -351,6 +369,7 @@ class TextItem(QGraphicsTextItem):
             item.setTextWidth(tw)
         # restored items are not mid-edit; double-click re-enables editing
         item.setTextInteractionFlags(Qt.NoTextInteraction)
+        item.set_alignment(d.get("align", "left"))
         _apply_transform(item, d)
         return item
 
@@ -561,6 +580,7 @@ def get_style(item) -> dict:
     elif isinstance(item, TextItem):
         style["color"] = item.defaultTextColor()
         style["font_size"] = item.font().pointSize()
+        style["align"] = item.alignment()
     elif isinstance(item, HighlightItem):
         c = item.brush().color()
         c.setAlpha(255)
@@ -572,7 +592,8 @@ def get_style(item) -> dict:
 
 
 def apply_style(item, color: QColor | None = None, width: int | None = None,
-                font_size: int | None = None) -> None:
+                font_size: int | None = None,
+                align: str | None = None) -> None:
     """Apply color / stroke width / font size to any annotation item."""
     if isinstance(item, ArrowItem):
         item.set_style(color, width)
@@ -587,6 +608,8 @@ def apply_style(item, color: QColor | None = None, width: int | None = None,
             f = item.font()
             f.setPointSize(font_size)
             item.setFont(f)
+        if align is not None:
+            item.set_alignment(align)
     elif isinstance(item, HighlightItem):
         if color is not None:
             c = QColor(color)

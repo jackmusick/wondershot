@@ -968,6 +968,26 @@ class EditorWindow(QMainWindow):
         self.font_spin.valueChanged.connect(self._font_changed)
         form.addRow("Text size", self.font_spin)
 
+        from PySide6.QtWidgets import QHBoxLayout, QToolButton
+        align_w = QWidget(w)
+        align_lay = QHBoxLayout(align_w)
+        align_lay.setContentsMargins(0, 0, 0, 0)
+        self.align_buttons: dict[str, QToolButton] = {}
+        for name, icon in (("left", "format-justify-left"),
+                           ("center", "format-justify-center"),
+                           ("right", "format-justify-right")):
+            b = QToolButton(align_w)
+            b.setIcon(QIcon.fromTheme(icon))
+            b.setToolTip(f"Align {name}")
+            b.setCheckable(True)
+            b.setAutoExclusive(True)
+            b.clicked.connect(lambda _=False, a=name: self._align_changed(a))
+            align_lay.addWidget(b)
+            self.align_buttons[name] = b
+        self.align_buttons["left"].setChecked(True)
+        self._align_widget = align_w
+        form.addRow("Align", align_w)
+
         from PySide6.QtWidgets import QCheckBox
         effects_title = QLabel("<b>Effects</b>", w)
         form.addRow(effects_title)
@@ -1026,6 +1046,7 @@ class EditorWindow(QMainWindow):
             text = self.tool in (Tool.TEXT, Tool.SELECT)
         self._panel_form.setRowVisible(self.width_spin, stroke)
         self._panel_form.setRowVisible(self.font_spin, text)
+        self._panel_form.setRowVisible(self._align_widget, text)
 
     def _selected_annotations(self):
         return [i for i in self.scene.selectedItems() if is_annotation(i)]
@@ -1047,6 +1068,8 @@ class EditorWindow(QMainWindow):
                 self.width_spin.setValue(style["width"])
             if "font_size" in style and style["font_size"] > 0:
                 self.font_spin.setValue(style["font_size"])
+            if "align" in style:
+                self.align_buttons[style["align"]].setChecked(True)
         finally:
             self._syncing_panel = False
 
@@ -1099,6 +1122,11 @@ class EditorWindow(QMainWindow):
         if self.settings:
             self.settings.font_size = size
         self._apply_to_selection(font_size=size)
+
+    def _align_changed(self, align: str) -> None:
+        if self._syncing_panel:
+            return
+        self._apply_to_selection(align=align)
 
     # -- tools -------------------------------------------------------------
 
