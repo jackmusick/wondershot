@@ -9,8 +9,12 @@ import os
 
 from PyInstaller.utils.hooks import collect_data_files
 
-SPEC_DIR = os.path.dirname(os.path.abspath(SPECPATH)) if not os.path.isdir(
-    SPECPATH) else SPECPATH
+# SPECPATH is the spec file's directory (PyInstaller global).
+SPEC_DIR = SPECPATH
+# Repo root must be on the analysis path: the dev venv installs
+# wondershot editable (PEP 660 import hook), which freezing can't see —
+# without this the exe dies with ModuleNotFoundError: wondershot.cli.
+REPO_ROOT = os.path.abspath(os.path.join(SPEC_DIR, "..", ".."))
 
 ffmpeg = os.path.join(SPEC_DIR, "ffmpeg.exe")
 if not os.path.exists(ffmpeg):
@@ -20,7 +24,7 @@ if not os.path.exists(ffmpeg):
 
 a = Analysis(
     [os.path.join(SPEC_DIR, "launch.py")],
-    pathex=[],
+    pathex=[REPO_ROOT],
     binaries=[(ffmpeg, ".")],
     datas=collect_data_files("wondershot"),  # data/ + data/icons/
     hiddenimports=[],

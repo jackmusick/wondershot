@@ -99,6 +99,20 @@ def run_selftest(out_dir: str) -> int:
         show_gallery_after_capture = True
         pin_on_top = False
 
+        def __getattr__(self, k):
+            # The editor/gallery grow settings faster than this harness
+            # tracks; default sanely so --selftest (the frozen-build
+            # smoke test) doesn't rot every time a setting is added.
+            if k in ("stroke_width", "font_size", "capture_delay",
+                     "share_expiry_days", "video_blur_strength",
+                     "gif_fps", "gif_max_width", "quick_bar_timeout"):
+                return 10
+            if k == "tool_color":
+                return "#e3242b"
+            return (False if k.startswith(("pin", "show", "mic", "noise",
+                                           "copy", "record", "capture"))
+                    else "")
+
     capture = CaptureManager(FakeSettings())
     gallery = GalleryWindow(FakeSettings(), capture)
     gallery.resize(1280, 860)

@@ -1,0 +1,22 @@
+# winget manifest template — submit to microsoft/winget-pkgs after a
+# GitHub Release exists. Fill VERSION and the installer SHA256
+# (`sha256sum dist/WondershotSetup-VERSION.exe`), then PR the three-file
+# split (version/installer/locale) via `wingetcreate` or komac:
+#   komac submit --identifier JackMusick.Wondershot --version VERSION \
+#     --urls <release exe url>
+# Unsigned installer is accepted; the hash pin is the integrity story.
+PackageIdentifier: JackMusick.Wondershot
+PackageVersion: "VERSION"
+PackageLocale: en-US
+Publisher: Jack Musick
+PackageName: Wondershot
+License: MIT
+ShortDescription: Snagit-style screenshot and screen-recording tool
+Moniker: wondershot
+Installers:
+  - Architecture: x64
+    InstallerType: inno
+    InstallerUrl: https://github.com/jackmusick/wondershot/releases/download/vVERSION/WondershotSetup-VERSION.exe
+    InstallerSha256: SHA256_HERE
+ManifestType: singleton
+ManifestVersion: 1.6.0

@@ -1,0 +1,61 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  windows-installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install build deps
+        run: python -m pip install -e ".[windows]" pyinstaller
+      - name: Stage ffmpeg
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -OutFile ffmpeg.zip
+          Expand-Archive ffmpeg.zip -DestinationPath ffmpeg_tmp
+          Copy-Item (Get-ChildItem ffmpeg_tmp -Recurse -Filter ffmpeg.exe | Select-Object -First 1).FullName packaging/windows/ffmpeg.exe
+      - name: PyInstaller bundle
+        run: pyinstaller packaging/windows/wondershot.spec --noconfirm
+      - name: Frozen smoke test
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          $p = Start-Process dist\Wondershot\Wondershot.exe -ArgumentList "--selftest", "selftest_out" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "selftest exited $($p.ExitCode)" }
+          if (-not (Test-Path selftest_out\*.png)) { throw "selftest produced no output" }
+      - name: Inno installer
+        shell: pwsh
+        run: |
+          $v = "${{ github.ref_name }}".TrimStart("v")
+          iscc packaging\windows\installer.iss /DAppVersion=$v
+      - name: Attach to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/WondershotSetup-*.exe
+
+  flatpak:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:kde-6.9
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+      - uses: flathub-infra/flatpak-github-actions/flatpak-builder@master
+        with:
+          bundle: wondershot.flatpak
+          manifest-path: packaging/flatpak/io.github.jackmusick.wondershot.yml
+          cache-key: flatpak-${{ github.sha }}
+      - name: Attach to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: wondershot.flatpak

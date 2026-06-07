@@ -1,0 +1,74 @@
+# Flatpak manifest — the Linux bundle (one install, zero distro deps).
+#
+# Local build + run:
+#   flatpak-builder --user --install --force-clean build-dir \
+#     packaging/flatpak/io.github.jackmusick.wondershot.yml
+#   flatpak run io.github.jackmusick.wondershot
+#
+# NOTE for Flathub submission: Flathub builds are offline — the
+# pip module below must be converted with flatpak-pip-generator
+# (generated-sources.json). The network-using form is fine for CI
+# artifacts and local builds.
+app-id: io.github.jackmusick.wondershot
+runtime: org.kde.Platform
+runtime-version: '6.9'
+sdk: org.kde.Sdk
+command: wondershot
+
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # Recorder: portal ScreenCast negotiates the PipeWire stream
+  - --filesystem=xdg-run/pipewire-0
+  - --socket=pulseaudio
+  # Library folders (watched dirs + sidecars)
+  - --filesystem=xdg-pictures
+  - --filesystem=xdg-videos
+  # KWin scripting (auto-size-to-window) + KGlobalAccel-adjacent calls
+  - --talk-name=org.kde.KWin
+  # Portals (screenshot/screencast/inputcapture) ride the session bus
+  - --talk-name=org.freedesktop.portal.Desktop
+  # OneDrive sign-in opens the browser + wondershot:// comes back
+  - --talk-name=org.freedesktop.portal.OpenURI
+
+modules:
+  # ffmpeg CLI: the runtime ships the libs, we shell out to the binary.
+  - name: ffmpeg
+    config-opts:
+      - --disable-debug
+      - --disable-doc
+      - --disable-ffplay
+      - --enable-gpl
+      - --enable-libx264
+      - --enable-shared
+    sources:
+      - type: archive
+        url: https://ffmpeg.org/releases/ffmpeg-7.1.tar.xz
+        sha256: 40973d44970dbc83ef302b0609f2e74982be2d85916dd2ee7472d30678a7abe6
+
+  - name: python3-pygobject
+    buildsystem: simple
+    build-commands:
+      - pip3 install --prefix=${FLATPAK_DEST} --no-build-isolation pygobject
+    build-options:
+      build-args: [--share=network]
+
+  - name: wondershot
+    buildsystem: simple
+    build-commands:
+      - pip3 install --prefix=${FLATPAK_DEST} PySide6
+      - pip3 install --prefix=${FLATPAK_DEST} --no-deps .
+      - install -Dm644 wondershot/data/wondershot.svg
+        ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg
+      # Icon= must match the flatpak app id or the icon won't resolve
+      - sed 's/^Icon=.*/Icon=io.github.jackmusick.wondershot/'
+        wondershot/data/wondershot.desktop > wondershot.desktop.flatpak
+      - install -Dm644 wondershot.desktop.flatpak
+        ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+    build-options:
+      build-args: [--share=network]
+    sources:
+      - type: dir
+        path: ../..

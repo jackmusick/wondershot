@@ -6,3 +6,9 @@ build/
 *.egg-info/
 .pytest_cache/
 /tmp/
+
+# packaging staging (never commit binaries/output)
+packaging/windows/ffmpeg.exe
+dist/
+build_pyi/
+.flatpak-builder/
