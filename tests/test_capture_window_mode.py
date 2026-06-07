@@ -59,3 +59,14 @@ def test_scroll_button_hidden_without_probe(qapp):
     from wondershot.capture_window import CaptureWindow
     w = CaptureWindow(_Settings())  # default: gi/Gst/numpy not probed OK
     assert not _scroll_buttons(w)
+
+
+def test_pill_external_close_fires_stop(qapp):
+    from wondershot.capture_window import ScrollStopPill
+    pill = ScrollStopPill()
+    fired = []
+    pill.stop_requested.connect(lambda: fired.append(1))
+    pill.close()                    # compositor/user closes the window
+    assert fired == [1]
+    pill._fire()                    # and never double-fires after
+    assert fired == [1]

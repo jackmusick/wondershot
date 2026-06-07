@@ -37,3 +37,17 @@ def test_scroll_source_never_persists_its_grant(qapp):
     source = ScreenCastFrameSource(settings)
     source._save_restore_token("scroll-grant")
     assert settings.screencast_token == "recorder-grant"
+
+
+def test_stop_before_grant_cancels_late_launch(qapp):
+    """Race: tray-finish while the portal picker is open. The in-flight
+    grant chain must not start an ownerless pipeline."""
+    from wondershot.scrollsource import ScreenCastFrameSource
+    src = ScreenCastFrameSource(FakeSettings())
+    started = []
+    src.started.connect(lambda: started.append(1))
+    src.stop()                      # user finished before granting
+    src._launch_gst(0, 0)           # late portal grant arrives anyway
+    assert started == []
+    assert src._pipeline is None
+    assert src.recording is False

@@ -167,6 +167,12 @@ class ScrollStopPill(QWidget):
         else:
             super().keyPressEvent(ev)
 
+    def closeEvent(self, ev):  # noqa: N802
+        # Compositor/user closing the pill must still finish the scroll
+        # session — otherwise it's only finishable via the tray.
+        self._fire()
+        super().closeEvent(ev)
+
 
 # -- post-capture quick-action bar -------------------------------------------
 

@@ -55,6 +55,7 @@ class ScreenCastFrameSource(ScreenRecorder):
         super().__init__(settings, parent)
         self.fps = fps
         self._pipeline = None
+        self._scroll_cancelled = False
 
     def available(self) -> bool:
         if not _HAVE_GIO:
@@ -79,6 +80,11 @@ class ScreenCastFrameSource(ScreenRecorder):
     # ScreenRecorder.start() runs the portal dance, then calls this
     # with the PipeWire fd + node id.
     def _launch_gst(self, fd: int, node: int) -> None:
+        if self._scroll_cancelled:
+            # stop() arrived while the portal picker was still open; the
+            # in-flight grant chain must not start an ownerless pipeline.
+            self._cleanup()
+            return
         Gst = _gst()
         # videorate: pipewiresrc emits PTS-less buffers near stream
         # start (ROADMAP landmine); also throttles stitch input.
@@ -123,6 +129,7 @@ class ScreenCastFrameSource(ScreenRecorder):
         return Gst.FlowReturn.OK
 
     def stop(self) -> None:
+        self._scroll_cancelled = True  # gate any in-flight portal grant
         if self._pipeline is not None:
             Gst = _gst()
             self._pipeline.set_state(Gst.State.NULL)
