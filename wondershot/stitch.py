@@ -57,3 +57,32 @@ def rgb_to_qimage(arr: np.ndarray) -> QImage:
 def to_gray(rgb: np.ndarray) -> np.ndarray:
     """(H, W) float32 luma for matching; exactness doesn't matter."""
     return rgb.astype(np.float32).mean(axis=2)
+
+
+# -- offset detection ------------------------------------------------------
+
+def detect_offset(prev: np.ndarray, cur: np.ndarray,
+                  band: int = 64, threshold: float = 8.0) -> int | None:
+    """Vertical scroll distance between two grayscale frames.
+
+    Overlap band matching: take the top `band` rows of cur and slide
+    them down prev; at the true offset d, cur[y] == prev[y + d], so
+    the band matches prev[d : d + band].
+
+    Returns 0 for no motion, d > 0 for a downward scroll, or None
+    when no candidate's mean abs difference beats `threshold`
+    (scene change / unrelated frames).
+
+    Known spike limitation: a uniform (featureless) band matches
+    everywhere and resolves to d=0 (frame dropped) — acceptable.
+    """
+    h = prev.shape[0]
+    band = min(band, h)
+    strip = cur[:band]
+    best_d: int | None = None
+    best_score = threshold
+    for d in range(0, h - band + 1):
+        score = float(np.abs(prev[d:d + band] - strip).mean())
+        if score < best_score:  # strict: ties keep the smallest d
+            best_d, best_score = d, score
+    return best_d

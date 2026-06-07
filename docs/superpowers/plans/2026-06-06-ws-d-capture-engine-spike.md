@@ -218,7 +218,7 @@
 - Modify: `wondershot/stitch.py` (append)
 - Modify: `tests/test_stitch.py` (append)
 
-- [ ] Write the failing tests. Append to `tests/test_stitch.py`:
+- [x] Write the failing tests. Append to `tests/test_stitch.py`:
   ```python
   def test_detect_offset_finds_scroll():
       """cur is prev scrolled up by d rows: cur[y] == prev[y + d]."""
@@ -243,11 +243,11 @@
       b = to_gray(make_rgb(height=200, width=40, seed=4))
       assert detect_offset(a, b) is None
   ```
-- [ ] Run — must fail with `ImportError: cannot import name 'detect_offset'`:
+- [x] Run — must fail with `ImportError: cannot import name 'detect_offset'`:
   ```bash
   .venv/bin/python -m pytest tests/test_stitch.py -q
   ```
-- [ ] Implement. Append to `wondershot/stitch.py`:
+- [x] Implement. Append to `wondershot/stitch.py`:
   ```python
   # -- offset detection ------------------------------------------------------
 
@@ -277,11 +277,11 @@
               best_d, best_score = d, score
       return best_d
   ```
-- [ ] Run tests, expected pass:
+- [x] Run tests, expected pass:
   ```bash
   .venv/bin/python -m pytest tests/test_stitch.py -q
   ```
-- [ ] Commit:
+- [x] Commit:
   ```bash
   git add wondershot/stitch.py tests/test_stitch.py
   git commit -m "WS-D: overlap-band vertical offset detection (TDD)"

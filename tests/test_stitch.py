@@ -49,3 +49,27 @@ def test_to_gray_shape_and_range():
     assert g.shape == (60, 40)
     assert g.dtype == np.float32
     assert 0.0 <= g.min() and g.max() <= 255.0
+
+
+def test_detect_offset_finds_scroll():
+    """cur is prev scrolled up by d rows: cur[y] == prev[y + d]."""
+    from wondershot.stitch import detect_offset, to_gray
+    tall = make_rgb(height=300, width=40, seed=1)
+    prev = to_gray(tall[0:200])
+    for d in (1, 17, 60, 130):
+        cur = to_gray(tall[d:200 + d])
+        assert detect_offset(prev, cur) == d
+
+
+def test_detect_offset_identical_frames_is_zero():
+    from wondershot.stitch import detect_offset, to_gray
+    g = to_gray(make_rgb(height=200, width=40, seed=2))
+    assert detect_offset(g, g) == 0
+
+
+def test_detect_offset_unrelated_frames_is_none():
+    """A scene change (different window content) must not stitch."""
+    from wondershot.stitch import detect_offset, to_gray
+    a = to_gray(make_rgb(height=200, width=40, seed=3))
+    b = to_gray(make_rgb(height=200, width=40, seed=4))
+    assert detect_offset(a, b) is None
