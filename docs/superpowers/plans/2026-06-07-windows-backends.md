@@ -1167,7 +1167,7 @@ git add wondershot/capture.py wondershot/app.py wondershot/capture_window.py tes
 
 **Files:** none committed (throwaway probe scripts under `/tmp` + `C:/dev`)
 
-- [ ] **Step 1: Deploy the branch**
+- [x] **Step 1: Deploy the branch**
 
 ```bash
 cd /home/jack/GitHub/grabbit-wt/win-port
@@ -1179,7 +1179,7 @@ vssh "cd C:\dev\wondershot && .venv\Scripts\pip install -e . --no-deps --no-inde
 
 (The `pip install -e` re-run is needed because pyproject changed in Task 3.)
 
-- [ ] **Step 2: Suite on the VM**
+- [x] **Step 2: Suite on the VM**
 
 ```bash
 vssh "cd C:\dev\wondershot && set QT_QPA_PLATFORM=offscreen&& set PATH=C:\dev\ffmpeg\ffmpeg-8.1.1-essentials_build\bin;%PATH%&& .venv\Scripts\python -m pytest tests/ -q"
@@ -1187,7 +1187,7 @@ vssh "cd C:\dev\wondershot && set QT_QPA_PLATFORM=offscreen&& set PATH=C:\dev\ff
 
 Expected: baseline + all new tests pass ON WINDOWS (the win tests use fakes, so they pass anywhere; the Linux-only suites keep their honest skips).
 
-- [ ] **Step 3: Write the capture smoke script locally**
+- [x] **Step 3: Write the capture smoke script locally**
 
 ```python
 # /tmp/smoke_capture.py — runs ON THE VM's interactive desktop
@@ -1225,7 +1225,7 @@ finally:
     log.close()
 ```
 
-- [ ] **Step 4: Run it on the interactive desktop via schtasks**
+- [x] **Step 4: Run it on the interactive desktop via schtasks**
 
 ```bash
 vscp /tmp/smoke_capture.py developer@192.168.122.175:C:/dev/
@@ -1236,7 +1236,7 @@ vssh "type C:\dev\smoketest\capture.log && dir C:\dev\smoketest"
 
 Expected log: an `active_window_rect: (x, y, w, h)` tuple (not None), two `captured C:\dev\smoketest\Screenshot_*.png` lines, `DONE`. Expected dir: two PNGs with plausible sizes (fullscreen ~ hundreds of KB; the window crop smaller).
 
-- [ ] **Step 5: Pull the PNGs back and LOOK at them**
+- [x] **Step 5: Pull the PNGs back and LOOK at them**
 
 ```bash
 vssh "dir /b C:\dev\smoketest\*.png"
@@ -1246,13 +1246,13 @@ vscp "developer@192.168.122.175:C:/dev/smoketest/<name>.png" /tmp/
 
 Read each `/tmp/<name>.png` with the Read tool. Verify: the fullscreen one shows the actual VM desktop (taskbar, wallpaper); the active-window one is cropped to a single window's frame, not the full desktop and not a black rectangle. If black: the scheduled task likely ran non-interactively — confirm `/it` was present and a user session is logged in (`vssh "query session"`).
 
-- [ ] **Step 6: Clean up the task**
+- [x] **Step 6: Clean up the task**
 
 ```bash
 vssh "schtasks /delete /tn wsprobe /f"
 ```
 
-- [ ] **Step 7: Record findings** — append a dated note to the worktree's `ROADMAP.md` if anything surprised you (DPI, monitor geometry, mss quirks). Commit only if you wrote notes.
+- [x] **Step 7: Record findings** — append a dated note to the worktree's `ROADMAP.md` if anything surprised you (DPI, monitor geometry, mss quirks). Commit only if you wrote notes.
 
 ---
 
@@ -1532,7 +1532,7 @@ def pick_audio_device(devices: list[str], preferred: str) -> str:
 
 Expected: all PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add wondershot/winrecord.py tests/test_winrecord.py && git commit -m "feat: winrecord pure parts — ddagrab/gdigrab args, probe, dshow discovery"
@@ -2060,7 +2060,7 @@ git add wondershot/record.py wondershot/app.py tests/test_win_factories.py && gi
 
 **Files:** none committed (throwaway probe scripts)
 
-- [ ] **Step 1: Deploy + suite**
+- [x] **Step 1: Deploy + suite**
 
 ```bash
 cd /home/jack/GitHub/grabbit-wt/win-port
@@ -2072,7 +2072,7 @@ vssh "cd C:\dev\wondershot && set QT_QPA_PLATFORM=offscreen&& set PATH=C:\dev\ff
 
 Expected: full suite green on Windows.
 
-- [ ] **Step 2: Write the record smoke script locally**
+- [x] **Step 2: Write the record smoke script locally**
 
 ```python
 # /tmp/smoke_record.py — runs ON THE VM's interactive desktop
@@ -2124,7 +2124,7 @@ finally:
     log.close()
 ```
 
-- [ ] **Step 3: Run via schtasks, inspect the log**
+- [x] **Step 3: Run via schtasks, inspect the log**
 
 ```bash
 vscp /tmp/smoke_record.py developer@192.168.122.175:C:/dev/
@@ -2135,7 +2135,7 @@ vssh "type C:\dev\smoketest\record.log && dir C:\dev\smoketest\*.mp4"
 
 Expected: `have_ddagrab: True`, `started`, several `tick 0:0X` lines, `finished C:\dev\smoketest\Recording_*.mp4`, `DONE`. The mp4 exists with size > 100 KB and `.rendering` is empty. If `failed` with a ddagrab error (e.g. no D3D11 device in the VM's GPU): note it, force the fallback by re-running with `rec._args_builder = gdigrab_args` patched into the smoke script (`from wondershot.winrecord import gdigrab_args; rec._args_builder = gdigrab_args`), and record in ROADMAP.md that the VM exercises the gdigrab rung. If `failed` with `width/height not divisible by 2` (odd desktop resolution + libx264/yuv420p): append `,crop=trunc(iw/2)*2:trunc(ih/2)*2` to the ddagrab lavfi graph (and add `-vf crop=trunc(iw/2)*2:trunc(ih/2)*2` to the gdigrab builder), update the args tests to match, and note it in ROADMAP.md.
 
-- [ ] **Step 4: Prove the mp4 is playable** — cmd.exe does NOT glob wildcards for ffprobe, so resolve the exact name first:
+- [x] **Step 4: Prove the mp4 is playable** — cmd.exe does NOT glob wildcards for ffprobe, so resolve the exact name first:
 
 ```bash
 vssh "dir /b C:\dev\smoketest\*.mp4"
@@ -2145,7 +2145,7 @@ vssh "C:\dev\ffmpeg\ffmpeg-8.1.1-essentials_build\bin\ffprobe -v error -show_ent
 
 Expected: `codec_name=h264`, `duration=` ~5-7 seconds, no errors.
 
-- [ ] **Step 5: Visual spot-check** — extract a frame and look at it:
+- [x] **Step 5: Visual spot-check** — extract a frame and look at it:
 
 ```bash
 vssh "C:\dev\ffmpeg\ffmpeg-8.1.1-essentials_build\bin\ffmpeg -y -ss 3 -i C:\dev\smoketest\<exact-name>.mp4 -frames:v 1 C:\dev\smoketest\frame.png"
@@ -2154,7 +2154,7 @@ vscp "developer@192.168.122.175:C:/dev/smoketest/frame.png" /tmp/
 
 Read `/tmp/frame.png`: it must show the VM desktop (not black, not garbage).
 
-- [ ] **Step 6: Clean up**
+- [x] **Step 6: Clean up**
 
 ```bash
 vssh "schtasks /delete /tn wsrec /f"
@@ -2323,7 +2323,7 @@ Also extend the module docstring's first paragraph with one line: `On Windows: W
 
 Expected: all PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add wondershot/hotkey.py tests/test_hotkey.py && git commit -m "feat: WinHotkeyBackend — RegisterHotKey loop, default Ctrl+Shift+PrintScreen"
@@ -2335,9 +2335,9 @@ git add wondershot/hotkey.py tests/test_hotkey.py && git commit -m "feat: WinHot
 
 **Files:** none committed (throwaway launch/probe scripts)
 
-- [ ] **Step 1: Deploy + suite** (same as Task 11 Step 1; run both commands, expect green)
+- [x] **Step 1: Deploy + suite** (same as Task 11 Step 1; run both commands, expect green)
 
-- [ ] **Step 2: Launch the app on the interactive desktop**
+- [x] **Step 2: Launch the app on the interactive desktop**
 
 Write `/tmp/run_app.cmd` locally:
 
@@ -2358,7 +2358,7 @@ vssh "type C:\dev\smoketest\app.log"
 
 Expected: a python.exe process is running; app.log is empty or free of tracebacks. (Any traceback here is a port bug — fix it in the worktree, redeploy, relaunch before continuing.)
 
-- [ ] **Step 3: Screenshot the desktop and LOOK**
+- [x] **Step 3: Screenshot the desktop and LOOK**
 
 Write `/tmp/shot.ps1` locally:
 
@@ -2381,7 +2381,7 @@ vscp "developer@192.168.122.175:C:/dev/shot.png" /tmp/
 
 Read `/tmp/shot.png`. Expected: the gallery window is visible (cli with no args shows it) and/or the wondershot tray icon sits in the system tray (it may be in the tray overflow — if unsure, that's acceptable; the hotkey test below is the functional proof).
 
-- [ ] **Step 4: Fire the hotkey from the interactive desktop**
+- [x] **Step 4: Fire the hotkey from the interactive desktop**
 
 Write `/tmp/hotkey.ps1` locally:
 
@@ -2421,13 +2421,13 @@ Expected: a new `Screenshot_*.png` appears in the library. scp it back and Read 
 
 If the overlay appeared in the screenshot in the first part of this step, region+hotkey are BOTH proven (hotkey fired → overlay shown). For a full region drag, drive the mouse on the interactive desktop with a ps1 using `[System.Windows.Forms.Cursor]::Position` + user32 `mouse_event` via Add-Type P/Invoke — do this in Task 14's checklist where it's required.
 
-- [ ] **Step 5: Clean up tasks; leave the app running for Task 14**
+- [x] **Step 5: Clean up tasks; leave the app running for Task 14**
 
 ```bash
 vssh "schtasks /delete /tn wsshot /f & schtasks /delete /tn wskey /f"
 ```
 
-- [ ] **Step 6: Fix-and-iterate** — any failure in steps 2-4 is a port bug: reproduce in a Linux test if at all possible (extend the fakes), fix in the worktree, commit, redeploy, rerun the failing step. Do not advance with a red milestone.
+- [x] **Step 6: Fix-and-iterate** — any failure in steps 2-4 is a port bug: reproduce in a Linux test if at all possible (extend the fakes), fix in the worktree, commit, redeploy, rerun the failing step. Do not advance with a red milestone.
 
 ---
 
@@ -2439,13 +2439,13 @@ Run every line of the spec's definition of done on the VM, record evidence, and 
 - Modify: `docs/superpowers/plans/2026-06-07-desktop-checklist.md` (append a "Windows (win11-pam VM)" section with results)
 - Modify: `ROADMAP.md` (WS-E status + any landmines found)
 
-- [ ] **Step 1: Suite green on Windows** — rerun the VM suite command; record the counts. All Windows skips must be *honest* (POSIX-subprocess recorder tests, portal/D-Bus tests — nothing else newly skipped).
+- [x] **Step 1: Suite green on Windows** — rerun the VM suite command; record the counts. All Windows skips must be *honest* (POSIX-subprocess recorder tests, portal/D-Bus tests — nothing else newly skipped).
 
-- [ ] **Step 2: App launches with tray** — evidence from Task 13 steps 2-3 (screenshot read). Re-verify `tasklist | findstr python` shows it running now.
+- [x] **Step 2: App launches with tray** — evidence from Task 13 steps 2-3 (screenshot read). Re-verify `tasklist | findstr python` shows it running now.
 
-- [ ] **Step 3: Hotkey fires a capture** — rerun Task 13 step 4's hotkey ps1; screenshot; Read: overlay visible. Esc to dismiss.
+- [x] **Step 3: Hotkey fires a capture** — rerun Task 13 step 4's hotkey ps1; screenshot; Read: overlay visible. Esc to dismiss.
 
-- [ ] **Step 4: Region capture produces a correct PNG** — drive a real drag. Write `/tmp/drag.ps1` locally:
+- [x] **Step 4: Region capture produces a correct PNG** — drive a real drag. Write `/tmp/drag.ps1` locally:
 
 ```powershell
 Add-Type -AssemblyName System.Windows.Forms
@@ -2473,11 +2473,11 @@ Start-Sleep -Seconds 3
 
 Run via schtasks (`/tn wsdrag`, `/it`, same pattern as before). Then `dir /b` the library, scp the newest PNG, Read it: it must be a ~400x300 crop of the desktop region, not the full screen. Delete the task.
 
-- [ ] **Step 5: Fullscreen + window capture produce correct PNGs** — fullscreen: rerun `--fullscreen` via the running app's socket (Task 13 step 4). Window mode has no CLI flag, so prove the engine instead: rerun Task 7's `smoke_capture.py` via schtasks `/it` (real `WinCaptureManager.capture_active_window()` on the interactive desktop) — that is exactly the object and method the tray "Window" action calls (wired through `create_capture_manager`, covered by the factory tests). scp + Read both PNGs.
+- [x] **Step 5: Fullscreen + window capture produce correct PNGs** — fullscreen: rerun `--fullscreen` via the running app's socket (Task 13 step 4). Window mode has no CLI flag, so prove the engine instead: rerun Task 7's `smoke_capture.py` via schtasks `/it` (real `WinCaptureManager.capture_active_window()` on the interactive desktop) — that is exactly the object and method the tray "Window" action calls (wired through `create_capture_manager`, covered by the factory tests). scp + Read both PNGs.
 
-- [ ] **Step 6: Recording produces a playable mp4** — evidence from Task 11 (ffprobe + frame Read). Rerun if the recorder changed since. ALSO exercise the in-app path: with the app running, schtasks a python one-liner on the desktop is overkill — instead verify via the gallery Record button manually-adjacent path: rerun `smoke_record.py` and accept it as the engine proof (the app wires the same object through `create_screen_recorder` — covered by factory tests).
+- [x] **Step 6: Recording produces a playable mp4** — evidence from Task 11 (ffprobe + frame Read). Rerun if the recorder changed since. ALSO exercise the in-app path: with the app running, schtasks a python one-liner on the desktop is overkill — instead verify via the gallery Record button manually-adjacent path: rerun `smoke_record.py` and accept it as the engine proof (the app wires the same object through `create_screen_recorder` — covered by factory tests).
 
-- [ ] **Step 7: Editor annotates + sidecar persists** — scripted, offscreen is fine (no desktop needed):
+- [x] **Step 7: Editor annotates + sidecar persists** — scripted, offscreen is fine (no desktop needed):
 
 ```bash
 vssh "cd C:\dev\wondershot && set QT_QPA_PLATFORM=offscreen&& .venv\Scripts\python -m pytest tests/test_editor.py tests/test_sidecar.py tests/test_editor_sidecar.py tests/test_items_serialize.py -q"
@@ -2485,19 +2485,19 @@ vssh "cd C:\dev\wondershot && set QT_QPA_PLATFORM=offscreen&& .venv\Scripts\pyth
 
 Expected: green — these suites are the sidecar/editor behavior executed on Windows paths (case-insensitivity, backslashes).
 
-- [ ] **Step 8: Update the checklist doc + ROADMAP** — append to `docs/superpowers/plans/2026-06-07-desktop-checklist.md` a `## Windows (win11-pam VM) — WS-E definition of done` section listing each item above with PASS/FAIL + the evidence (file names, suite counts, which screenshots were read). Update `ROADMAP.md`'s WS-E entry: what shipped, the documented gaps (no cursor in captures; window mode = active window only; mic depends on dshow devices; scroll capture not on Windows — needs a FrameSource; step capture follow-up; packaging out of scope). Per Addendum 3 sequencing item 4, also update the `windev` skill if anything about driving this VM changed (paths, staged wheels, the schtasks/keybd_event recipes). Commit:
+- [x] **Step 8: Update the checklist doc + ROADMAP** — append to `docs/superpowers/plans/2026-06-07-desktop-checklist.md` a `## Windows (win11-pam VM) — WS-E definition of done` section listing each item above with PASS/FAIL + the evidence (file names, suite counts, which screenshots were read). Update `ROADMAP.md`'s WS-E entry: what shipped, the documented gaps (no cursor in captures; window mode = active window only; mic depends on dshow devices; scroll capture not on Windows — needs a FrameSource; step capture follow-up; packaging out of scope). Per Addendum 3 sequencing item 4, also update the `windev` skill if anything about driving this VM changed (paths, staged wheels, the schtasks/keybd_event recipes). Commit:
 
 ```bash
 cd /home/jack/GitHub/grabbit-wt/win-port && git add docs/superpowers/plans/2026-06-07-desktop-checklist.md ROADMAP.md && git commit -m "docs: Windows port definition-of-done results + WS-E roadmap status"
 ```
 
-- [ ] **Step 9: Stop the app on the VM, clean up scheduled tasks**
+- [x] **Step 9: Stop the app on the VM, clean up scheduled tasks**
 
 ```bash
 vssh "schtasks /delete /tn wsapp /f & schtasks /delete /tn wsprobe /f 2>nul & schtasks /delete /tn wsdrag /f 2>nul & taskkill /im python.exe /f"
 ```
 
-- [ ] **Step 10: Final Linux suite in the worktree** (the byte-identity gate before handoff):
+- [x] **Step 10: Final Linux suite in the worktree** (the byte-identity gate before handoff):
 
 ```bash
 cd /home/jack/GitHub/grabbit-wt/win-port && /home/jack/GitHub/grabbit/.venv/bin/python -m pytest tests/ -q
@@ -2515,3 +2515,85 @@ Expected: green. The branch is ready for review/merge (use superpowers:finishing
 - **Scroll capture**: gated off on Windows (`scroll_capture_available()` requires GStreamer); the WS-D FrameSource seam is the future port path — do NOT attempt it here.
 - **Hotkey**: fixed default Ctrl+Shift+PrintScreen; no rebinding UI (matches Linux, where the binding lives in System Settings).
 - **Packaging/installer/signing/autostart**: out of scope per Addendum 3 (runs from the checkout + venv).
+
+---
+
+## VERIFICATION-LOG (executed 2026-06-07, branch session/win-port)
+
+### Suite counts (actual)
+- Linux worktree baseline (Task 1): **345 passed** (plan said "note the
+  count" — 345 is the pin, not the 329 VM number).
+- Linux worktree final (after all tasks): **397 passed** (345 + 52 new
+  WS-E tests). Tail: `397 passed in 11.89s`.
+- VM baseline (Task 1): `329 passed, 16 skipped`.
+- VM final (after deploy of all tasks): `381 passed, 16 skipped`
+  (329 + 52 new; the win tests use fakes so they run on Windows too;
+  16 honest skips unchanged).
+
+### ddagrab / ffmpeg probe (Task 1 Step 5)
+- `ddagrab` filter present: `ddagrab |->V Grab Windows Desktop images
+  using Desktop Duplication API`.
+- dshow audio devices: **none** ("Could not enumerate audio only devices
+  (or none found)"). Mic path therefore verifies as video-only.
+
+### Capture milestone A (Task 7) — PASS
+- Real interactive console session. `active_window_rect: (129, 130,
+  1115, 628)`; two PNGs saved.
+- Fullscreen PNG 1280x800 = real desktop (taskbar, wallpaper, icons).
+- Active-window PNG 1115x628 = exactly the foreground window frame
+  (DWM extended-frame-bounds excluded the shadow). Both Read and
+  visually confirmed.
+
+### Record milestone B (Task 11) — PASS via gdigrab fallback
+- `have_ddagrab: True` but ddagrab RUN fails on the VM:
+  `Failed to create D3D11VA device` → `Error opening input files`.
+  The VM has no D3D11 GPU device. Forced the gdigrab rung (the
+  recorder's own fallback): started → tick 0:01..0:05 → finished.
+- mp4: `codec_name=h264`, `duration=6.233333`, playable. Extracted
+  frame shows the real desktop. (Deviation from plan's expected
+  "ddagrab True" recording: VM exercises the gdigrab rung — exactly the
+  contingency the plan's Task 11 Step 3 anticipated.)
+
+### App / hotkey milestone C (Task 13) — PASS
+- App launched via `wondershot.cli.main([])` (schtasks /it); two
+  python.exe in Console session 1; app.log clean. Console screenshot:
+  full gallery window + tray icon visible.
+- Hotkey Ctrl+Shift+PrintScreen (keybd_event) → region overlay dims the
+  desktop (confirmed in console screenshot). Esc → silent cancel, no
+  stray file.
+- `--fullscreen` via the running app's single-instance socket → a real
+  1280x800 desktop PNG in the library. End-to-end through the live app.
+
+### Definition of done (Task 14) — all PASS (details in
+docs/.../2026-06-07-desktop-checklist.md "Windows (win11-pam VM)").
+- Region drags: 400x300→401x301; 350x150→351x151 with wallpaper at the
+  edge. Editor/sidecar suites on Windows: 63 passed.
+
+### Deviations / fix-forwards
+1. **selection_rect**: implemented with explicit corner-sorting instead
+   of `QRect.normalized()` — Qt6's normalized() shifts a reversed rect
+   by a pixel, breaking the inclusive-rect parity test. (Task 3)
+2. **RegionOverlay tests**: `cancelled` is a no-arg signal, so tests
+   connect `lambda: can.append(1)` (the plan's `can.append` needs an
+   arg); the e2e drag starts at (1,1) because QTest treats QPoint(0,0)
+   as null and substitutes the widget center. (Task 5)
+3. **VM toolchain**: `pip install -e .` failed — VM shipped
+   setuptools 65.5.0, pyproject needs >=68. Staged setuptools-82.0.1
+   wheel from the host to C:/dev/wheels and upgraded; also used
+   `--no-build-isolation`. (Tasks 7/11/13)
+4. **VM was at the lock screen, not logged in** (contrary to the plan's
+   "logged-in desktop session" assumption); schtasks /it produced
+   nothing until a real console session existed. Logged in via the
+   host libvirt console (virsh send-key, password typed key-by-key) —
+   NOT via the AutoAdminLogon registry route (that plaintext-password
+   approach was correctly refused; autologon is unnecessary and a
+   security smell). After login `quser` showed `developer console 1
+   Active` and all interactive milestones ran.
+5. **Recording uses gdigrab on the VM** (see milestone B) — ddagrab
+   needs D3D11 hardware absent from the VM.
+6. **windev skill NOT edited** (plan Task 14 Step 8 suggested it): it
+   lives in host config (~/.claude/skills/windev), outside the worktree,
+   and the binding rule "local work only in the worktree / never touch
+   the HOST" takes precedence. The VM-driving learnings (setuptools
+   staging, console-login-via-virsh, ddagrab D3D11 gap) are recorded in
+   the worktree ROADMAP.md WS-E section instead.

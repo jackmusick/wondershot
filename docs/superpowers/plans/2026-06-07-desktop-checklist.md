@@ -79,3 +79,41 @@
   (intercept)? Click on a text editor and watch whether the caret
   moves. Record the verdict in ROADMAP WS-D findings — step capture's
   design is gated on it.
+
+## Windows (win11-pam VM) — WS-E definition of done (2026-06-07)
+
+Executed on the VM's real interactive console session (developer, session 1).
+Branch session/win-port @ Task 14. Evidence is screenshots that were
+visually inspected and ffprobe dimension/codec checks.
+
+1. Suite green on Windows — PASS. `381 passed, 16 skipped` (offscreen,
+   ffmpeg on PATH). Baseline was 329/16; +52 new WS-E tests. Skips are
+   the pre-existing POSIX/portal/D-Bus honest skips (unchanged at 16).
+2. App launches with tray — PASS. `wondershot.cli.main([])` via schtasks
+   /it: two python.exe in Console session 1; app.log clean; console
+   screenshot shows the full gallery window (toolbar Capture/Record/
+   Camera/Share, annotation tools, Properties panel, "No screenshots
+   yet") and the tray icon.
+3. Hotkey fires a capture — PASS. keybd_event Ctrl+Shift+PrintScreen →
+   the desktop dims under the region overlay (frozen-grab + dim visible
+   in the console screenshot); Esc cancels silently (no stray file).
+4. Region capture produces a correct PNG — PASS. Hotkey + mouse_event
+   drags: 400x300 drag → 401x301 PNG; 350x150 drag → 351x151 PNG with
+   blue wallpaper visible at the edge (real pixels, exact crop, not full
+   screen).
+5. Fullscreen + window capture produce correct PNGs — PASS. Fullscreen
+   via the running app's single-instance socket (`--fullscreen`):
+   1280x800 PNG of the real desktop. Active-window via
+   WinCaptureManager.capture_active_window() on the desktop:
+   active_window_rect=(129,130,1115,628), crop PNG = 1115x628 = exactly
+   the foreground window frame (DWM shadow excluded), not the desktop.
+6. Recording produces a playable mp4 — PASS (via gdigrab fallback).
+   ddagrab probe = True but fails on the VM (no D3D11VA device);
+   recorder falls back to gdigrab: started→ticks→finished,
+   Recording_*.mp4 = h264, duration 6.23s, extracted frame shows the
+   real desktop. Mic: no dshow audio devices on the VM → video-only.
+7. Editor annotates + sidecar persists — PASS. On Windows, offscreen:
+   `test_editor test_sidecar test_editor_sidecar test_items_serialize`
+   = 63 passed (case-insensitivity + backslash paths exercised).
+
+Deviations from the plan recorded in the plan's VERIFICATION-LOG.

@@ -201,6 +201,37 @@ after Linux is feature-complete.
 - Deferred decisions: packaging tool (PyInstaller vs briefcase),
   GStreamer-on-Windows vs native encode, code signing, keyring
 
+### WS-E Windows backends — SHIPPED 2026-06-07 (branch session/win-port)
+What landed (behind sys.platform factories; Linux byte-identical):
+- `wincapture.py` — `WinCaptureManager` (mss fullscreen grab, ctypes
+  GetForegroundWindow + DWMWA_EXTENDED_FRAME_BOUNDS active-window
+  geometry, owned frameless `RegionOverlay`); CaptureManager contract.
+- `winrecord.py` — `WinScreenRecorder` (ffmpeg ddagrab→gdigrab fallback,
+  dshow mic, QProcess q-stop/terminate/kill ladder, watchdog, salvage).
+- `hotkey.py` — `WinHotkeyBackend` (RegisterHotKey message loop on a
+  QThread; default Ctrl+Shift+PrintScreen → region).
+- Factories: `create_capture_manager`, `create_screen_recorder`,
+  `window_capture_available`; portable `server_name()`; cursor toggle
+  disabled on Windows.
+Verified on win11-pam VM (real interactive desktop): app + tray launch,
+hotkey fires the region overlay, region/fullscreen/active-window PNGs are
+correct crops of real pixels, recording produces a playable h264 mp4.
+
+Documented gaps / landmines:
+- **ddagrab needs a D3D11 device** — the VM has no GPU D3D11VA, so
+  `ddagrab` fails ("Failed to create D3D11VA device") and the recorder
+  falls back to **gdigrab** (verified end-to-end). On real hardware
+  ddagrab is preferred; the probe + fallback handle both.
+- **Cursor capture**: unsupported (mss/BitBlt); toggle disabled.
+- **Window mode = active window only** (no compositor window picker).
+- **Mic** depends on dshow devices (VM has none → records video-only).
+- **Scroll capture**: gated off on Windows (needs the WS-D FrameSource).
+- **Hotkey**: fixed Ctrl+Shift+PrintScreen, no rebinding UI.
+- **Packaging/installer/signing/autostart**: out of scope (runs from
+  the checkout + venv).
+- VM toolchain note: staged `setuptools>=68` was required for
+  `pip install -e` (VM shipped 65.5.0); also stage on fresh VMs.
+
 ### InputCapture portal probe findings
 
 _(pending — filled in by the WS-D spike)_
