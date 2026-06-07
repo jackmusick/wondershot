@@ -245,3 +245,28 @@ def test_text_alignment_defaults_left_for_old_sidecars(qapp):
     del d["align"]                       # sidecar written by an older build
     out = item_from_dict(d)
     assert out.alignment() == "left"
+
+
+def test_blur_roundtrip_uses_base_provider(qapp):
+    from PySide6.QtGui import QImage
+    from wondershot.items import GaussianBlurItem, PixelateItem
+    base = QImage(200, 150, QImage.Format_ARGB32_Premultiplied)
+    base.fill(QColor("orange"))
+    item = GaussianBlurItem(lambda: base, QRectF(10.0, 12.0, 80.0, 40.0),
+                            radius=7)
+    assert isinstance(item, PixelateItem)   # editor grips ride on this
+    d = item.to_dict()
+    assert d["type"] == "blur"
+    assert d["radius"] == 7
+    out = roundtrip(item, base_provider=lambda: base)
+    assert isinstance(out, GaussianBlurItem)
+    assert out.rect() == QRectF(10.0, 12.0, 80.0, 40.0)
+    assert out._radius == 7
+    assert out._patch is not None, "patch must regenerate from the provider"
+
+
+def test_blur_without_provider_is_skipped(qapp):
+    from wondershot.items import item_from_dict
+    d = {"type": "blur", "rect": [0, 0, 10, 10], "radius": 12,
+         "pos": [0, 0], "rotation": 0.0, "origin": [0, 0]}
+    assert item_from_dict(d) is None

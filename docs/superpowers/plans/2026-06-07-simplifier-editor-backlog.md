@@ -1100,7 +1100,7 @@ A soft sibling of `PixelateItem` with identical move/resize/serialize behavior. 
 - Modify: `wondershot/items.py` (PixelateItem `_regen` ~line 638; new class after it; `item_from_dict` ~line 669)
 - Test: `tests/test_items_serialize.py`
 
-- [ ] **Step 1: Write the failing tests** — append to `tests/test_items_serialize.py`:
+- [x] **Step 1: Write the failing tests** — append to `tests/test_items_serialize.py`:
 
 ```python
 def test_blur_roundtrip_uses_base_provider(qapp):
@@ -1128,12 +1128,12 @@ def test_blur_without_provider_is_skipped(qapp):
     assert item_from_dict(d) is None
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `QT_QPA_PLATFORM=offscreen .venv/bin/pytest tests/test_items_serialize.py -v -k blur`
 Expected: FAIL — `ImportError: cannot import name 'GaussianBlurItem'`
 
-- [ ] **Step 3: Refactor PixelateItem._regen** — replace it with:
+- [x] **Step 3: Refactor PixelateItem._regen** — replace it with:
 
 ```python
     def _regen(self) -> None:
@@ -1151,7 +1151,7 @@ Expected: FAIL — `ImportError: cannot import name 'GaussianBlurItem'`
         return imageops.pixelated_patch(base, scene_rect, self._block)
 ```
 
-- [ ] **Step 4: Add GaussianBlurItem** — after `PixelateItem`:
+- [x] **Step 4: Add GaussianBlurItem** — after `PixelateItem`:
 
 ```python
 class GaussianBlurItem(PixelateItem):
@@ -1189,7 +1189,7 @@ class GaussianBlurItem(PixelateItem):
         return item
 ```
 
-- [ ] **Step 5: Dispatch "blur" in item_from_dict** — replace the pixelate branch:
+- [x] **Step 5: Dispatch "blur" in item_from_dict** — replace the pixelate branch:
 
 ```python
     t = d.get("type")
@@ -1200,12 +1200,12 @@ class GaussianBlurItem(PixelateItem):
         return cls.from_dict(d, base_provider)
 ```
 
-- [ ] **Step 6: Run to verify pass** (whole serialize file: pixelate refactor must not regress)
+- [x] **Step 6: Run to verify pass** (whole serialize file: pixelate refactor must not regress)
 
 Run: `QT_QPA_PLATFORM=offscreen .venv/bin/pytest tests/test_items_serialize.py tests/test_editor_sidecar.py -v`
 Expected: ALL PASS
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add wondershot/items.py tests/test_items_serialize.py

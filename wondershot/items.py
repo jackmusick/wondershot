@@ -666,14 +666,18 @@ class PixelateItem(QGraphicsItem):
         return item
 
     def _regen(self) -> None:
-        from . import imageops
         base = self._base_provider()
         if base is None or base.isNull():
             self._patch = None
             return
         scene_rect = self.mapRectToScene(self._rect.normalized()).toRect()
-        patch = imageops.pixelated_patch(base, scene_rect, self._block)
-        self._patch = None if patch.isNull() else patch
+        patch = self._patch_for(base, scene_rect)
+        self._patch = None if patch is None or patch.isNull() else patch
+
+    def _patch_for(self, base, scene_rect):
+        """Render the region patch — subclasses swap the filter."""
+        from . import imageops
+        return imageops.pixelated_patch(base, scene_rect, self._block)
 
     def itemChange(self, change, value):  # noqa: N802
         if change == QGraphicsItem.ItemPositionHasChanged:
@@ -696,6 +700,41 @@ class PixelateItem(QGraphicsItem):
             painter.drawRect(r)
 
 
+class GaussianBlurItem(PixelateItem):
+    """Live gaussian blur of the base image under it — the soft variant
+    of PixelateItem; identical move/resize/serialize behavior."""
+
+    # Class-attribute default: PySide forbids touching self before the
+    # base __init__, and super().__init__ already runs _regen -> needs
+    # _radius readable. Non-default radii regenerate once more below.
+    _radius = 12
+
+    def __init__(self, base_provider, rect: QRectF, radius: int = 12):
+        super().__init__(base_provider, rect)
+        if int(radius) != self._radius:
+            self._radius = int(radius)
+            self._regen()
+            self.update()
+
+    def _patch_for(self, base, scene_rect):
+        from . import imageops
+        return imageops.blurred_patch(base, scene_rect, self._radius)
+
+    def to_dict(self) -> dict:
+        r = self._rect
+        return {"type": "blur",
+                "rect": [r.x(), r.y(), r.width(), r.height()],
+                "radius": self._radius, **_transform_dict(self)}
+
+    @classmethod
+    def from_dict(cls, d: dict, base_provider) -> "GaussianBlurItem":
+        r = d["rect"]
+        item = cls(base_provider, QRectF(r[0], r[1], r[2], r[3]),
+                   radius=int(d.get("radius", 12)))
+        _apply_transform(item, d)
+        return item
+
+
 def item_from_dict(d: dict, base_provider=None):
     """Rebuild a live annotation item from its serialized dict.
 
@@ -704,10 +743,11 @@ def item_from_dict(d: dict, base_provider=None):
     base_provider callable to regenerate its patch.
     """
     t = d.get("type")
-    if t == "pixelate":
+    if t in ("pixelate", "blur"):
         if base_provider is None:
             return None
-        return PixelateItem.from_dict(d, base_provider)
+        cls = PixelateItem if t == "pixelate" else GaussianBlurItem
+        return cls.from_dict(d, base_provider)
     cls = _ITEM_TYPES.get(t)
     return cls.from_dict(d) if cls is not None else None
 
