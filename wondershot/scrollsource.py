@@ -167,8 +167,10 @@ def run_scroll_spike(out_path: str | None = None) -> int:
                                            file=sys.stderr),
                                      app.exit(1)))
     source.started.connect(lambda: print(
-        "Recording — pick the window in the portal dialog, scroll it "
-        "top-to-bottom slowly, then press Ctrl+C here."))
+        "Recording — the portal picker always asks now (fresh pick per "
+        "scroll session). Pick the window, scroll it top-to-bottom "
+        "slowly, then press Ctrl+C here. Low-confidence frames "
+        "(mid-animation) are dropped rather than mis-stitched."))
 
     # Let Ctrl+C reach Python inside the Qt loop.
     _signal.signal(_signal.SIGINT, lambda *_: app.exit(0))
