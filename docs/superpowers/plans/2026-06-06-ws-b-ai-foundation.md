@@ -46,7 +46,7 @@
 - Modify: `wondershot/settings.py` (append properties at end of class, after `pin_on_top` setter, ~line 279)
 - Test: `tests/test_settings_ai.py` (create)
 
-- [ ] Write the failing test:
+- [x] Write the failing test:
 
 ```python
 # tests/test_settings_ai.py
@@ -86,8 +86,8 @@ def test_ai_settings_roundtrip(tmp_path):
     assert s.ai_model == "llava"
 ```
 
-- [ ] Run it and confirm the failure: `python -m pytest tests/test_settings_ai.py -q` — expect `AttributeError: 'Settings' object has no attribute 'ai_endpoint'`.
-- [ ] Implement: in `wondershot/settings.py`, append at the end of the `Settings` class (after the `pin_on_top` setter):
+- [x] Run it and confirm the failure: `python -m pytest tests/test_settings_ai.py -q` — expect `AttributeError: 'Settings' object has no attribute 'ai_endpoint'`.
+- [x] Implement: in `wondershot/settings.py`, append at the end of the `Settings` class (after the `pin_on_top` setter):
 
 ```python
     # -- AI (OpenAI-compatible chat endpoint) -------------------------------
@@ -120,8 +120,8 @@ def test_ai_settings_roundtrip(tmp_path):
         self._s.setValue("ai_model", value)
 ```
 
-- [ ] Run tests: `python -m pytest tests/test_settings_ai.py -q` — expect 2 passed.
-- [ ] Commit: `git add wondershot/settings.py tests/test_settings_ai.py && git commit -m "WS-B: ai_endpoint/ai_api_key/ai_model settings keys"`
+- [x] Run tests: `python -m pytest tests/test_settings_ai.py -q` — expect 2 passed.
+- [x] Commit: `git add wondershot/settings.py tests/test_settings_ai.py && git commit -m "WS-B: ai_endpoint/ai_api_key/ai_model settings keys"`
 
 ---
 
@@ -131,7 +131,7 @@ def test_ai_settings_roundtrip(tmp_path):
 - Create: `wondershot/aiclient.py`
 - Test: `tests/test_aiclient.py` (create)
 
-- [ ] Write the failing tests (pure functions first — no network, no job yet):
+- [x] Write the failing tests (pure functions first — no network, no job yet):
 
 ```python
 # tests/test_aiclient.py
@@ -286,8 +286,8 @@ def test_ai_configured():
     assert ai_configured(s)              # key optional (local servers)
 ```
 
-- [ ] Run them and confirm the failure: `python -m pytest tests/test_aiclient.py -q` — expect `ModuleNotFoundError: No module named 'wondershot.aiclient'`.
-- [ ] Implement `wondershot/aiclient.py`:
+- [x] Run them and confirm the failure: `python -m pytest tests/test_aiclient.py -q` — expect `ModuleNotFoundError: No module named 'wondershot.aiclient'`.
+- [x] Implement `wondershot/aiclient.py`:
 
 ```python
 """OpenAI-compatible chat client for AI features — stdlib HTTP only.
@@ -397,8 +397,8 @@ def ai_configured(settings) -> bool:
                 and getattr(settings, "ai_model", ""))
 ```
 
-- [ ] Run tests: `python -m pytest tests/test_aiclient.py -q` — expect 10 passed.
-- [ ] Commit: `git add wondershot/aiclient.py tests/test_aiclient.py && git commit -m "WS-B: aiclient — stdlib OpenAI-compatible chat with vision content"`
+- [x] Run tests: `python -m pytest tests/test_aiclient.py -q` — expect 10 passed.
+- [x] Commit: `git add wondershot/aiclient.py tests/test_aiclient.py && git commit -m "WS-B: aiclient — stdlib OpenAI-compatible chat with vision content"`
 
 ---
 
@@ -408,7 +408,7 @@ def ai_configured(settings) -> bool:
 - Modify: `wondershot/aiclient.py` (append at end of file)
 - Test: `tests/test_aiclient.py` (append)
 
-- [ ] Write the failing tests (append to `tests/test_aiclient.py`):
+- [x] Write the failing tests (append to `tests/test_aiclient.py`):
 
 ```python
 def test_aijob_emits_result(qapp):
@@ -439,8 +439,8 @@ def test_aijob_cancel_suppresses_emit(qapp):
     assert got == []
 ```
 
-- [ ] Run and confirm failure: `python -m pytest tests/test_aiclient.py -q` — expect `ImportError: cannot import name 'AIJob'`.
-- [ ] Implement — append to `wondershot/aiclient.py`:
+- [x] Run and confirm failure: `python -m pytest tests/test_aiclient.py -q` — expect `ImportError: cannot import name 'AIJob'`.
+- [x] Implement — append to `wondershot/aiclient.py`:
 
 ```python
 # -- background execution (mirror of share.ShareJob) -------------------------
@@ -475,8 +475,8 @@ class AIJob(QRunnable):
             self.emitter.done.emit(result, "")
 ```
 
-- [ ] Run tests: `python -m pytest tests/test_aiclient.py -q` — expect 13 passed.
-- [ ] Commit: `git add wondershot/aiclient.py tests/test_aiclient.py && git commit -m "WS-B: AIJob — cancelable QRunnable mirroring ShareJob"`
+- [x] Run tests: `python -m pytest tests/test_aiclient.py -q` — expect 13 passed.
+- [x] Commit: `git add wondershot/aiclient.py tests/test_aiclient.py && git commit -m "WS-B: AIJob — cancelable QRunnable mirroring ShareJob"`
 
 ---
 
@@ -486,7 +486,7 @@ class AIJob(QRunnable):
 - Modify: `wondershot/settings_dialog.py` — add tab after line 198 (`tabs.addTab(self._build_share_tab(), "Sharing")`), new methods after `_build_share_tab` (~line 267), three writes in `apply()` (~line 611)
 - Test: `tests/test_settings_dialog_ai.py` (create)
 
-- [ ] Write the failing test:
+- [x] Write the failing test:
 
 ```python
 # tests/test_settings_dialog_ai.py
@@ -560,8 +560,8 @@ def test_ai_test_button_requires_endpoint_and_model(qapp, tmp_path,
     assert "endpoint" in dlg.ai_test_status.text()
 ```
 
-- [ ] Run and confirm failure: `python -m pytest tests/test_settings_dialog_ai.py -q` — expect `AttributeError: 'SettingsDialog' object has no attribute 'ai_endpoint'`.
-- [ ] Implement. In `wondershot/settings_dialog.py`, directly after the line `tabs.addTab(self._build_share_tab(), "Sharing")` (~line 198) add:
+- [x] Run and confirm failure: `python -m pytest tests/test_settings_dialog_ai.py -q` — expect `AttributeError: 'SettingsDialog' object has no attribute 'ai_endpoint'`.
+- [x] Implement. In `wondershot/settings_dialog.py`, directly after the line `tabs.addTab(self._build_share_tab(), "Sharing")` (~line 198) add:
 
 ```python
         tabs.addTab(self._build_ai_tab(), "AI")
@@ -645,8 +645,8 @@ def test_ai_test_button_requires_endpoint_and_model(qapp, tmp_path,
         self.settings.ai_model = self.ai_model.text().strip()
 ```
 
-- [ ] Run tests: `python -m pytest tests/test_settings_dialog_ai.py -q` — expect 2 passed. Also run `python -m pytest tests/ -q` to confirm nothing else broke.
-- [ ] Commit: `git add wondershot/settings_dialog.py tests/test_settings_dialog_ai.py && git commit -m "WS-B: AI settings tab with async test-connection"`
+- [x] Run tests: `python -m pytest tests/test_settings_dialog_ai.py -q` — expect 2 passed. Also run `python -m pytest tests/ -q` to confirm nothing else broke.
+- [x] Commit: `git add wondershot/settings_dialog.py tests/test_settings_dialog_ai.py && git commit -m "WS-B: AI settings tab with async test-connection"`
 
 ---
 
@@ -656,7 +656,7 @@ def test_ai_test_button_requires_endpoint_and_model(qapp, tmp_path,
 - Create: `wondershot/ocr.py`
 - Test: `tests/test_ocr.py` (create)
 
-- [ ] Write the failing tests:
+- [x] Write the failing tests:
 
 ```python
 # tests/test_ocr.py
@@ -736,8 +736,8 @@ def test_ocr_words_runs_binary(monkeypatch):
     assert len(words) == 4
 ```
 
-- [ ] Run and confirm failure: `python -m pytest tests/test_ocr.py -q` — expect `ModuleNotFoundError: No module named 'wondershot.ocr'`.
-- [ ] Implement `wondershot/ocr.py`:
+- [x] Run and confirm failure: `python -m pytest tests/test_ocr.py -q` — expect `ModuleNotFoundError: No module named 'wondershot.ocr'`.
+- [x] Implement `wondershot/ocr.py`:
 
 ```python
 """Optional local OCR via the tesseract binary — word boxes for AI redact.
@@ -821,8 +821,8 @@ def ocr_words(image, binary: str | None = None) -> list[Word]:
     return parse_tsv(out.stdout.decode("utf-8", "replace"))
 ```
 
-- [ ] Run tests: `python -m pytest tests/test_ocr.py -q` — expect 4 passed.
-- [ ] Commit: `git add wondershot/ocr.py tests/test_ocr.py && git commit -m "WS-B: optional tesseract OCR helper with graceful degradation"`
+- [x] Run tests: `python -m pytest tests/test_ocr.py -q` — expect 4 passed.
+- [x] Commit: `git add wondershot/ocr.py tests/test_ocr.py && git commit -m "WS-B: optional tesseract OCR helper with graceful degradation"`
 
 ---
 
@@ -832,7 +832,7 @@ def ocr_words(image, binary: str | None = None) -> list[Word]:
 - Create: `wondershot/redact.py`
 - Test: `tests/test_redact.py` (create)
 
-- [ ] Write the failing tests:
+- [x] Write the failing tests:
 
 ```python
 # tests/test_redact.py
@@ -948,8 +948,8 @@ def test_redact_regions_falls_back_to_bboxes(monkeypatch):
         [QRect(0, 0, 100, 50)]
 ```
 
-- [ ] Run and confirm failure: `python -m pytest tests/test_redact.py -q` — expect `ModuleNotFoundError: No module named 'wondershot.redact'`.
-- [ ] Implement `wondershot/redact.py`:
+- [x] Run and confirm failure: `python -m pytest tests/test_redact.py -q` — expect `ModuleNotFoundError: No module named 'wondershot.redact'`.
+- [x] Implement `wondershot/redact.py`:
 
 ```python
 """AI redaction: find sensitive text on a screenshot, return regions.
@@ -1084,8 +1084,8 @@ def redact_regions(image, endpoint: str, api_key: str,
     return parse_bboxes(reply, image.width(), image.height())
 ```
 
-- [ ] Run tests: `python -m pytest tests/test_redact.py -q` — expect 9 passed.
-- [ ] Commit: `git add wondershot/redact.py tests/test_redact.py && git commit -m "WS-B: redaction pipeline — OCR span matching + bbox fallback"`
+- [x] Run tests: `python -m pytest tests/test_redact.py -q` — expect 9 passed.
+- [x] Commit: `git add wondershot/redact.py tests/test_redact.py && git commit -m "WS-B: redaction pipeline — OCR span matching + bbox fallback"`
 
 ---
 
@@ -1095,7 +1095,7 @@ def redact_regions(image, endpoint: str, api_key: str,
 - Modify: `wondershot/editor.py` — toolbar insertion in `_build_toolbar` before the spacer block (~line 465), new methods after `_share_done` (~line 552)
 - Test: `tests/test_editor_ai.py` (create)
 
-- [ ] Write the failing test:
+- [x] Write the failing test:
 
 ```python
 # tests/test_editor_ai.py
@@ -1157,8 +1157,8 @@ def test_redact_action_exists_on_toolbar(qapp):
     assert ed.redact_action.text() == "AI Redact"
 ```
 
-- [ ] Run and confirm failure: `python -m pytest tests/test_editor_ai.py -q` — expect `AttributeError: 'EditorWindow' object has no attribute 'apply_redact_regions'`.
-- [ ] Implement. In `wondershot/editor.py` `_build_toolbar`, insert immediately BEFORE the `from PySide6.QtWidgets import QMenu, QSizePolicy, QToolButton, QWidget` / spacer block (~line 465):
+- [x] Run and confirm failure: `python -m pytest tests/test_editor_ai.py -q` — expect `AttributeError: 'EditorWindow' object has no attribute 'apply_redact_regions'`.
+- [x] Implement. In `wondershot/editor.py` `_build_toolbar`, insert immediately BEFORE the `from PySide6.QtWidgets import QMenu, QSizePolicy, QToolButton, QWidget` / spacer block (~line 465):
 
 ```python
         tb.addSeparator()
@@ -1236,8 +1236,8 @@ def test_redact_action_exists_on_toolbar(qapp):
 ```
 
   Note: `ai_redact`/`_start_ai_job`/`_redact_done` are GUI glue (thread pool + modal dialog) and are exercised only via the headless-safe `apply_redact_regions` test — stated explicitly here; do not try to unit-test the progress dialog.
-- [ ] Run tests: `python -m pytest tests/test_editor_ai.py tests/test_editor.py -q` — expect all passed (3 new + 17 existing).
-- [ ] Commit: `git add wondershot/editor.py tests/test_editor_ai.py && git commit -m "WS-B: AI Redact editor action — non-destructive PixelateItems"`
+- [x] Run tests: `python -m pytest tests/test_editor_ai.py tests/test_editor.py -q` — expect all passed (3 new + 17 existing).
+- [x] Commit: `git add wondershot/editor.py tests/test_editor_ai.py && git commit -m "WS-B: AI Redact editor action — non-destructive PixelateItems"`
 
 ---
 
@@ -1248,7 +1248,7 @@ def test_redact_action_exists_on_toolbar(qapp):
 - Create: `wondershot/bgremove.py`
 - Test: `tests/test_bgremove.py` (create)
 
-- [ ] Write the failing tests:
+- [x] Write the failing tests:
 
 ```python
 # tests/test_bgremove.py
@@ -1332,8 +1332,8 @@ def test_remove_background_with_fake_rembg(fake_rembg):
     assert 100 < out.pixelColor(1, 1).alpha() < 160   # the fake's alpha=128
 ```
 
-- [ ] Run and confirm failure: `python -m pytest tests/test_bgremove.py -q` — expect `ModuleNotFoundError: No module named 'wondershot.bgremove'`.
-- [ ] Implement `wondershot/bgremove.py`:
+- [x] Run and confirm failure: `python -m pytest tests/test_bgremove.py -q` — expect `ModuleNotFoundError: No module named 'wondershot.bgremove'`.
+- [x] Implement `wondershot/bgremove.py`:
 
 ```python
 """Local background removal via rembg/U²-Net ONNX — optional extra.
@@ -1376,15 +1376,15 @@ def remove_background(image):
     return out.convertToFormat(QImage.Format_ARGB32_Premultiplied)
 ```
 
-- [ ] Add the extra to `pyproject.toml` — insert after the `[project.scripts]` table:
+- [x] Add the extra to `pyproject.toml` — insert after the `[project.scripts]` table:
 
 ```toml
 [project.optional-dependencies]
 ai-local = ["rembg>=2.0", "onnxruntime>=1.16"]
 ```
 
-- [ ] Run tests: `python -m pytest tests/test_bgremove.py -q` — expect 3 passed. Sanity-check packaging metadata parses: `python -c "import tomllib; tomllib.load(open('pyproject.toml','rb'))" && echo OK` — expect `OK`.
-- [ ] Commit: `git add wondershot/bgremove.py pyproject.toml tests/test_bgremove.py && git commit -m "WS-B: bgremove — import-guarded rembg wrapper + ai-local extra"`
+- [x] Run tests: `python -m pytest tests/test_bgremove.py -q` — expect 3 passed. Sanity-check packaging metadata parses: `python -c "import tomllib; tomllib.load(open('pyproject.toml','rb'))" && echo OK` — expect `OK`.
+- [x] Commit: `git add wondershot/bgremove.py pyproject.toml tests/test_bgremove.py && git commit -m "WS-B: bgremove — import-guarded rembg wrapper + ai-local extra"`
 
 ---
 
@@ -1394,7 +1394,7 @@ ai-local = ["rembg>=2.0", "onnxruntime>=1.16"]
 - Modify: `wondershot/editor.py` — new command class after `FlattenCommand` (insert after line ~150, before `GripCommand`); toolbar action next to the AI Redact action added in Task 7; methods after `apply_redact_regions`
 - Test: `tests/test_editor_ai.py` (append)
 
-- [ ] Write the failing tests (append to `tests/test_editor_ai.py`):
+- [x] Write the failing tests (append to `tests/test_editor_ai.py`):
 
 ```python
 def test_set_base_image_command_swaps_and_keeps_annotations(qapp):
@@ -1439,8 +1439,8 @@ def test_bg_done_pushes_undoable_swap(qapp):
     assert ed.base_image.pixelColor(5, 5) == QColor("white")
 ```
 
-- [ ] Run and confirm failure: `python -m pytest tests/test_editor_ai.py -q` — expect `ImportError: cannot import name 'SetBaseImageCommand'`.
-- [ ] Implement. In `wondershot/editor.py`, add after the `FlattenCommand` class (after its `undo`, ~line 150):
+- [x] Run and confirm failure: `python -m pytest tests/test_editor_ai.py -q` — expect `ImportError: cannot import name 'SetBaseImageCommand'`.
+- [x] Implement. In `wondershot/editor.py`, add after the `FlattenCommand` class (after its `undo`, ~line 150):
 
 ```python
 class SetBaseImageCommand(QUndoCommand):
@@ -1504,14 +1504,23 @@ class SetBaseImageCommand(QUndoCommand):
 ```
 
   Note: `remove_background()` itself (thread-pool + progress dialog) is GUI glue covered indirectly; `_bg_done` and `SetBaseImageCommand` carry the logic and are unit-tested above.
-- [ ] Run tests: `python -m pytest tests/test_editor_ai.py tests/test_editor.py -q` — expect all passed (7 in test_editor_ai + 17 existing).
-- [ ] Run the FULL suite to close out the workstream: `python -m pytest tests/ -q` — expect 0 failures.
-- [ ] Commit: `git add wondershot/editor.py tests/test_editor_ai.py && git commit -m "WS-B: Remove Background editor action with SetBaseImageCommand undo"`
+- [x] Run tests: `python -m pytest tests/test_editor_ai.py tests/test_editor.py -q` — expect all passed (7 in test_editor_ai + 17 existing).
+- [x] Run the FULL suite to close out the workstream: `python -m pytest tests/ -q` — expect 0 failures.
+- [x] Commit: `git add wondershot/editor.py tests/test_editor_ai.py && git commit -m "WS-B: Remove Background editor action with SetBaseImageCommand undo"`
 
 ---
 
 ## Verification (after all tasks)
 
-- [ ] `python -m pytest tests/ -q` — entire suite green, headless.
-- [ ] `python -c "import wondershot.aiclient, wondershot.ocr, wondershot.redact, wondershot.bgremove; print('imports ok')"` — no rembg/onnx required for core imports.
+- [x] `python -m pytest tests/ -q` — entire suite green, headless.
+- [x] `python -c "import wondershot.aiclient, wondershot.ocr, wondershot.redact, wondershot.bgremove; print('imports ok')"` — no rembg/onnx required for core imports.
 - [ ] Manual smoke (optional, needs a display + an Ollama/OpenAI endpoint): `wondershot`, open Settings → AI, fill endpoint/model, Test connection; open an image in the editor, hit AI Redact, confirm pixelate regions appear selected/adjustable and a single Ctrl+Z removes them; Remove BG stays greyed out with the install tooltip unless `pip install -e .[ai-local]` was run.
+
+> **Left for Jack (needs a live desktop + AI endpoint — skipped per agent constraints):**
+>
+> ```bash
+> cd ~/GitHub/grabbit-wt/ws-b && .venv/bin/wondershot
+> ```
+> 1. Settings → AI: enter endpoint (e.g. `http://localhost:11434`) and a vision model (e.g. `llava`), click "Test connection" — expect "OK — replied: …".
+> 2. Open a screenshot with an email/key visible in the editor, click "AI Redact" — pixelate patches should appear over the sensitive text; one Ctrl+Z removes them all.
+> 3. "Remove BG" should be greyed out with the `wondershot[ai-local]` tooltip; after `.venv/bin/pip install -e ".[ai-local]"` it enables, swaps in a transparent background, keeps annotations, and undoes cleanly.

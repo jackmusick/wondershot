@@ -17,6 +17,9 @@ keywords = ["screenshot", "wayland", "kde", "snagit", "annotation"]
 wondershot = "wondershot.cli:main"
 grabbit = "wondershot.cli:main"  # legacy alias (existing hotkeys)
 
+[project.optional-dependencies]
+ai-local = ["rembg>=2.0", "onnxruntime>=1.16"]
+
 [tool.setuptools.packages.find]
 include = ["wondershot*"]
 

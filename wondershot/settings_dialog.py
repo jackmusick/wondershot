@@ -196,6 +196,7 @@ class SettingsDialog(QDialog):
         gen_layout.addStretch(1)
 
         tabs.addTab(self._build_share_tab(), "Sharing")
+        tabs.addTab(self._build_ai_tab(), "AI")
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -265,6 +266,73 @@ class SettingsDialog(QDialog):
         v.addWidget(warn)
         v.addStretch(1)
         return w
+
+    # -- AI (OpenAI-compatible endpoint) -----------------------------------
+
+    def _build_ai_tab(self) -> QWidget:
+        s = self.settings
+        w = QWidget()
+        v = QVBoxLayout(w)
+        form = QFormLayout()
+
+        self.ai_endpoint = QLineEdit(s.ai_endpoint)
+        self.ai_endpoint.setPlaceholderText(
+            "https://api.openai.com  or  http://localhost:11434")
+        form.addRow("Endpoint:", self.ai_endpoint)
+
+        self.ai_api_key = QLineEdit(s.ai_api_key)
+        self.ai_api_key.setEchoMode(QLineEdit.Password)
+        self.ai_api_key.setPlaceholderText("optional for local servers")
+        form.addRow("API key:", self.ai_api_key)
+
+        self.ai_model = QLineEdit(s.ai_model)
+        self.ai_model.setPlaceholderText("e.g. gpt-4o-mini, llava")
+        form.addRow("Model:", self.ai_model)
+        v.addLayout(form)
+
+        test_row = QHBoxLayout()
+        self.ai_test_btn = QPushButton("Test connection")
+        self.ai_test_btn.clicked.connect(self._ai_test)
+        self.ai_test_status = QLabel("")
+        test_row.addWidget(self.ai_test_btn)
+        test_row.addWidget(self.ai_test_status, 1)
+        v.addLayout(test_row)
+
+        hint = QLabel(
+            "Any OpenAI-compatible chat endpoint works (OpenAI, Ollama, "
+            "LM Studio, llama.cpp server). AI Redact needs a model that "
+            "accepts images. The key is stored unencrypted in "
+            "Wondershot's config file — use a scoped key.")
+        hint.setWordWrap(True)
+        hint.setStyleSheet("color: palette(mid);")
+        v.addWidget(hint)
+        v.addStretch(1)
+        return w
+
+    def _ai_test(self) -> None:
+        from PySide6.QtCore import QThreadPool
+        from . import aiclient
+        endpoint = self.ai_endpoint.text().strip()
+        model = self.ai_model.text().strip()
+        if not endpoint or not model:
+            self.ai_test_status.setText("enter an endpoint and a model first")
+            return
+        key = self.ai_api_key.text().strip()
+        self.ai_test_btn.setEnabled(False)
+        self.ai_test_status.setText("testing…")
+        job = aiclient.AIJob(
+            lambda: aiclient.test_connection(endpoint, key, model))
+        job.emitter.done.connect(self._ai_test_done)
+        self._ai_test_job = job  # keep the signal emitter alive
+        QThreadPool.globalInstance().start(job)
+
+    def _ai_test_done(self, reply, error: str) -> None:
+        self.ai_test_btn.setEnabled(True)
+        if error:
+            import html
+            self.ai_test_status.setText(f"<i>{html.escape(error)}</i>")
+        else:
+            self.ai_test_status.setText(f"OK — replied: {str(reply)[:40]}")
 
     # -- OneDrive / SharePoint -------------------------------------------
 
@@ -609,4 +677,7 @@ class SettingsDialog(QDialog):
                       "s3_access_key", "s3_secret_key",
                       "azure_account", "azure_container", "azure_key"):
             setattr(self.settings, field, getattr(self, field).text().strip())
+        self.settings.ai_endpoint = self.ai_endpoint.text().strip()
+        self.settings.ai_api_key = self.ai_api_key.text().strip()
+        self.settings.ai_model = self.ai_model.text().strip()
         return moved
