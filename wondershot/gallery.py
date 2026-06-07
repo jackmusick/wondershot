@@ -204,6 +204,8 @@ class _ThumbJob(QRunnable):
         import subprocess
         import tempfile
 
+        from . import ffmpegutil
+
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tf:
             out = tf.name
         try:
@@ -212,15 +214,15 @@ class _ThumbJob(QRunnable):
                     ["ffmpegthumbnailer", "-i", self.path, "-o", out,
                      "-s", "512", "-q", "8"],
                     capture_output=True, timeout=15)
-            elif shutil.which("ffmpeg"):
-                r = subprocess.run(
-                    ["ffmpeg", "-y", "-ss", "1", "-i", self.path,
+            elif ffmpegutil.have_ffmpeg():
+                r = ffmpegutil.run_ffmpeg(
+                    ["-y", "-ss", "1", "-i", self.path,
                      "-frames:v", "1", out],
-                    capture_output=True, timeout=15)
+                    timeout=15)
             else:
                 r = None
             img = QImage(out) if r is not None and r.returncode == 0 else QImage()
-        except (OSError, subprocess.TimeoutExpired):
+        except (OSError, subprocess.TimeoutExpired, ffmpegutil.FfmpegMissing):
             img = QImage()
         finally:
             if os.path.exists(out):

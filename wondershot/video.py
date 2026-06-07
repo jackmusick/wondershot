@@ -14,6 +14,8 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 
+from . import ffmpegutil
+
 from PySide6.QtCore import QPoint, QPointF, QProcess, QRect, QRectF, Qt, QUrl, Signal
 from PySide6.QtGui import QColor, QIcon, QPainter, QPen
 from PySide6.QtMultimedia import QAudioOutput, QMediaDevices, QMediaPlayer
@@ -77,10 +79,10 @@ def pick_encoder() -> str:
     global _encoder_cache
     if _encoder_cache is None:
         try:
-            out = subprocess.run(["ffmpeg", "-hide_banner", "-encoders"],
-                                 capture_output=True, text=True,
-                                 timeout=10).stdout
-        except (OSError, subprocess.TimeoutExpired):
+            out = ffmpegutil.run_ffmpeg(["-hide_banner", "-encoders"],
+                                        timeout=10).stdout
+        except (ffmpegutil.FfmpegMissing, OSError,
+                subprocess.TimeoutExpired):
             out = ""
         for enc in ("libx264", "libopenh264", "mpeg4"):
             if enc in out:
@@ -431,7 +433,7 @@ class VideoPane(QWidget):
         self.blur_btn.setIcon(QIcon.fromTheme("view-private"))
         self.blur_btn.setCheckable(True)
         self.blur_btn.toggled.connect(self._blur_mode)
-        self.blur_btn.setEnabled(shutil.which("ffmpeg") is not None)
+        self.blur_btn.setEnabled(ffmpegutil.have_ffmpeg())
 
         self.apply_btn = QPushButton("Apply blurs", self)
         self.apply_btn.setIcon(QIcon.fromTheme("dialog-ok-apply"))
@@ -441,7 +443,7 @@ class VideoPane(QWidget):
         self.gif_btn = QPushButton("Convert to GIF", self)
         self.gif_btn.setIcon(QIcon.fromTheme("video-x-generic"))
         self.gif_btn.clicked.connect(self._convert_gif)
-        self.gif_btn.setEnabled(shutil.which("ffmpeg") is not None)
+        self.gif_btn.setEnabled(ffmpegutil.have_ffmpeg())
 
         controls = QHBoxLayout()
         controls.setContentsMargins(8, 4, 8, 0)
@@ -791,7 +793,7 @@ class VideoPane(QWidget):
         self.apply_btn.setText("Rendering…")
         self._notify("Rendering blurred video…", 0)
         self._set_rendering(True)
-        self._blur_proc.start("ffmpeg", args)
+        self._blur_proc.start(ffmpegutil.ffmpeg_path(), args)
 
     def _blur_done(self, code: int, tmp: str, out: str) -> None:
         proc, self._blur_proc = self._blur_proc, None
@@ -833,8 +835,8 @@ class VideoPane(QWidget):
         self.gif_btn.setEnabled(False)
         self.gif_btn.setText("Converting…")
         self.status.emit("Converting to GIF…", 0)
-        self._gif_proc.start("ffmpeg", ["-y", "-i", self.path,
-                                        "-vf", vf, tmp])
+        self._gif_proc.start(ffmpegutil.ffmpeg_path(),
+                             ["-y", "-i", self.path, "-vf", vf, tmp])
 
     def _gif_done(self, code: int, tmp: str, out: str) -> None:
         proc, self._gif_proc = self._gif_proc, None

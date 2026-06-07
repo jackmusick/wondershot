@@ -204,7 +204,7 @@ git commit -m "Add ffmpegutil: single ffmpeg discovery/invocation seam for WS-E"
 - Modify: `wondershot/gallery.py` (lines ~201–231 `_ThumbJob._video_frame`)
 - Test: `tests/test_video_filter.py` (extend)
 
-- [ ] **Step 2.1 — Write the failing test.** Append to `tests/test_video_filter.py`:
+- [x] **Step 2.1 — Write the failing test.** Append to `tests/test_video_filter.py`:
 
 ```python
 def test_pick_encoder_falls_back_when_ffmpeg_missing(monkeypatch):
@@ -220,9 +220,9 @@ def test_pick_encoder_falls_back_when_ffmpeg_missing(monkeypatch):
     assert video.pick_encoder() == "mpeg4"
 ```
 
-- [ ] **Step 2.2 — Run it, expect failure.** `python -m pytest tests/test_video_filter.py::test_pick_encoder_falls_back_when_ffmpeg_missing -q` → fails: `pick_encoder` still calls `subprocess.run` directly (returns whatever the real machine has, e.g. `libx264`, or errors because `boom` was never invoked). Either failure mode is fine — the point is it doesn't go through ffmpegutil yet.
+- [x] **Step 2.2 — Run it, expect failure.** `python -m pytest tests/test_video_filter.py::test_pick_encoder_falls_back_when_ffmpeg_missing -q` → fails: `pick_encoder` still calls `subprocess.run` directly (returns whatever the real machine has, e.g. `libx264`, or errors because `boom` was never invoked). Either failure mode is fine — the point is it doesn't go through ffmpegutil yet.
 
-- [ ] **Step 2.3 — Migrate `video.py`.** Add to the imports block (after `import subprocess`):
+- [x] **Step 2.3 — Migrate `video.py`.** Add to the imports block (after `import subprocess`):
 
 ```python
 from . import ffmpegutil
@@ -259,7 +259,7 @@ In `_convert_gif`, replace `self._gif_proc.start("ffmpeg", [...])` → `self._gi
 
 Gotcha: `ffmpeg_path()` raises if ffmpeg is missing, but both call sites are only reachable from buttons that are disabled when `have_ffmpeg()` is False — no extra try/except needed. Keep `import shutil` in video.py (`shutil.move` is still used).
 
-- [ ] **Step 2.4 — Migrate `gallery.py`.** Replace `_ThumbJob._video_frame` (line ~201) with:
+- [x] **Step 2.4 — Migrate `gallery.py`.** Replace `_ThumbJob._video_frame` (line ~201) with:
 
 ```python
     def _video_frame(self) -> QImage:
@@ -297,9 +297,9 @@ Gotcha: `ffmpeg_path()` raises if ffmpeg is missing, but both call sites are onl
         return img
 ```
 
-- [ ] **Step 2.5 — Run tests.** `python -m pytest tests/ -q` → all pass, including the new fallback test.
+- [x] **Step 2.5 — Run tests.** `python -m pytest tests/ -q` → all pass, including the new fallback test.
 
-- [ ] **Step 2.6 — Commit.**
+- [x] **Step 2.6 — Commit.**
 ```
 git add wondershot/video.py wondershot/gallery.py tests/test_video_filter.py
 git commit -m "Route all existing ffmpeg call sites through ffmpegutil"

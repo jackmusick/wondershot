@@ -43,3 +43,15 @@ def test_rect_clamped_to_frame():
         [Redaction(QRect(600, 340, 200, 100), 0, 1)],
         video_w=640, video_h=360)
     assert "crop=40:20:600:340" in graph
+
+def test_pick_encoder_falls_back_when_ffmpeg_missing(monkeypatch):
+    import wondershot.video as video
+    from wondershot import ffmpegutil
+
+    monkeypatch.setattr(video, "_encoder_cache", None)
+
+    def boom(args, timeout=60):
+        raise ffmpegutil.FfmpegMissing()
+
+    monkeypatch.setattr(ffmpegutil, "run_ffmpeg", boom)
+    assert video.pick_encoder() == "mpeg4"
