@@ -443,7 +443,7 @@ Mirror `ai_redact` exactly: gate on `ai_configured`, snapshot the base image, ru
 - Modify: `wondershot/editor.py` (toolbar in `_build_toolbar` after the redact action ~line 601; new methods next to `ai_redact`/`apply_redact_regions` ~lines 721-764)
 - Create: `tests/test_editor_simplify.py`
 
-- [ ] **Step 1: Write the failing tests** — create `tests/test_editor_simplify.py`:
+- [x] **Step 1: Write the failing tests** — create `tests/test_editor_simplify.py`:
 
 ```python
 """Editor integration for the AI simplifier (offscreen, no network)."""
@@ -533,12 +533,12 @@ def test_simplify_done_error_path_keeps_scene_clean(qapp, monkeypatch):
     assert [i for i in ed.scene.items() if isinstance(i, RectItem)] == []
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `QT_QPA_PLATFORM=offscreen .venv/bin/pytest tests/test_editor_simplify.py -v`
 Expected: FAIL — `AttributeError: 'EditorWindow' object has no attribute 'apply_simplify_regions'` (and `simplify_action`)
 
-- [ ] **Step 3: Implement** — in `wondershot/editor.py`:
+- [x] **Step 3: Implement** — in `wondershot/editor.py`:
 
 (a) In `_build_toolbar`, directly after `tb.addAction(self.redact_action)`:
 
@@ -608,12 +608,12 @@ Expected: FAIL — `AttributeError: 'EditorWindow' object has no attribute 'appl
         return len(kept)
 ```
 
-- [ ] **Step 4: Run to verify pass** (plus the existing editor suites — same file touched)
+- [x] **Step 4: Run to verify pass** (plus the existing editor suites — same file touched)
 
 Run: `QT_QPA_PLATFORM=offscreen .venv/bin/pytest tests/test_editor_simplify.py tests/test_editor.py tests/test_editor_ai.py tests/test_editor_sidecar.py -v`
 Expected: ALL PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add wondershot/editor.py tests/test_editor_simplify.py

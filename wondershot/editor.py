@@ -600,6 +600,12 @@ class EditorWindow(QMainWindow):
         self.redact_action.triggered.connect(self.ai_redact)
         tb.addAction(self.redact_action)
 
+        self.simplify_action = self._act("AI Simplify", "image-x-generic")
+        self.simplify_action.setToolTip(
+            "Replace UI regions with clean editable blocks (Settings → AI)")
+        self.simplify_action.triggered.connect(self.ai_simplify)
+        tb.addAction(self.simplify_action)
+
         from . import bgremove
         self.bg_action = self._act("Remove BG", "edit-clear-all")
         self.bg_action.triggered.connect(self.remove_background)
@@ -762,6 +768,60 @@ class EditorWindow(QMainWindow):
                else "AI Redact: nothing sensitive found")
         self.statusBar().showMessage(msg, 8000)
         return len(clamped)
+
+    def ai_simplify(self) -> None:
+        from .aiclient import ai_configured
+        from . import simplify
+        if not (self.settings and ai_configured(self.settings)):
+            self.statusBar().showMessage(
+                "Configure an AI endpoint in Settings → AI first", 6000)
+            return
+        s = self.settings
+        image = self.base_image.copy()  # snapshot off the GUI thread's state
+        endpoint, key, model = s.ai_endpoint, s.ai_api_key, s.ai_model
+        self._start_ai_job(
+            lambda: simplify.simplify_regions(image, endpoint, key, model),
+            "Simplifying UI…", self._simplify_done)
+
+    def _simplify_done(self, regions, error: str) -> None:
+        if error:
+            QMessageBox.warning(self, "Wondershot",
+                                f"AI Simplify failed: {error}")
+            return
+        self.apply_simplify_regions(regions or [])
+
+    def apply_simplify_regions(self, regions) -> int:
+        """Region -> filled RectItem objects, one undo macro, never
+        destructive: text runs get a neutral gray block, chrome gets the
+        region's dominant color, images get the dominant color plus a
+        slightly darker outline. Everything stays editable afterwards."""
+        from . import simplify
+        img_rect = QRect(0, 0, self.base_image.width(),
+                         self.base_image.height())
+        kept: list[tuple[QRect, str]] = []
+        for reg in regions:
+            c = QRect(reg.rect).intersected(img_rect)
+            if c.width() >= 4 and c.height() >= 4:
+                kept.append((c, reg.kind))
+        if kept:
+            self.undo_stack.beginMacro("AI simplify")
+            try:
+                for c, kind in kept:
+                    if kind == "text":
+                        fill = QColor(simplify.TEXT_FILL)
+                    else:
+                        fill = simplify.dominant_color(self.base_image, c)
+                    pen = fill.darker(115) if kind == "image" else QColor(fill)
+                    item = RectItem(QRectF(c), pen, 1, fill=fill)
+                    self.undo_stack.push(
+                        AddItemCommand(self, item, "AI simplify"))
+            finally:
+                self.undo_stack.endMacro()
+        msg = (f"AI Simplify: replaced {len(kept)} region(s) — every block "
+               "is editable; Ctrl+Z undoes them all" if kept
+               else "AI Simplify: no regions found")
+        self.statusBar().showMessage(msg, 8000)
+        return len(kept)
 
     def remove_background(self) -> None:
         from . import bgremove
