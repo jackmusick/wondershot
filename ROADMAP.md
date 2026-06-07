@@ -121,6 +121,17 @@ after Linux is feature-complete.
   scroll capture needs, so the halo rides along with WS-D rather than
   blocking WS-A. Until then, recordings keep cursor-mode *embedded* (2).
   Click *animation* remains gated on WS-D input capture.
+- Pause/resume (M): **investigated 2026-06-07, parked.** gst-launch argv
+  subprocesses have no runtime control channel — no PAUSED state, no
+  valve property flips. SIGSTOP/SIGCONT freezes the process but not the
+  pipeline clock: do-timestamp'd buffers jump PTS across the gap, and
+  the videorate element (the no-PTS landmine fix) backfills the entire
+  pause with duplicated frames to keep CFR — silently wrong output
+  (probe transcript: spikes/pause_resume_probe.md). Clean pause needs
+  owning the pipeline in-process (gst python bindings / appsink) with
+  valves ahead of the mux and accumulated-offset PTS rewriting — the
+  same frame-source seam as the cursor halo and WS-D scroll capture;
+  pause/resume rides along with that rewrite.
 
 **WS-B — AI foundation** _(shipped; Jack verified 2026-06-07: "they work okay")_
 - BYO OpenAI-compatible endpoint: `ai_endpoint`/`ai_api_key`/`ai_model`

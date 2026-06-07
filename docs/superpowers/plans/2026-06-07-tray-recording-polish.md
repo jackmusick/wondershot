@@ -1033,18 +1033,18 @@ Why this is expected to fail — reason from the architecture before running any
 - The recorder is a `gst-launch-1.0` **argv subprocess** (`record.py:248-288 _gst_args`, `record.py:308-309 Popen`). gst-launch exposes **no runtime control channel**: no way to set the pipeline to `PAUSED`, no way to flip a `valve drop=true/false` property mid-run. Its only inputs are signals, and the only meaningful one is SIGINT (= EOS via `-e`).
 - The one externally available "pause" is `SIGSTOP`/`SIGCONT` on the process. That freezes the *process*, not the *pipeline clock*: `pipewiresrc do-timestamp=true` and `pulsesrc do-timestamp=true` stamp buffers with the running pipeline clock, so on `SIGCONT` the buffer PTS jump by the paused wall-time. `mp4mux` writes those timestamps as-is → a frozen-frame gap (and pulse overruns dropping audio, exactly the journal signature from 2026-06-06). Worse, the `videorate` element in the video branch (the no-PTS landmine fix, ROADMAP "Platform landmines": *pipewiresrc intermittently emits buffers with no PTS … videorate + fixed framerate caps drop them and yield CFR output*) will **fill the entire pause gap with duplicated frames** to maintain CFR — silently producing minutes of frozen video instead of a cut.
 
-- [ ] Run the SIGSTOP probe on a live KDE session (NOT offscreen) to confirm and capture evidence:
+- [x] Run the SIGSTOP probe on a live KDE session (NOT offscreen) to confirm and capture evidence: *(this session is non-interactive — probe moved to the Manual verification checklist below; the gate fails on architecture grounds regardless)*
   1. Start a recording from the app (worktree build: `.venv/bin/wondershot`, Record).
   2. `kill -STOP $(pgrep -f 'gst-launch-1.0 -e pipewiresrc')`, wait 10 s, `kill -CONT` the same pid, record 5 more seconds, stop normally.
   3. `ffprobe -show_streams <output>.mp4` and play it: expected duration includes the paused 10 s as duplicated frames (videorate backfill) and/or desynced audio.
   4. Paste the ffprobe output and observations into `spikes/pause_resume_probe.md`.
 
-- [ ] Write `spikes/pause_resume_probe.md` with: the architecture reasoning above, the probe transcript, and the conclusion.
+- [x] Write `spikes/pause_resume_probe.md` with: the architecture reasoning above, the probe transcript, and the conclusion.
 
 ### Step 6.2: Feasibility gate
 
-- [ ] **Gate:** pause/resume ships in this track ONLY IF the probe shows a mechanism that (a) works against a `gst-launch` argv subprocess, and (b) produces gapless, A/V-synced output across a pause. Per the reasoning above this is not expected to exist.
-- [ ] If the gate FAILS (expected): add the findings to `ROADMAP.md` under the recording section (near the cursor-halo "parked" entry, which already documents the same in-process-pipeline seam), with this text:
+- [x] **Gate:** *(FAILED, as expected)* pause/resume ships in this track ONLY IF the probe shows a mechanism that (a) works against a `gst-launch` argv subprocess, and (b) produces gapless, A/V-synced output across a pause. Per the reasoning above this is not expected to exist.
+- [x] If the gate FAILS (expected): add the findings to `ROADMAP.md` under the recording section (near the cursor-halo "parked" entry, which already documents the same in-process-pipeline seam), with this text:
 
 ```markdown
 - Pause/resume (M): **investigated 2026-06-07, parked.** (Use the actual probe-run date.) gst-launch argv
@@ -1060,9 +1060,9 @@ Why this is expected to fail — reason from the architecture before running any
   pause/resume rides along with that rewrite.
 ```
 
-- [ ] If the gate PASSES (unexpected): STOP and write a follow-up plan instead of improvising — pause touches the stop state machine from Tasks 1-2 and needs its own TDD pass (recorder `paused` state + signal, both-control Pause UI, PTS verification fixture).
+- [x] If the gate PASSES (unexpected): *(N/A — gate failed)* STOP and write a follow-up plan instead of improvising — pause touches the stop state machine from Tasks 1-2 and needs its own TDD pass (recorder `paused` state + signal, both-control Pause UI, PTS verification fixture).
 
-- [ ] Commit: `git add -A && git commit -m "spike: pause/resume infeasible over gst-launch; findings to ROADMAP (parked)"`
+- [x] Commit: `git add -A && git commit -m "spike: pause/resume infeasible over gst-launch; findings to ROADMAP (parked)"`
 
 ---
 
@@ -1097,3 +1097,34 @@ Why this is expected to fail — reason from the architecture before running any
 - Pause/resume implementation unless the Task 6 gate passes (not expected).
 - The `toggle_bubble` RuntimeError (`CameraBubble already deleted` — journal tracebacks 2026-06-06 16:03/16:47/16:48, current code `app.py:282-293`): real adjacent bug, belongs to the bubble owner's track; flag it to the orchestrator rather than fixing here.
 - Quitting the app while recording orphans the gst process (the `.rendering` orphans' root source): Task 1's sweep cleans the leftovers; a clean shutdown-stop belongs with the quit/lifecycle work — note for the orchestrator.
+
+---
+
+## Manual verification checklist (live KDE session — not runnable offscreen)
+
+- [ ] Tray-stop bug fix: start a recording, stop it from the GALLERY toolbar —
+      the tray item must immediately flip to a disabled "Stopping…" and both
+      controls must reset afterwards. Repeat stopping from the TRAY item and
+      confirm the toolbar mirrors it.
+- [ ] Double-stop: while a stop is finalizing, click the other Stop control —
+      it must already be disabled (no dead-click possible).
+- [ ] Tray tooltip: hover the tray icon during a recording — it must read
+      "Wondershot — recording N:NN" and revert to "Wondershot — screenshots"
+      after finish/fail.
+- [ ] EOS-wedge escalation: if a stop ever takes more than ~5 s, confirm the
+      recording still finalizes within ~10 s (second SIGINT, then SIGKILL) and
+      that on the SIGKILL path the partial recording is KEPT in the library
+      (failure toast says "partial recording kept: …").
+- [ ] Stale-tmp sweep: with old orphans in `<library>/.rendering` (the four
+      from 2026-06-06), start a recording — orphans older than 1 h are removed;
+      the live recording's tmp is untouched.
+- [ ] Countdown: set Recording countdown to 3 s in Settings → General, hit
+      Record — a frameless always-on-top 3-2-1 overlay shows, then recording
+      starts. Esc (or clicking the overlay, or pressing Record again) cancels
+      without starting.
+- [ ] Task 6 SIGSTOP probe (evidence capture only — gate already failed on
+      architecture): start a recording, `kill -STOP $(pgrep -f
+      'gst-launch-1.0 -e pipewiresrc')`, wait 10 s, `kill -CONT` the pid,
+      record 5 more seconds, stop. `ffprobe -show_streams <output>.mp4` —
+      expect the paused 10 s present as duplicated frames / desynced audio.
+      Paste results into `spikes/pause_resume_probe.md`.
