@@ -743,7 +743,7 @@ This is glue to a live-compositor spike path; the dispatch line itself cannot be
 
 Naming note: the spec suggests `--scroll-capture-spike`; this plan deliberately shortens it to `--scroll-spike` (hidden flag, spike-only, never user-facing — the spec's "hidden CLI flag or test harness" wording leaves the name open).
 
-- [ ] In `wondershot/cli.py`, after the `--selftest` argument (line 46-47):
+- [x] In `wondershot/cli.py`, after the `--selftest` argument (line 46-47):
   ```python
       parser.add_argument("--selftest", metavar="DIR",
                           help="render UI screenshots into DIR and exit (dev tool)")
@@ -753,7 +753,7 @@ Naming note: the spec suggests `--scroll-capture-spike`; this plan deliberately 
       parser.add_argument("--scroll-spike", action="store_true",
                           help=argparse.SUPPRESS)  # WS-D spike harness
   ```
-- [ ] In the same file, after the `--selftest` dispatch (lines 56-58):
+- [x] In the same file, after the `--selftest` dispatch (lines 56-58):
   ```python
       if args.selftest:
           from .selftest import run_selftest
@@ -765,13 +765,13 @@ Naming note: the spec suggests `--scroll-capture-spike`; this plan deliberately 
           from .scrollsource import run_scroll_spike
           return run_scroll_spike()
   ```
-- [ ] Quick headless check (flag must be hidden from --help but still parse):
+- [x] Quick headless check (flag must be hidden from --help but still parse):
   ```bash
   QT_QPA_PLATFORM=offscreen .venv/bin/wondershot --help | grep scroll-spike
   echo "exit=$? (expect 1: hidden flag absent from help)"
   ```
   Expected: no grep output, `exit=1`.
-- [ ] Run the repo suite:
+- [x] Run the repo suite:
   ```bash
   .venv/bin/python -m pytest tests/ -q
   ```
@@ -785,7 +785,7 @@ Naming note: the spec suggests `--scroll-capture-spike`; this plan deliberately 
   4. Ctrl+C in the terminal.
   5. Verify: a `ScrollCapture_*.png` lands in the library dir (default `~/Pictures/Screenshots`), is taller than the screen, and content reads continuously (small seams acceptable; note them in the ROADMAP findings, Task 9).
   - Known limits to record in findings: full-screen casts stitch the whole desktop (window-pick the browser for cleaner results); fast scrolling that exceeds `viewport_height - 64px` per frame at 10 fps breaks matching.
-- [ ] Commit:
+- [x] Commit:
   ```bash
   git add wondershot/cli.py
   git commit -m "WS-D: hidden --scroll-spike CLI flag (spike harness, manual test)"
