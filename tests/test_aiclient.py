@@ -190,3 +190,29 @@ def test_aijob_cancel_suppresses_emit(qapp):
     job.cancel = True
     job.run()
     assert got == []
+
+
+def test_chat_requests_generous_token_budget(monkeypatch):
+    """A full-screen region list overflowed max_tokens=1024 and truncated
+    mid-array (Jack's AI-simplify failure, 2026-06-07). chat() must ask
+    for a much larger budget."""
+    import json
+
+    from wondershot import aiclient
+
+    seen = {}
+
+    class _Resp:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def read(self):
+            return json.dumps(
+                {"choices": [{"message": {"content": "[]"}}]}).encode()
+
+    def fake_urlopen(req, timeout=120):
+        seen["body"] = json.loads(req.data)
+        return _Resp()
+
+    monkeypatch.setattr(aiclient.urllib.request, "urlopen", fake_urlopen)
+    aiclient.chat("http://x", "", "llava", "hi")
+    assert seen["body"]["max_tokens"] >= 4096

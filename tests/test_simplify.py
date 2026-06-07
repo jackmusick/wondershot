@@ -141,3 +141,24 @@ def test_parse_regions_gathers_objects_from_markdown_list(qapp):
     regions = parse_regions(reply, 1000, 1000)
     kinds = [r.kind for r in regions]
     assert kinds == ["chrome", "chrome", "text"], kinds
+
+
+def test_parse_regions_truncated_reply_says_cut_off(qapp):
+    """A reply cut off mid-array (model hit its output limit) with no
+    complete object to salvage gets a truncation-flavored error, not a
+    generic 'not JSON' (Jack, 2026-06-07)."""
+    from wondershot.simplify import parse_regions
+    reply = '```json\n[\n  {"type": "chrome", "x0": 0.0, "y0": 0.0, "x1": 0.2'
+    with pytest.raises(OSError) as exc:
+        parse_regions(reply, 100, 100)
+    assert "cut off" in str(exc.value).lower()
+
+
+def test_parse_regions_salvages_complete_objects_before_truncation(qapp):
+    """If truncation happens AFTER some complete objects, keep them."""
+    from wondershot.simplify import parse_regions
+    reply = ('[{"type":"chrome","x0":0,"y0":0,"x1":1,"y1":0.1},'
+             '{"type":"text","x0":0,"y0":0.2,"x1":0.5,"y1":0.3},'
+             '{"type":"image","x0":0.6,"y0":0.6,"x1":0.9')  # cut off
+    regions = parse_regions(reply, 100, 100)
+    assert [r.kind for r in regions] == ["chrome", "text"]

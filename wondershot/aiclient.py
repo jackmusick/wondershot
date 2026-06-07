@@ -73,10 +73,14 @@ def parse_response(body: bytes | str) -> str:
 
 
 def chat(endpoint: str, api_key: str, model: str, prompt: str,
-         image=None, timeout: int = 120) -> str:
-    """One blocking chat round-trip. Raises OSError on any failure."""
+         image=None, timeout: int = 120, max_tokens: int = 4096) -> str:
+    """One blocking chat round-trip. Raises OSError on any failure.
+
+    max_tokens defaults high: a full-screen region/redaction list is long
+    JSON, and a small ceiling truncates the reply mid-array.
+    """
     url, headers, body = build_request(endpoint, api_key, model, prompt,
-                                       image)
+                                       image, max_tokens=max_tokens)
     req = urllib.request.Request(url, data=body, method="POST",
                                  headers=headers)
     try:

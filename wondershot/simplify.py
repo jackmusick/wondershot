@@ -75,6 +75,28 @@ REGION_PROMPT = (
 )
 
 
+def _looks_truncated(reply: str) -> str:
+    """True if the reply has an unclosed [ or { (ignoring string contents)
+    — the signature of a response cut off mid-array by a token limit."""
+    depth = 0
+    in_str = esc = False
+    for ch in reply:
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+        elif ch == '"':
+            in_str = True
+        elif ch in "[{":
+            depth += 1
+        elif ch in "]}":
+            depth -= 1
+    return depth > 0
+
+
 def _region_dicts(reply: str):
     """Recover the list of region objects from a model reply.
 
@@ -106,6 +128,11 @@ def parse_regions(reply: str, width: int, height: int) -> list[Region]:
     clamping); a reply with no parseable JSON raises OSError."""
     data = _region_dicts(reply)
     if data is None:
+        if _looks_truncated(reply):
+            raise OSError(
+                "the model's reply was cut off (it hit its output token "
+                "limit before finishing). Try a model with a larger output "
+                "limit, or simplify a smaller crop.")
         raise OSError(f"AI reply was not JSON: {reply[:120]}")
     img = QRect(0, 0, width, height)
     regions: list[Region] = []
