@@ -14,15 +14,22 @@ registered shortcut (or a future safe registration) fires the capture.
 
 from __future__ import annotations
 
+import sys
+
 from PySide6.QtCore import QObject, Signal, Slot
-from PySide6.QtDBus import QDBusConnection
 
 COMPONENT = "grabbit"
 ACTION = "capture-region"
 SERVICE = "org.kde.kglobalaccel"
 
 
-class HotkeyManager(QObject):
+class HotkeyBackend(QObject):
+    """Platform seam for global capture hotkeys.
+
+    Plain QObject base (abc.ABCMeta conflicts with Shiboken's metaclass);
+    subclasses implement register().
+    """
+
     pressed = Signal()
 
     def __init__(self, parent=None):
@@ -30,15 +37,30 @@ class HotkeyManager(QObject):
         self.active = False
 
     def register(self) -> bool:
+        raise NotImplementedError
+
+
+class NullHotkeyBackend(HotkeyBackend):
+    """No global-hotkey integration on this platform yet (WS-E adds real
+    Windows/macOS backends later)."""
+
+    def register(self) -> bool:
+        return False
+
+
+class KGlobalAccelBackend(HotkeyBackend):
+    def register(self) -> bool:
         """Listen for KGlobalAccel presses of a 'grabbit' component.
 
         Never makes method calls into the shortcut daemon (see module
         docstring); adding a signal match rule is harmless on any desktop.
         """
+        from PySide6.QtCore import SLOT
+        from PySide6.QtDBus import QDBusConnection
+
         bus = QDBusConnection.sessionBus()
         if not bus.isConnected():
             return False
-        from PySide6.QtCore import SLOT
         ok = bus.connect(
             SERVICE,
             f"/component/{COMPONENT}",
@@ -51,6 +73,13 @@ class HotkeyManager(QObject):
         return self.active
 
     @Slot(str, str, "qlonglong")
-    def _on_pressed(self, component: str, action: str, _timestamp: int) -> None:
+    def _on_pressed(self, component: str, action: str,
+                    _timestamp: int) -> None:
         if component == COMPONENT and action == ACTION:
             self.pressed.emit()
+
+
+def create_hotkey_backend(parent=None) -> HotkeyBackend:
+    if sys.platform.startswith("linux"):
+        return KGlobalAccelBackend(parent)
+    return NullHotkeyBackend(parent)

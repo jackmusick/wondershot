@@ -247,7 +247,7 @@ Two real findings from the audit. (1) `wondershot/record.py:281–285` builds th
   ```
   Expected: all pass (existing `test_share.py`/`test_msgraph.py` tests set `WONDERSHOT_DATA_DIR`, so they are unaffected).
 
-- [ ] **Commit:**
+- [x] **Commit:**
   ```bash
   git add wondershot/record.py wondershot/msgraph.py tests/test_record.py tests/test_msgraph.py
   git commit -m "paths: recorder log via QStandardPaths; per-platform Graph token dir"
@@ -268,7 +268,7 @@ Two real findings from the audit. (1) `wondershot/record.py:281–285` builds th
 
 **Steps:**
 
-- [ ] **Write the failing tests.** Create `tests/test_hotkey.py`:
+- [x] **Write the failing tests.** Create `tests/test_hotkey.py`:
   ```python
   import os
   import sys
@@ -309,13 +309,13 @@ Two real findings from the audit. (1) `wondershot/record.py:281–285` builds th
   ```
   (QObject construction without a QApplication is fine; no qapp fixture needed. `KGlobalAccelBackend.register()` is never called in tests — on a CI box with no session D-Bus it would just return False, but we don't rely on that.)
 
-- [ ] **Run and watch them fail:**
+- [x] **Run and watch them fail:**
   ```bash
   .venv/bin/pytest tests/test_hotkey.py -v
   ```
   Expected failure: `AttributeError: module 'wondershot.hotkey' has no attribute 'create_hotkey_backend'` (and friends).
 
-- [ ] **Rewrite `wondershot/hotkey.py`.** Keep the existing module docstring (lines 1–13, the KWin landmine note) verbatim at the top, then:
+- [x] **Rewrite `wondershot/hotkey.py`.** Keep the existing module docstring (lines 1–13, the KWin landmine note) verbatim at the top, then:
   ```python
   from __future__ import annotations
 
@@ -391,7 +391,7 @@ Two real findings from the audit. (1) `wondershot/record.py:281–285` builds th
   ```
   Behavior notes: the KGlobalAccel logic is the existing code moved, with two deliberate changes — the QtDBus import moves inside `register()` (so importing `wondershot.hotkey` never touches QtDBus off-Linux), and `__init__`/`active` live on the base. There is no `HotkeyManager` name anymore; the only consumer is updated next step.
 
-- [ ] **Update `wondershot/app.py`.** Line 17:
+- [x] **Update `wondershot/app.py`.** Line 17:
   ```python
   from .hotkey import HotkeyManager
   ```
@@ -413,13 +413,13 @@ Two real findings from the audit. (1) `wondershot/record.py:281–285` builds th
   ```
   (GUI glue — covered by the import-smoke + existing suite, not a new unit test; `app.py` has no headless test harness today.)
 
-- [ ] **Run the full suite (regressions in app import path would surface via gallery/editor tests):**
+- [x] **Run the full suite (regressions in app import path would surface via gallery/editor tests):**
   ```bash
   .venv/bin/pytest tests/ -v && .venv/bin/python -c "import wondershot.app, wondershot.hotkey; print('ok')"
   ```
   Expected: all tests pass; `ok` printed.
 
-- [ ] **Commit:**
+- [x] **Commit:**
   ```bash
   git add wondershot/hotkey.py wondershot/app.py tests/test_hotkey.py
   git commit -m "hotkey: extract HotkeyBackend seam with platform factory (no new backends)"

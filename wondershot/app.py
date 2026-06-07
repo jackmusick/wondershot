@@ -14,7 +14,7 @@ from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 from .capture import CaptureManager, unique_path, timestamp_name
 from .editor import EditorWindow
 from .gallery import GalleryWindow
-from .hotkey import HotkeyManager
+from .hotkey import create_hotkey_backend
 from .settings import Settings
 
 
@@ -93,7 +93,7 @@ class GrabbitApp(QObject):
             lambda t: self.record_action.setText(
                 f"Stop recording ({t})" if t else "Stop recording"))
 
-        self.hotkey = HotkeyManager(self)
+        self.hotkey = create_hotkey_backend(self)
         self.hotkey.pressed.connect(lambda: self.trigger_capture("region"))
         self.hotkey.register()
 
