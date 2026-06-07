@@ -534,7 +534,7 @@
 
 **Explicitly stated:** this GStreamer/portal half is spike-quality. It has NO unit tests — the portal dance needs a live compositor and user interaction, which cannot run headless. Manual test instructions are in Task 7 (after the CLI flag exists). Do not write a failing test for this task.
 
-- [ ] Create `wondershot/scrollsource.py`:
+- [x] Create `wondershot/scrollsource.py`:
   ```python
   """Linux FrameSource: portal ScreenCast -> PipeWire -> Gst appsink.
 
@@ -717,16 +717,16 @@
             f"({img.width()}x{img.height()})")
       return 0
   ```
-- [ ] Sanity-check it imports headless (this is the only automated check for this module — stated above, no unit tests for the GStreamer half):
+- [x] Sanity-check it imports headless (this is the only automated check for this module — stated above, no unit tests for the GStreamer half):
   ```bash
   QT_QPA_PLATFORM=offscreen .venv/bin/python -c "import wondershot.scrollsource; print('import ok')"
   ```
   Expected: `import ok`.
-- [ ] Run the repo suite to confirm no collateral damage:
+- [x] Run the repo suite to confirm no collateral damage:
   ```bash
   .venv/bin/python -m pytest tests/ -q
   ```
-- [ ] Commit:
+- [x] Commit:
   ```bash
   git add wondershot/scrollsource.py
   git commit -m "WS-D: ScreenCastFrameSource (portal->appsink) + scroll-spike runner (spike quality, manual test)"
