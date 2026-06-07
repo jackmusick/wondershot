@@ -21,6 +21,11 @@ def make_rgb(height=60, width=40, seed=7) -> np.ndarray:
     return rng.integers(0, 256, size=(height, width, 3), dtype=np.uint8)
 
 
+def to_gray_noise(height, width, seed):
+    from wondershot.stitch import to_gray
+    return to_gray(make_rgb(height, width, seed))
+
+
 def test_rgb_qimage_roundtrip_exact():
     from wondershot.stitch import qimage_to_rgb, rgb_to_qimage
     arr = make_rgb()
@@ -58,13 +63,17 @@ def test_detect_offset_finds_scroll():
     prev = to_gray(tall[0:200])
     for d in (1, 17, 60, 130):
         cur = to_gray(tall[d:200 + d])
-        assert detect_offset(prev, cur) == d
+        got, conf = detect_offset(prev, cur)
+        assert got == d
+        assert conf >= 0.5
 
 
 def test_detect_offset_identical_frames_is_zero():
     from wondershot.stitch import detect_offset, to_gray
     g = to_gray(make_rgb(height=200, width=40, seed=2))
-    assert detect_offset(g, g) == 0
+    got, conf = detect_offset(g, g)
+    assert got == 0
+    assert conf >= 0.5
 
 
 def test_detect_offset_unrelated_frames_is_none():
@@ -72,7 +81,49 @@ def test_detect_offset_unrelated_frames_is_none():
     from wondershot.stitch import detect_offset, to_gray
     a = to_gray(make_rgb(height=200, width=40, seed=3))
     b = to_gray(make_rgb(height=200, width=40, seed=4))
-    assert detect_offset(a, b) is None
+    assert detect_offset(a, b) == (None, 0.0)
+
+
+def test_textured_xs_skips_flat_bands():
+    """Band x-positions must come from textured columns only."""
+    from wondershot.stitch import textured_xs
+    strip = np.zeros((64, 300), dtype=np.float32)   # flat everywhere
+    strip[:, 100:148] = make_rgb(64, 48, seed=20).mean(axis=2)
+    xs = textured_xs(strip, band_w=48, n=5, var_min=100.0)
+    # linspace(0, 252, 5) -> [0, 63, 126, 189, 252]; x=126 sits inside
+    # the textured block and x=63 overlaps it by 11 columns (mixture
+    # variance ~3000, still >= var_min) — both may survive; x=0, 189,
+    # 252 are fully flat and must not.
+    assert xs
+    assert all(60 <= x <= 148 for x in xs)
+
+
+def test_textured_xs_narrow_image_uses_single_band():
+    from wondershot.stitch import textured_xs
+    strip = to_gray_noise(64, 40, seed=21)
+    assert textured_xs(strip, band_w=48, n=5, var_min=100.0) == [0]
+
+
+def test_detect_offset_blank_frame_is_low_confidence():
+    """A featureless frame must not produce a confident offset.
+    (v1's documented limitation was uniform-band false matches; v2
+    must refuse outright: no textured bands survive var_min, and the
+    full-overlap fallback against a noise prev can't beat threshold/2.)"""
+    from wondershot.stitch import detect_offset, to_gray
+    prev = to_gray(make_rgb(height=200, width=120, seed=22))
+    blank = np.full((200, 120), 255.0, dtype=np.float32)
+    d, conf = detect_offset(prev, blank)
+    assert d is None
+    assert conf == 0.0
+
+
+def test_detect_offset_wide_frame_multiband_consensus():
+    """Wide noise: all 5 bands textured, all agree -> confidence 1.0."""
+    from wondershot.stitch import detect_offset, to_gray
+    tall = make_rgb(height=400, width=300, seed=23)
+    prev = to_gray(tall[0:250])
+    cur = to_gray(tall[37:287])
+    assert detect_offset(prev, cur) == (37, 1.0)
 
 
 def _frame_with_chrome(content: np.ndarray, header: np.ndarray,
