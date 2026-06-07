@@ -1458,7 +1458,7 @@ The "Window" option appears ONLY when `kwin_available()` passes (KDE-only by des
 - Modify: `wondershot/gallery.py` (`_open_capture_window` line 724; `_capture_mode` line 734)
 - Create: `tests/test_capture_window_mode.py`
 
-- [ ] Write the failing test:
+- [x] Write the failing test:
 
 ```python
 # tests/test_capture_window_mode.py
@@ -1504,8 +1504,8 @@ def test_window_button_hidden_without_probe(qapp):
     assert not _window_buttons(w)
 ```
 
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_capture_window_mode.py -q` — expect `TypeError: ... unexpected keyword argument 'window_mode'`.
-- [ ] Implement `CaptureWindow` changes — signature (line 28) becomes:
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_capture_window_mode.py -q` — expect `TypeError: ... unexpected keyword argument 'window_mode'`.
+- [x] Implement `CaptureWindow` changes — signature (line 28) becomes:
 
 ```python
     def __init__(self, settings, parent=None, window_mode: bool = False):
@@ -1529,8 +1529,8 @@ and the secondary-actions row (lines 93–100) becomes:
 
 Also update the signal docstring comment on line 26: `capture_requested = Signal(str)  # "region" | "fullscreen" | "window-auto" | "record"`.
 
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_capture_window_mode.py -q` — expect 2 passed.
-- [ ] Wire app.py (GUI glue — no headless test for these three edits, stated explicitly):
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_capture_window_mode.py -q` — expect 2 passed.
+- [x] Wire app.py (GUI glue — no headless test for these three edits, stated explicitly):
 
   1. In `GrabbitApp.__init__`, right before `self.hotkey = create_hotkey_backend(self)` (line 96):
 
@@ -1563,7 +1563,7 @@ Also update the signal docstring comment on line 26: `capture_requested = Signal
         }[mode]
 ```
 
-- [ ] Wire gallery.py (GUI glue — no headless test, stated explicitly):
+- [x] Wire gallery.py (GUI glue — no headless test, stated explicitly):
 
   1. `_open_capture_window` (line 724): pass the flag —
 
@@ -1579,8 +1579,8 @@ Also update the signal docstring comment on line 26: `capture_requested = Signal
             self.capture.capture_active_window()
 ```
 
-- [ ] Full suite: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q` — all green. Smoke-import: `QT_QPA_PLATFORM=offscreen .venv/bin/python -c "import wondershot.app, wondershot.gallery, wondershot.capture_window"`.
-- [ ] Commit: `git add wondershot/capture_window.py wondershot/app.py wondershot/gallery.py tests/test_capture_window_mode.py && git commit -m "WS-C: Window capture mode in tray + capture panel, gated on KWin probe"`
+- [x] Full suite: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q` — all green. Smoke-import: `QT_QPA_PLATFORM=offscreen .venv/bin/python -c "import wondershot.app, wondershot.gallery, wondershot.capture_window"`.
+- [x] Commit: `git add wondershot/capture_window.py wondershot/app.py wondershot/gallery.py tests/test_capture_window_mode.py && git commit -m "WS-C: Window capture mode in tray + capture panel, gated on KWin probe"`
 
 ---
 

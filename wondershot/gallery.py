@@ -724,7 +724,8 @@ class GalleryWindow(QMainWindow):
     def _open_capture_window(self) -> None:
         if getattr(self, "_capture_window", None) is None:
             from .capture_window import CaptureWindow
-            self._capture_window = CaptureWindow(self.settings)
+            self._capture_window = CaptureWindow(
+                self.settings, window_mode=getattr(self, "kwin_ok", False))
             self._capture_window.capture_requested.connect(
                 self._capture_mode)
         self._capture_window.show()
@@ -736,6 +737,8 @@ class GalleryWindow(QMainWindow):
             self._toggle_record()
         elif mode == "fullscreen":
             self.capture.capture_fullscreen()
+        elif mode == "window-auto":
+            self.capture.capture_active_window()
         else:
             self.capture.capture_region()
 

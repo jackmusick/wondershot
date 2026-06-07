@@ -24,9 +24,9 @@ from PySide6.QtWidgets import (
 
 
 class CaptureWindow(QWidget):
-    capture_requested = Signal(str)  # "region" | "fullscreen" | "record"
+    capture_requested = Signal(str)  # "region" | "fullscreen" | "window-auto" | "record"
 
-    def __init__(self, settings, parent=None):
+    def __init__(self, settings, parent=None, window_mode: bool = False):
         super().__init__(parent)
         self.settings = settings
         self.setWindowTitle("Wondershot capture")
@@ -92,8 +92,11 @@ class CaptureWindow(QWidget):
         right.addWidget(cap, 0, Qt.AlignHCenter)
 
         row = QHBoxLayout()
-        for label, mode in (("Full screen", "fullscreen"),
-                            ("Record", "record")):
+        secondary = [("Full screen", "fullscreen")]
+        if window_mode:
+            secondary.append(("Window", "window-auto"))
+        secondary.append(("Record", "record"))
+        for label, mode in secondary:
             b = QPushButton(label)
             b.setFlat(True)
             b.setStyleSheet("color: palette(link);")

@@ -83,6 +83,10 @@ class GrabbitApp(QObject):
         self._editors: list[EditorWindow] = []
         self._gallery_was_visible = False
 
+        from .kwin import kwin_available
+        self.kwin_ok = kwin_available()
+        self.gallery.kwin_ok = self.kwin_ok  # gates the CaptureWindow button
+
         self.icon = make_app_icon()
         qapp.setWindowIcon(self.icon)
         self.tray = self._build_tray()
@@ -113,6 +117,11 @@ class GrabbitApp(QObject):
         a = QAction("Capture full screen", menu)
         a.triggered.connect(lambda: self.trigger_capture("fullscreen"))
         menu.addAction(a)
+        if self.kwin_ok:
+            a = QAction("Capture window", menu)
+            a.setToolTip("Grab the active window (no picker, KDE only)")
+            a.triggered.connect(lambda: self.trigger_capture("window-auto"))
+            menu.addAction(a)
         menu.addSeparator()
         self.record_action = QAction("Record screen…", menu)
         self.record_action.triggered.connect(self.toggle_recording)
@@ -158,6 +167,7 @@ class GrabbitApp(QObject):
             "region": self.capture.capture_region,
             "fullscreen": self.capture.capture_fullscreen,
             "window": self.capture.capture_window,
+            "window-auto": self.capture.capture_active_window,
         }[mode]
         QTimer.singleShot(delay, fn)
 
