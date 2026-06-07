@@ -206,3 +206,102 @@ real UI happens once Jack's next run looks clean).
 
 All in `stitch.py` / `scrollsource.py` / `cli.py` / tests — no overlap with
 WS-C's files; the two tracks can run in parallel worktrees.
+
+---
+
+# Addendum 2 (2026-06-07): Backlog burn-down — batches 3 and 4
+
+Jack: "knock all of this out as soon as possible, preferably without
+stopping." Autonomous execution, batched by file ownership (editor.py is
+the contention point). One consolidated desktop checklist at the very end.
+
+## Batch 3 (parallel tracks)
+
+### Track 3a: Tray-stop bug + recording polish (record.py, app.py)
+- **Tray Stop bug (confirmed by Jack):** tray-menu Stop does not stop a
+  recording; toolbar stop works. Diagnose first (read the wiring, write a
+  failing test against the real defect), then fix so either control stops
+  and both reset. Regression test required.
+- **Duration in tray tooltip:** recorder.tick already emits elapsed time —
+  mirror it into the tray tooltip alongside the existing action text.
+- **Countdown before start:** optional setting (default off, spinbox 0-10s);
+  small frameless always-on-top countdown widget (compositor places it —
+  no positioning tricks), tick down, then start the portal flow.
+- **Pause/resume:** TIMEBOXED investigation — GStreamer pipeline PAUSED
+  state vs valve element; mp4mux/PTS behavior on resume is the risk (see
+  no-PTS landmine). If clean pause is provable headless-adjacent, ship with
+  toolbar+tray Pause; otherwise document findings in ROADMAP and park.
+- **Region-only recording:** explicitly OUT of this track (portal has no
+  region source; needs crop-in-pipeline design — ROADMAP note only).
+
+### Track 3b: Sidecar persistence (editor.py, gallery.py, items.py, new sidecar.py)
+Jack's bar: do everything — including destructive ops — with no save
+prompts, and undo it all when revisiting. Own format acceptable.
+- **Files:** library file stays the flattened, share-ready PNG (drag-out
+  and share unchanged). Per-image sidecar under
+  `<library>/.wondershot/<name>.json` plus a base-image stack
+  `<name>.base.<N>.png` (N=0 is the original capture).
+- **Model:** sidecar = {format version, base stack refs, ordered item list
+  (serialized annotation objects), applied-effects record}. items.py
+  classes get to_dict/from_dict (pure, headless-testable).
+- **Editor open:** sidecar exists → load top-of-stack base + reconstruct
+  items as live editable objects. No sidecar → current behavior.
+- **Autosave, no prompts:** on editor close and app quit, silently write
+  flattened PNG + sidecar. The "unsaved changes?" prompt is removed for
+  library files (kept for files opened outside the library, e.g. -e on a
+  random path — they have no sidecar home).
+- **Destructive ops** (bg remove, effects, flatten): push the pre-op base
+  onto the stack before applying; revisit-undo pops it. In-session undo
+  (QUndoStack) unchanged.
+- **Trash:** trashing the image trashes its sidecar + bases; undo-delete
+  restores them.
+- **Scope:** images only. Video annotations don't exist yet (blur already
+  renders to a new file); ROADMAP note that video sidecars arrive with
+  video objects.
+- Embedded editor and standalone editor windows both use the same path.
+
+### Track 3c: Video backlog (video.py)
+- **Blur strength setting:** slider/spin in the blur pane mapped to the
+  boxblur radius used in the ffmpeg pass; persisted default in settings.
+- **True blur preview:** the frost rectangles preview the actual blur —
+  QImage box-blur of the covered region on the frozen frame (preview-only,
+  cheap approximation acceptable; label it if visually different).
+- **GIF options:** fps / scale / time-range controls (reuse trim-style
+  range UI) on the GIF convert flow; persisted defaults.
+
+## Batch 4 (parallel tracks, after batch 3 merges)
+
+### Track 4a: AI simplifier + editor backlog (editor.py + new simplify.py)
+- **Simplifier:** vision LLM (existing aiclient) returns UI regions+types;
+  replace regions with clean editable objects (RectItem blocks for text
+  runs, palette-matched fills for chrome) — output is OBJECTS on the
+  canvas (Snagit-better: fully editable afterwards), single undo macro.
+  Reuses redact.py's region-pipeline patterns; same non-destructive rule.
+- **Editor backlog:** text alignment (left/center/right) + edge snapping
+  in text boxes; style-change undo (color/stroke/font changes go on the
+  undo stack); blur-tool variant of pixelate (gaussian region item);
+  step renumbering (drag a step badge onto another to swap/insert).
+  Custom rotate-cursor polish only if trivial.
+
+### Track 4b: Scroll-capture UI + EI client (gallery.py wiring, scrollsource.py, new ei.py, cli.py)
+- **Scroll UI promotion:** "Scrolling capture" entry in tray + capture
+  panel (gated like window mode on KDE? No — portal ScreenCast is
+  desktop-neutral; gate only on GStreamer availability). Flow: trigger →
+  portal pick → unobtrusive "scrolling — Ctrl+click tray or click Stop to
+  finish" affordance (frameless stop pill, compositor-placed) → stitched
+  PNG lands in library like any capture (quick bar applies). Keep the CLI
+  flag for debugging.
+- **EI client:** integrate snegg if pip-installable (optional extra
+  `wondershot[stepcapture]`), else a minimal ctypes libei binding for the
+  receive path only. Deliverable: extend inputcapture_probe.py to complete
+  the EIS handshake and print pointer-button events — the semantics
+  question (do apps still receive clicks while we observe?) goes into the
+  final checklist as the one manual probe run.
+- NO step-capture feature UI yet — that waits on the semantics verdict.
+
+## Verification & delivery
+Per-track TDD, adversarial review, merge per batch, suite green, reinstall
+Jack's app after each merge. ONE consolidated checklist at the end
+(replaces/extends docs/superpowers/plans/2026-06-07-desktop-checklist.md).
+GitHub repo creation + CI-triggering push: requires Jack's explicit OK
+(publishing) — held as the single open question.
