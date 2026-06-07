@@ -149,6 +149,26 @@ class FlattenCommand(QUndoCommand):
                 self.editor.scene.addItem(it)
 
 
+class SetBaseImageCommand(QUndoCommand):
+    """Swap only the base image, keeping annotations on the scene.
+
+    FlattenCommand minus the annotation fold — Remove Background changes
+    the pixels underneath but must not eat the user's markup.
+    """
+
+    def __init__(self, editor: "EditorWindow", new_image: QImage, text: str):
+        super().__init__(text)
+        self.editor = editor
+        self.old_image = editor.base_image
+        self.new_image = new_image
+
+    def redo(self):
+        self.editor.set_base_image(self.new_image)
+
+    def undo(self):
+        self.editor.set_base_image(self.old_image)
+
+
 class GripCommand(QUndoCommand):
     """Undo entry for a grip edit (resize / rotate / reshape)."""
 
@@ -469,6 +489,18 @@ class EditorWindow(QMainWindow):
         self.redact_action.triggered.connect(self.ai_redact)
         tb.addAction(self.redact_action)
 
+        from . import bgremove
+        self.bg_action = self._act("Remove BG", "edit-clear-all")
+        self.bg_action.triggered.connect(self.remove_background)
+        tb.addAction(self.bg_action)
+        if not bgremove.available():
+            self.bg_action.setEnabled(False)
+            self.bg_action.setToolTip(
+                "Needs the optional extra: pip install wondershot[ai-local]")
+        else:
+            self.bg_action.setToolTip(
+                "Make the background transparent (local ONNX)")
+
         from PySide6.QtWidgets import QMenu, QSizePolicy, QToolButton, QWidget
         spacer = QWidget(self)
         spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
@@ -619,6 +651,24 @@ class EditorWindow(QMainWindow):
                else "AI Redact: nothing sensitive found")
         self.statusBar().showMessage(msg, 8000)
         return len(clamped)
+
+    def remove_background(self) -> None:
+        from . import bgremove
+        if not bgremove.available():
+            return  # action should be disabled anyway
+        image = self.base_image.copy()
+        self._start_ai_job(lambda: bgremove.remove_background(image),
+                           "Removing background…", self._bg_done)
+
+    def _bg_done(self, image, error: str) -> None:
+        if error:
+            QMessageBox.warning(self, "Wondershot",
+                                f"Remove Background failed: {error}")
+            return
+        self.undo_stack.push(
+            SetBaseImageCommand(self, image, "remove background"))
+        self.statusBar().showMessage(
+            "Background removed — save as PNG to keep transparency", 8000)
 
     def _build_statusbar(self) -> None:
         from PySide6.QtWidgets import QComboBox, QToolButton

@@ -54,3 +54,45 @@ def test_apply_redact_regions_clamps_and_skips_tiny(qapp):
 def test_redact_action_exists_on_toolbar(qapp):
     ed = make_editor(qapp)
     assert ed.redact_action.text() == "AI Redact"
+
+
+def test_set_base_image_command_swaps_and_keeps_annotations(qapp):
+    from PySide6.QtCore import QRectF
+    from wondershot.editor import SetBaseImageCommand
+    from wondershot.items import RectItem
+    ed = make_editor(qapp, 400, 300)
+    note = RectItem(QRectF(10, 10, 50, 50), QColor("red"), 4)
+    ed.scene.addItem(note)
+    new = QImage(400, 300, QImage.Format_ARGB32_Premultiplied)
+    new.fill(QColor(0, 0, 0, 0))  # fully transparent (alpha preserved)
+    ed.undo_stack.push(SetBaseImageCommand(ed, new, "remove background"))
+    assert ed.base_image.pixelColor(5, 5).alpha() == 0
+    assert note.scene() is ed.scene          # annotations survive (≠ Flatten)
+    ed.undo_stack.undo()
+    assert ed.base_image.pixelColor(5, 5) == QColor("white")
+    assert note.scene() is ed.scene
+
+
+def test_remove_bg_action_disabled_without_rembg(qapp, monkeypatch):
+    import wondershot.bgremove as bgremove
+    monkeypatch.setattr(bgremove, "available", lambda: False)
+    ed = make_editor(qapp)
+    assert not ed.bg_action.isEnabled()
+    assert "ai-local" in ed.bg_action.toolTip()
+
+
+def test_remove_bg_action_enabled_with_rembg(qapp, monkeypatch):
+    import wondershot.bgremove as bgremove
+    monkeypatch.setattr(bgremove, "available", lambda: True)
+    ed = make_editor(qapp)
+    assert ed.bg_action.isEnabled()
+
+
+def test_bg_done_pushes_undoable_swap(qapp):
+    ed = make_editor(qapp, 400, 300)
+    new = QImage(400, 300, QImage.Format_ARGB32_Premultiplied)
+    new.fill(QColor(0, 255, 0, 255))
+    ed._bg_done(new, "")
+    assert ed.base_image.pixelColor(5, 5) == QColor(0, 255, 0)
+    ed.undo_stack.undo()
+    assert ed.base_image.pixelColor(5, 5) == QColor("white")

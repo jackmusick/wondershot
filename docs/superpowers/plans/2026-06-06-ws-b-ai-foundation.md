@@ -1394,7 +1394,7 @@ ai-local = ["rembg>=2.0", "onnxruntime>=1.16"]
 - Modify: `wondershot/editor.py` — new command class after `FlattenCommand` (insert after line ~150, before `GripCommand`); toolbar action next to the AI Redact action added in Task 7; methods after `apply_redact_regions`
 - Test: `tests/test_editor_ai.py` (append)
 
-- [ ] Write the failing tests (append to `tests/test_editor_ai.py`):
+- [x] Write the failing tests (append to `tests/test_editor_ai.py`):
 
 ```python
 def test_set_base_image_command_swaps_and_keeps_annotations(qapp):
@@ -1439,8 +1439,8 @@ def test_bg_done_pushes_undoable_swap(qapp):
     assert ed.base_image.pixelColor(5, 5) == QColor("white")
 ```
 
-- [ ] Run and confirm failure: `python -m pytest tests/test_editor_ai.py -q` — expect `ImportError: cannot import name 'SetBaseImageCommand'`.
-- [ ] Implement. In `wondershot/editor.py`, add after the `FlattenCommand` class (after its `undo`, ~line 150):
+- [x] Run and confirm failure: `python -m pytest tests/test_editor_ai.py -q` — expect `ImportError: cannot import name 'SetBaseImageCommand'`.
+- [x] Implement. In `wondershot/editor.py`, add after the `FlattenCommand` class (after its `undo`, ~line 150):
 
 ```python
 class SetBaseImageCommand(QUndoCommand):
@@ -1504,14 +1504,23 @@ class SetBaseImageCommand(QUndoCommand):
 ```
 
   Note: `remove_background()` itself (thread-pool + progress dialog) is GUI glue covered indirectly; `_bg_done` and `SetBaseImageCommand` carry the logic and are unit-tested above.
-- [ ] Run tests: `python -m pytest tests/test_editor_ai.py tests/test_editor.py -q` — expect all passed (7 in test_editor_ai + 17 existing).
-- [ ] Run the FULL suite to close out the workstream: `python -m pytest tests/ -q` — expect 0 failures.
-- [ ] Commit: `git add wondershot/editor.py tests/test_editor_ai.py && git commit -m "WS-B: Remove Background editor action with SetBaseImageCommand undo"`
+- [x] Run tests: `python -m pytest tests/test_editor_ai.py tests/test_editor.py -q` — expect all passed (7 in test_editor_ai + 17 existing).
+- [x] Run the FULL suite to close out the workstream: `python -m pytest tests/ -q` — expect 0 failures.
+- [x] Commit: `git add wondershot/editor.py tests/test_editor_ai.py && git commit -m "WS-B: Remove Background editor action with SetBaseImageCommand undo"`
 
 ---
 
 ## Verification (after all tasks)
 
-- [ ] `python -m pytest tests/ -q` — entire suite green, headless.
-- [ ] `python -c "import wondershot.aiclient, wondershot.ocr, wondershot.redact, wondershot.bgremove; print('imports ok')"` — no rembg/onnx required for core imports.
+- [x] `python -m pytest tests/ -q` — entire suite green, headless.
+- [x] `python -c "import wondershot.aiclient, wondershot.ocr, wondershot.redact, wondershot.bgremove; print('imports ok')"` — no rembg/onnx required for core imports.
 - [ ] Manual smoke (optional, needs a display + an Ollama/OpenAI endpoint): `wondershot`, open Settings → AI, fill endpoint/model, Test connection; open an image in the editor, hit AI Redact, confirm pixelate regions appear selected/adjustable and a single Ctrl+Z removes them; Remove BG stays greyed out with the install tooltip unless `pip install -e .[ai-local]` was run.
+
+> **Left for Jack (needs a live desktop + AI endpoint — skipped per agent constraints):**
+>
+> ```bash
+> cd ~/GitHub/grabbit-wt/ws-b && .venv/bin/wondershot
+> ```
+> 1. Settings → AI: enter endpoint (e.g. `http://localhost:11434`) and a vision model (e.g. `llava`), click "Test connection" — expect "OK — replied: …".
+> 2. Open a screenshot with an email/key visible in the editor, click "AI Redact" — pixelate patches should appear over the sensitive text; one Ctrl+Z removes them all.
+> 3. "Remove BG" should be greyed out with the `wondershot[ai-local]` tooltip; after `.venv/bin/pip install -e ".[ai-local]"` it enables, swaps in a transparent background, keeps annotations, and undoes cleanly.
