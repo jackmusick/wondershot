@@ -281,7 +281,7 @@ This test encodes Jack's exact bug: stop from one control, the *other* control m
 
 **Gotcha — these tests construct the real `GrabbitApp`, which (a) listens on the single-instance socket and (b) reads real `Settings()`. Both MUST be patched or the test suite will hijack the live Wondershot instance's socket and real config on a dev box.**
 
-- [ ] Create `tests/test_record_sync.py`:
+- [x] Create `tests/test_record_sync.py`:
 
 ```python
 """Either record control (tray menu / gallery toolbar) must stop a
@@ -414,12 +414,12 @@ def test_toolbar_record_start_routes_through_app(qapp, tmp_path,
     assert started == [1, 1]
 ```
 
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_record_sync.py -q`
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_record_sync.py -q`
       Expected: `test_toolbar_stop_resets_tray_action` FAILS at `assert not a.record_action.isEnabled()` (the tray action is untouched by the toolbar path — the bug). `test_toolbar_record_start_routes_through_app` FAILS (gallery calls `recorder.start()` directly today). `test_tray_stop_resets_toolbar_action` passes already (the tray path does call `gallery.set_stopping()`); keep it as the mirror regression.
 
 ### Step 2.2: Implementation
 
-- [ ] `wondershot/gallery.py` — add the start-request signal to `GalleryWindow`'s signal block (lines 334-337):
+- [x] `wondershot/gallery.py` — add the start-request signal to `GalleryWindow`'s signal block (lines 334-337):
 
 ```python
 class GalleryWindow(QMainWindow):
@@ -430,7 +430,7 @@ class GalleryWindow(QMainWindow):
     record_requested = Signal()  # start a recording (app owns countdown/start)
 ```
 
-- [ ] `wondershot/gallery.py` — in `__init__`, extend the existing recorder-signal block (lines 454-457) so the toolbar's stopping state is recorder-driven:
+- [x] `wondershot/gallery.py` — in `__init__`, extend the existing recorder-signal block (lines 454-457) so the toolbar's stopping state is recorder-driven:
 
 ```python
         if self.recorder is not None:
@@ -440,7 +440,7 @@ class GalleryWindow(QMainWindow):
             self.recorder.stopping.connect(self.set_stopping)
 ```
 
-- [ ] `wondershot/gallery.py` — replace `_toggle_record` (lines 922-930):
+- [x] `wondershot/gallery.py` — replace `_toggle_record` (lines 922-930):
 
 ```python
     def _toggle_record(self) -> None:
@@ -453,7 +453,7 @@ class GalleryWindow(QMainWindow):
             self.record_requested.emit()
 ```
 
-- [ ] `wondershot/app.py` — in `__init__`, connect the new signals. After line 77 (`self.recorder.failed.connect(...)`) add:
+- [x] `wondershot/app.py` — in `__init__`, connect the new signals. After line 77 (`self.recorder.failed.connect(...)`) add:
 
 ```python
         self.recorder.stopping.connect(self._on_recording_stopping)
@@ -465,7 +465,7 @@ class GalleryWindow(QMainWindow):
         self.gallery.record_requested.connect(self._begin_recording)
 ```
 
-- [ ] `wondershot/app.py` — replace `toggle_recording` (lines 238-245) and add the two new methods:
+- [x] `wondershot/app.py` — replace `toggle_recording` (lines 238-245) and add the two new methods:
 
 ```python
     def toggle_recording(self) -> None:
@@ -487,13 +487,13 @@ class GalleryWindow(QMainWindow):
 
   Note `gallery.set_stopping()` is no longer called from `toggle_recording` — the recorder's `stopping` signal reaches the gallery directly. The reset path is unchanged: `_on_recording_finished` (app.py:255-263) / `_on_recording_failed` (app.py:265-270) re-enable the tray action and call `gallery.set_recording(False)`, which re-enables the toolbar (gallery.py:932-936).
 
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_record_sync.py tests/test_record.py -q`
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_record_sync.py tests/test_record.py -q`
       Expected: all pass.
 
-- [ ] Run the full suite: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q`
+- [x] Run the full suite: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q`
       Expected: green.
 
-- [ ] Commit: `git add -A && git commit -m "recording: either control stops, both reset (recorder-signal-driven stop UI)"`
+- [x] Commit: `git add -A && git commit -m "recording: either control stops, both reset (recorder-signal-driven stop UI)"`
 
 ---
 

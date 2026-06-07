@@ -335,6 +335,7 @@ class GalleryWindow(QMainWindow):
     settings_applied = Signal()
     oauth_callback = Signal(str)  # wondershot://auth?... redirect URL
     capture_requested = Signal(str)  # routed through app.trigger_capture
+    record_requested = Signal()  # start a recording (app owns countdown/start)
 
     def __init__(self, settings, capture, recorder=None, parent=None):
         super().__init__(parent)
@@ -455,6 +456,7 @@ class GalleryWindow(QMainWindow):
             self.recorder.tick.connect(
                 lambda t: self.record_action.setText(f"Stop {t}" if t
                                                      else "Stop"))
+            self.recorder.stopping.connect(self.set_stopping)
         self._counter = QLabel(self)
         self.editor.statusBar().addPermanentWidget(self._counter)
 
@@ -924,10 +926,9 @@ class GalleryWindow(QMainWindow):
             self.capture.record_region()  # spectacle fallback
             return
         if self.recorder.recording:
-            self.set_stopping()
-            self.recorder.stop()
+            self.recorder.stop()  # recorder.stopping resets BOTH controls
         else:
-            self.recorder.start()
+            self.record_requested.emit()
 
     def set_recording(self, on: bool) -> None:
         self.record_action.setEnabled(True)

@@ -75,12 +75,14 @@ class GrabbitApp(QObject):
         self.recorder.started.connect(self._on_recording_started)
         self.recorder.finished.connect(self._on_recording_finished)
         self.recorder.failed.connect(self._on_recording_failed)
+        self.recorder.stopping.connect(self._on_recording_stopping)
 
         self.gallery = GalleryWindow(self.settings, self.capture,
                                      recorder=self.recorder)
         self.gallery.quit_requested.connect(qapp.quit)
         self.gallery.settings_applied.connect(self._on_settings_applied)
         self.gallery.capture_requested.connect(self.trigger_capture)
+        self.gallery.record_requested.connect(self._begin_recording)
         self._editors: list[EditorWindow] = []
         self._gallery_was_visible = False
 
@@ -237,12 +239,19 @@ class GrabbitApp(QObject):
 
     def toggle_recording(self) -> None:
         if self.recorder.recording:
-            self.record_action.setText("Stopping…")
-            self.record_action.setEnabled(False)
-            self.gallery.set_stopping()
-            self.recorder.stop()
+            self.recorder.stop()  # recorder.stopping resets BOTH controls
         else:
-            self.recorder.start()
+            self._begin_recording()
+
+    def _begin_recording(self) -> None:
+        # Task 5 puts the countdown gate here; until then, start directly.
+        self.recorder.start()
+
+    def _on_recording_stopping(self) -> None:
+        # The gallery toolbar resets itself via its own stopping
+        # connection (gallery.py __init__); only the tray is ours.
+        self.record_action.setText("Stopping…")
+        self.record_action.setEnabled(False)
 
     def _on_recording_started(self) -> None:
         self.record_action.setText("Stop recording")
