@@ -44,30 +44,30 @@
 - Modify: `pyproject.toml` (insert after line 13 `dependencies = ["PySide6>=6.6"]`)
 - Test: existing suite (baseline)
 
-- [ ] Create the venv in the worktree root (system-site-packages is REQUIRED so `gi` is importable — ROADMAP landmine):
+- [x] Create the venv in the worktree root (system-site-packages is REQUIRED so `gi` is importable — ROADMAP landmine):
   ```bash
   python3 -m venv --system-site-packages .venv
   .venv/bin/pip install -e . pytest
   ```
-- [ ] Run the existing suite to establish a green baseline:
+- [x] Run the existing suite to establish a green baseline:
   ```bash
   .venv/bin/python -m pytest tests/ -q
   ```
   Expected: all tests pass (8 test files). If anything fails here, stop — the baseline is broken, not your work.
-- [ ] Edit `pyproject.toml`: after the `dependencies = ["PySide6>=6.6"]` line and before `keywords`, add:
+- [x] Edit `pyproject.toml`: after the `dependencies = ["PySide6>=6.6"]` line and before `keywords`, add:
   ```toml
   [project.optional-dependencies]
   spike = ["numpy"]  # WS-D scroll-stitch spike only; not a runtime dep
   ```
   Note: TOML tables can't nest mid-table — place this block AFTER the entire `[project]` table's simple keys but it must still belong to project. Concretely, put it between the `keywords = [...]` line and `[project.scripts]`.
-- [ ] Install the extra:
+- [x] Install the extra:
   ```bash
   .venv/bin/pip install -e ".[spike]"
   .venv/bin/python -c "import numpy; print(numpy.__version__)"
   ```
   Expected: a version prints.
-- [ ] Re-run the suite (`.venv/bin/python -m pytest tests/ -q`), expected: still green.
-- [ ] Commit:
+- [x] Re-run the suite (`.venv/bin/python -m pytest tests/ -q`), expected: still green.
+- [x] Commit:
   ```bash
   git add pyproject.toml && git commit -m "WS-D: add wondershot[spike] extra (numpy) for scroll-stitch spike"
   ```
@@ -80,7 +80,7 @@
 - Create: `wondershot/stitch.py`
 - Create: `tests/test_stitch.py`
 
-- [ ] Write the failing test. Create `tests/test_stitch.py`:
+- [x] Write the failing test. Create `tests/test_stitch.py`:
   ```python
   import os
 
@@ -134,11 +134,11 @@
       assert g.dtype == np.float32
       assert 0.0 <= g.min() and g.max() <= 255.0
   ```
-- [ ] Run it — must fail with `ModuleNotFoundError: No module named 'wondershot.stitch'`:
+- [x] Run it — must fail with `ModuleNotFoundError: No module named 'wondershot.stitch'`:
   ```bash
   .venv/bin/python -m pytest tests/test_stitch.py -q
   ```
-- [ ] Implement. Create `wondershot/stitch.py`:
+- [x] Implement. Create `wondershot/stitch.py`:
   ```python
   """Scroll-capture stitcher core (WS-D spike).
 
@@ -200,11 +200,11 @@
       """(H, W) float32 luma for matching; exactness doesn't matter."""
       return rgb.astype(np.float32).mean(axis=2)
   ```
-- [ ] Run tests, expected pass:
+- [x] Run tests, expected pass:
   ```bash
   .venv/bin/python -m pytest tests/test_stitch.py -q
   ```
-- [ ] Commit:
+- [x] Commit:
   ```bash
   git add wondershot/stitch.py tests/test_stitch.py
   git commit -m "WS-D: stitch.py FrameSource seam + QImage/numpy conversions (TDD)"
@@ -218,7 +218,7 @@
 - Modify: `wondershot/stitch.py` (append)
 - Modify: `tests/test_stitch.py` (append)
 
-- [ ] Write the failing tests. Append to `tests/test_stitch.py`:
+- [x] Write the failing tests. Append to `tests/test_stitch.py`:
   ```python
   def test_detect_offset_finds_scroll():
       """cur is prev scrolled up by d rows: cur[y] == prev[y + d]."""
@@ -243,11 +243,11 @@
       b = to_gray(make_rgb(height=200, width=40, seed=4))
       assert detect_offset(a, b) is None
   ```
-- [ ] Run — must fail with `ImportError: cannot import name 'detect_offset'`:
+- [x] Run — must fail with `ImportError: cannot import name 'detect_offset'`:
   ```bash
   .venv/bin/python -m pytest tests/test_stitch.py -q
   ```
-- [ ] Implement. Append to `wondershot/stitch.py`:
+- [x] Implement. Append to `wondershot/stitch.py`:
   ```python
   # -- offset detection ------------------------------------------------------
 
@@ -277,11 +277,11 @@
               best_d, best_score = d, score
       return best_d
   ```
-- [ ] Run tests, expected pass:
+- [x] Run tests, expected pass:
   ```bash
   .venv/bin/python -m pytest tests/test_stitch.py -q
   ```
-- [ ] Commit:
+- [x] Commit:
   ```bash
   git add wondershot/stitch.py tests/test_stitch.py
   git commit -m "WS-D: overlap-band vertical offset detection (TDD)"
@@ -295,7 +295,7 @@
 - Modify: `wondershot/stitch.py` (append)
 - Modify: `tests/test_stitch.py` (append)
 
-- [ ] Write the failing tests. Append to `tests/test_stitch.py`:
+- [x] Write the failing tests. Append to `tests/test_stitch.py`:
   ```python
   def _frame_with_chrome(content: np.ndarray, header: np.ndarray,
                          footer: np.ndarray) -> np.ndarray:
@@ -326,11 +326,11 @@
       g = to_gray(make_rgb(height=200, width=40, seed=9))
       assert static_bands(g, g) == (0, 0)
   ```
-- [ ] Run — must fail with `ImportError: cannot import name 'static_bands'`:
+- [x] Run — must fail with `ImportError: cannot import name 'static_bands'`:
   ```bash
   .venv/bin/python -m pytest tests/test_stitch.py -q
   ```
-- [ ] Implement. Append to `wondershot/stitch.py`:
+- [x] Implement. Append to `wondershot/stitch.py`:
   ```python
   # -- fixed header/footer heuristic (best effort for the spike) ------------
 
@@ -356,11 +356,11 @@
           return (0, 0)
       return (header, footer)
   ```
-- [ ] Run tests, expected pass:
+- [x] Run tests, expected pass:
   ```bash
   .venv/bin/python -m pytest tests/test_stitch.py -q
   ```
-- [ ] Commit:
+- [x] Commit:
   ```bash
   git add wondershot/stitch.py tests/test_stitch.py
   git commit -m "WS-D: static header/footer band heuristic (TDD)"
@@ -374,7 +374,7 @@
 - Modify: `wondershot/stitch.py` (append)
 - Modify: `tests/test_stitch.py` (append)
 
-- [ ] Write the failing tests — this is the load-bearing reconstruction proof. Append to `tests/test_stitch.py`:
+- [x] Write the failing tests — this is the load-bearing reconstruction proof. Append to `tests/test_stitch.py`:
   ```python
   def _window_frames(tall: np.ndarray, viewport: int, offsets):
       """Simulate a user scrolling: viewport-sized windows of a tall page."""
@@ -445,11 +445,11 @@
       assert np.array_equal(qimage_to_rgb(st.result()), a)
       assert st.frames_dropped == 1
   ```
-- [ ] Run — must fail with `ImportError: cannot import name 'ScrollStitcher'`:
+- [x] Run — must fail with `ImportError: cannot import name 'ScrollStitcher'`:
   ```bash
   .venv/bin/python -m pytest tests/test_stitch.py -q
   ```
-- [ ] Implement. Append to `wondershot/stitch.py`:
+- [x] Implement. Append to `wondershot/stitch.py`:
   ```python
   # -- accumulator -----------------------------------------------------------
 
@@ -510,16 +510,16 @@
               return QImage()
           return rgb_to_qimage(self._canvas)
   ```
-- [ ] Run the full stitch suite, expected pass (all tasks 2-5 tests):
+- [x] Run the full stitch suite, expected pass (all tasks 2-5 tests):
   ```bash
   .venv/bin/python -m pytest tests/test_stitch.py -q
   ```
   Gotcha if `test_stitcher_drops_no_motion_frames` fails on the count: offsets `[0, 0, 40, 40, 40, 80]` give one duplicate of frame 0 and two duplicates of the 40-frame = 3 drops, 3 used. If reconstruction fails on the header test: remember bands lock on the first DIFFERING pair (frames at offsets 0 and 35), and the canvas (frame 0) is re-cropped at that moment.
-- [ ] Run the whole repo suite to confirm nothing else broke:
+- [x] Run the whole repo suite to confirm nothing else broke:
   ```bash
   .venv/bin/python -m pytest tests/ -q
   ```
-- [ ] Commit:
+- [x] Commit:
   ```bash
   git add wondershot/stitch.py tests/test_stitch.py
   git commit -m "WS-D: ScrollStitcher with synthetic end-to-end reconstruction (TDD)"
@@ -534,7 +534,7 @@
 
 **Explicitly stated:** this GStreamer/portal half is spike-quality. It has NO unit tests — the portal dance needs a live compositor and user interaction, which cannot run headless. Manual test instructions are in Task 7 (after the CLI flag exists). Do not write a failing test for this task.
 
-- [ ] Create `wondershot/scrollsource.py`:
+- [x] Create `wondershot/scrollsource.py`:
   ```python
   """Linux FrameSource: portal ScreenCast -> PipeWire -> Gst appsink.
 
@@ -717,16 +717,16 @@
             f"({img.width()}x{img.height()})")
       return 0
   ```
-- [ ] Sanity-check it imports headless (this is the only automated check for this module — stated above, no unit tests for the GStreamer half):
+- [x] Sanity-check it imports headless (this is the only automated check for this module — stated above, no unit tests for the GStreamer half):
   ```bash
   QT_QPA_PLATFORM=offscreen .venv/bin/python -c "import wondershot.scrollsource; print('import ok')"
   ```
   Expected: `import ok`.
-- [ ] Run the repo suite to confirm no collateral damage:
+- [x] Run the repo suite to confirm no collateral damage:
   ```bash
   .venv/bin/python -m pytest tests/ -q
   ```
-- [ ] Commit:
+- [x] Commit:
   ```bash
   git add wondershot/scrollsource.py
   git commit -m "WS-D: ScreenCastFrameSource (portal->appsink) + scroll-spike runner (spike quality, manual test)"
@@ -743,7 +743,7 @@ This is glue to a live-compositor spike path; the dispatch line itself cannot be
 
 Naming note: the spec suggests `--scroll-capture-spike`; this plan deliberately shortens it to `--scroll-spike` (hidden flag, spike-only, never user-facing — the spec's "hidden CLI flag or test harness" wording leaves the name open).
 
-- [ ] In `wondershot/cli.py`, after the `--selftest` argument (line 46-47):
+- [x] In `wondershot/cli.py`, after the `--selftest` argument (line 46-47):
   ```python
       parser.add_argument("--selftest", metavar="DIR",
                           help="render UI screenshots into DIR and exit (dev tool)")
@@ -753,7 +753,7 @@ Naming note: the spec suggests `--scroll-capture-spike`; this plan deliberately 
       parser.add_argument("--scroll-spike", action="store_true",
                           help=argparse.SUPPRESS)  # WS-D spike harness
   ```
-- [ ] In the same file, after the `--selftest` dispatch (lines 56-58):
+- [x] In the same file, after the `--selftest` dispatch (lines 56-58):
   ```python
       if args.selftest:
           from .selftest import run_selftest
@@ -765,13 +765,13 @@ Naming note: the spec suggests `--scroll-capture-spike`; this plan deliberately 
           from .scrollsource import run_scroll_spike
           return run_scroll_spike()
   ```
-- [ ] Quick headless check (flag must be hidden from --help but still parse):
+- [x] Quick headless check (flag must be hidden from --help but still parse):
   ```bash
   QT_QPA_PLATFORM=offscreen .venv/bin/wondershot --help | grep scroll-spike
   echo "exit=$? (expect 1: hidden flag absent from help)"
   ```
   Expected: no grep output, `exit=1`.
-- [ ] Run the repo suite:
+- [x] Run the repo suite:
   ```bash
   .venv/bin/python -m pytest tests/ -q
   ```
@@ -785,7 +785,7 @@ Naming note: the spec suggests `--scroll-capture-spike`; this plan deliberately 
   4. Ctrl+C in the terminal.
   5. Verify: a `ScrollCapture_*.png` lands in the library dir (default `~/Pictures/Screenshots`), is taller than the screen, and content reads continuously (small seams acceptable; note them in the ROADMAP findings, Task 9).
   - Known limits to record in findings: full-screen casts stitch the whole desktop (window-pick the browser for cleaner results); fast scrolling that exceeds `viewport_height - 64px` per frame at 10 fps breaks matching.
-- [ ] Commit:
+- [x] Commit:
   ```bash
   git add wondershot/cli.py
   git commit -m "WS-D: hidden --scroll-spike CLI flag (spike harness, manual test)"
@@ -802,7 +802,7 @@ Naming note: the spec suggests `--scroll-capture-spike`; this plan deliberately 
 
 Defensive posture (per `hotkey.py`'s KWin landmine: a mistyped D-Bus call once aborted the compositor): the probe only ever calls `org.freedesktop.portal.Desktop` (the xdg-desktop-portal daemon — a separate process from KWin, so a bad call kills a request, not the session), every option is an explicitly typed `GLib.Variant` (portals demand uint32-typed options; that's why this uses Gio, not QtDBus), every call has a finite timeout and is wrapped in `try/except GLib.Error`, and the script never registers anything with KGlobalAccel.
 
-- [ ] Create `spikes/inputcapture_probe.py`:
+- [x] Create `spikes/inputcapture_probe.py`:
   ```python
   #!/usr/bin/env python3
   """WS-D spike: probe org.freedesktop.portal.InputCapture on this box.
@@ -1059,7 +1059,7 @@ Defensive posture (per `hotkey.py`'s KWin landmine: a mistyped D-Bus call once a
   if __name__ == "__main__":
       sys.exit(main())
   ```
-- [ ] Automated check (syntax only — stated above, no unit tests for this standalone probe):
+- [x] Automated check (syntax only — stated above, no unit tests for this standalone probe):
   ```bash
   .venv/bin/python -m py_compile spikes/inputcapture_probe.py && echo "compiles"
   ```
@@ -1073,7 +1073,7 @@ Defensive posture (per `hotkey.py`'s KWin landmine: a mistyped D-Bus call once a
   - Portal present but `CreateSession FAILED` / response code 2 → present-but-nonfunctional; record the code.
   - Full chain to `ConnectToEIS OK` + the snegg/raw-read finding → record how far event observation got.
   - If a permission dialog appears, accept it. The probe never touches KWin directly; worst case is a failed portal request.
-- [ ] Commit:
+- [x] Commit:
   ```bash
   git add spikes/inputcapture_probe.py
   git commit -m "WS-D: standalone InputCapture portal probe (manual run; defensive D-Bus)"
@@ -1086,7 +1086,7 @@ Defensive posture (per `hotkey.py`'s KWin landmine: a mistyped D-Bus call once a
 **Files:**
 - Modify: `ROADMAP.md` (append at end of file, after the "Platform landmines" section)
 
-- [ ] Append the following to the END of `ROADMAP.md` (the executor fills the blanks after performing the manual tests in Tasks 7 and 8 on the Fedora/KDE box):
+- [x] Append the following to the END of `ROADMAP.md` (the executor fills the blanks after performing the manual tests in Tasks 7 and 8 on the Fedora/KDE box):
   ```markdown
 
   ## WS-D capture-engine spike findings (2026-06-06)
@@ -1117,13 +1117,13 @@ Defensive posture (per `hotkey.py`'s KWin landmine: a mistyped D-Bus call once a
   - Blocking gaps (e.g. need libei bindings, need Enable+barriers): ____
   - **Verdict: step capture LINUX-VIABLE / WINDOWS-FIRST**: ____
   ```
-- [ ] Final full verification:
+- [x] Final full verification:
   ```bash
   .venv/bin/python -m pytest tests/ -q
   QT_QPA_PLATFORM=offscreen .venv/bin/python -c "import wondershot.stitch, wondershot.scrollsource, wondershot.cli; print('imports ok')"
   ```
   Expected: full suite green (including all of `tests/test_stitch.py`), `imports ok`.
-- [ ] Commit:
+- [x] Commit:
   ```bash
   git add ROADMAP.md
   git commit -m "WS-D: append spike findings template to ROADMAP (executor fills after manual runs)"

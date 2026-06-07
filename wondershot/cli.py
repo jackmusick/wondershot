@@ -45,6 +45,8 @@ def main(argv=None) -> int:
                         help="install .desktop launcher and icon for this user")
     parser.add_argument("--selftest", metavar="DIR",
                         help="render UI screenshots into DIR and exit (dev tool)")
+    parser.add_argument("--scroll-spike", action="store_true",
+                        help=argparse.SUPPRESS)  # WS-D spike harness
     parser.add_argument("--version", action="version",
                         version=f"wondershot {__version__}")
     parser.add_argument("url", nargs="?", help=argparse.SUPPRESS)
@@ -56,6 +58,10 @@ def main(argv=None) -> int:
     if args.selftest:
         from .selftest import run_selftest
         return run_selftest(args.selftest)
+
+    if args.scroll_spike:
+        from .scrollsource import run_scroll_spike
+        return run_scroll_spike()
 
     from .app import GrabbitApp, send_to_running
 

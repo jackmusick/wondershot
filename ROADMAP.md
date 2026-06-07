@@ -215,3 +215,62 @@ HotkeyBackend interface, CI matrix on all three OSes.
   explicit sizeHints/placeholder icons before the view measures.
 - Qt movable-drag moves all selected items with the grabber — freeze
   the parent while dragging child grips.
+
+## WS-D capture-engine spike findings (2026-06-06)
+
+_Template appended by the WS-D plan; fill in after running the two
+spikes on the Fedora/KDE box. These results gate scroll capture's
+productization and step capture's platform order (Linux-first vs
+Windows-first as part of WS-E)._
+
+### Scroll capture (`wondershot --scroll-spike`, stitch.py)
+
+Run it (live KDE session, NOT offscreen), from the ws-d worktree:
+
+```bash
+cd /home/jack/GitHub/grabbit-wt/ws-d
+.venv/bin/wondershot --scroll-spike
+```
+
+1. The portal screen-share picker appears (or is skipped if a restore
+   token exists from prior recordings). Window-pick the browser for
+   cleaner results than a full-screen cast.
+2. Open a long page, wait for "Recording —" to print.
+3. Scroll top-to-bottom slowly (one wheel notch every ~0.5 s).
+4. Ctrl+C in the terminal; a `ScrollCapture_*.png` should land in the
+   library dir (default `~/Pictures/Screenshots`).
+
+- Stitched tall PNG produced from a real scrolled window: YES / NO
+- Output file + dimensions: ____
+- Frames used / dropped (printed at exit): ____ / ____
+- Seam quality (duplicated or missing rows? where?): ____
+- Fixed header/footer heuristic behavior on a real page: ____
+- Scroll speed limits observed (when did matching break?): ____
+  (known limit: scrolling more than viewport_height-64px per frame at
+  10 fps breaks matching)
+- Verdict: stitcher core PRODUCTIZABLE / NEEDS algorithm work: ____
+
+### InputCapture portal (`spikes/inputcapture_probe.py`)
+
+Run it (live KDE session; uses the system python for gi):
+
+```bash
+cd /home/jack/GitHub/grabbit-wt/ws-d
+python3 spikes/inputcapture_probe.py
+```
+
+If a permission dialog appears, accept it. The probe never touches
+KWin directly; worst case is a failed portal request. Copy the
+`FINDING:` lines into the blanks below.
+
+- Portal interface present: YES — version: 1
+  _(pre-filled via non-interactive property read during plan
+  execution; no session was created)_
+- SupportedCapabilities: 7 (KEYBOARD|POINTER|TOUCHSCREEN) _(pre-filled,
+  same property read)_
+- CreateSession: OK / FAILED (code/message): ____
+- GetZones: ____
+- ConnectToEIS fd obtained: YES / NO
+- Pointer button events observed: YES / NO — via (snegg / raw / n.a.): ____
+- Blocking gaps (e.g. need libei bindings, need Enable+barriers): ____
+- **Verdict: step capture LINUX-VIABLE / WINDOWS-FIRST**: ____
