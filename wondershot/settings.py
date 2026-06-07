@@ -115,6 +115,15 @@ class Settings:
         self._s.setValue("capture_cursor", "true" if value else "false")
 
     @property
+    def record_cursor_halo(self) -> bool:
+        """Composite a translucent halo around the pointer in recordings."""
+        return self._s.value("record_cursor_halo", "false") in (True, "true")
+
+    @record_cursor_halo.setter
+    def record_cursor_halo(self, value: bool) -> None:
+        self._s.setValue("record_cursor_halo", "true" if value else "false")
+
+    @property
     def capture_delay(self) -> int:
         """Seconds to wait before taking the shot."""
         return int(self._s.value("capture_delay", 0))

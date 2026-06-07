@@ -24,6 +24,7 @@ class _FakeSettings:
         self.mic_device = ""
         self.mic_enabled = True
         self.noise_suppression = True
+        self.record_cursor_halo = False
         self.record_countdown = 0
         self.copy_after_capture = True
         self.show_gallery_after_capture = True

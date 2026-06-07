@@ -187,6 +187,10 @@ class SettingsDialog(QDialog):
         self.noise_check.setChecked(settings.noise_suppression)
         form.addRow("", self.noise_check)
 
+        self.halo_check = QCheckBox("Show cursor halo in screen recordings")
+        self.halo_check.setChecked(settings.record_cursor_halo)
+        form.addRow("", self.halo_check)
+
         self.countdown_spin = QSpinBox()
         self.countdown_spin.setRange(0, 10)
         self.countdown_spin.setSuffix(" s")
@@ -690,6 +694,7 @@ class SettingsDialog(QDialog):
         self.settings.mic_device = self.mic_combo.currentData()
         self.settings.mic_enabled = self.mic_check.isChecked()
         self.settings.noise_suppression = self.noise_check.isChecked()
+        self.settings.record_cursor_halo = self.halo_check.isChecked()
         self.settings.record_countdown = self.countdown_spin.value()
         self.settings.copy_after_capture = self.copy_check.isChecked()
         self.settings.show_gallery_after_capture = self.show_check.isChecked()

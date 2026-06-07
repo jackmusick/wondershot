@@ -321,6 +321,48 @@ HotkeyBackend interface, CI matrix on all three OSes.
 - Qt movable-drag moves all selected items with the grabber — freeze
   the parent while dragging child grips.
 
+### In-process recorder (2026-06-07, branch session/recorder-inproc)
+
+The Linux `ScreenRecorder` no longer shells out to `gst-launch-1.0 -e`;
+`record.py` builds an in-process `Gst.parse_launch` pipeline driven by a
+`GstBus`. Hard-won notes:
+
+- The recorder still imports NO Gst directly. All Gst lives behind
+  `_GstPipeline` (the only `_gst()` caller) and the `_make_pipeline` seam;
+  decision logic is pure module functions (`build_pipeline_description`,
+  `elapsed_seconds`, `crop_props`, `halo_geometry`, `pts_offset_ns`), so
+  the behavioral suite runs headless against a `FakePipeline`.
+- Lifecycle: `send_eos()` (bus EOS) finalizes the mp4; bus `ERROR` is the
+  death signal (watchdog the whole life). `force_stop()` (set state NULL)
+  replaces the double-SIGINT/SIGKILL escalation ladder when an EOS wait
+  wedges. EOS takes a poll cycle to reach the bus, so the "Stopping…"
+  window is naturally observable.
+- The `videorate ! video/x-raw,format=I420,framerate=30/1` no-PTS fix is
+  copied verbatim. The only structural addition is a transparent
+  `identity name=pause` tap on the RAW side before `x264enc` (pause probe).
+- Live smoke (`tests/test_record_live.py`, `importorskip("gi")`,
+  videotestsrc, NO portal): EOS-finalizes-playable-mp4, cairooverlay draw
+  callback fires in-process, and pause/resume continuity all pass on the
+  dev box (GStreamer 1.26.11). CI without gi skips them.
+
+### Cursor halo (in-process) — PARKED (cursor source), wiring SHIPPED
+
+Shipped: the `record_cursor_halo` setting + dialog row, `halo_geometry`
+pure math, `cursor_mode=4` (METADATA) requested at SelectSources when halo
+is on, the `videoconvert ! cairooverlay name=halo` pipeline segment, and
+the draw-callback wiring (`_connect_halo`/`_draw_halo`). The live test
+proves the cairooverlay `draw` signal fires in-process.
+
+Parked: actually painting the halo at the live cursor position. The draw
+callback is a no-op until `self._cursor_xy` is populated, and populating it
+requires reading PipeWire's `spa_meta_cursor` off each buffer. With
+`cursor_mode=METADATA` the pointer arrives as a separate SPA metadata blob,
+NOT as a typed `GstMeta` exposed through PyGObject — there is no gi binding
+to pull `(x,y)` from a `Gst.Buffer`'s PipeWire cursor meta. Confirming the
+exact negotiated behavior needs a live portal session (prompts Jack's
+desktop), so it is a desktop-checklist item. Until a gi-readable path
+exists, halo compositing stays parked behind the (off-by-default) setting.
+
 ## WS-D capture-engine spike findings (2026-06-06)
 
 _Template appended by the WS-D plan; fill in after running the two

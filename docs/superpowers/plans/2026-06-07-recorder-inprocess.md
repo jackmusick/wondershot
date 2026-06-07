@@ -447,7 +447,7 @@ Expected on dev box: `1 passed`. On a box without gi: `1 skipped`.
 
 ---
 
-## TASK B1 — Cursor-halo setting (feature)
+## [x] TASK B1 — Cursor-halo setting (feature)
 
 - `settings.py`: add property after `capture_cursor` (mirror the boolean idiom):
   ```python
@@ -469,7 +469,7 @@ Expected: `2 passed`.
 
 ---
 
-## TASK B2 — Cursor halo compositing (feature; metadata cursor, default off)
+## [x] TASK B2 — Cursor halo compositing (feature; metadata cursor, default off)
 
 - **Pure halo math** in `record.py` + `tests/test_record_pure.py`:
   ```python
