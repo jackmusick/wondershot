@@ -159,7 +159,8 @@ class GrabbitApp(QObject):
         self.bubble_action = QAction(icons.icon("camera-web"),
                                      "Camera", menu)
         self.bubble_action.setCheckable(True)
-        self.bubble_action.setToolTip("Show camera (Loom-style bubble)")
+        self.bubble_action.setToolTip(
+            "Show your camera as a floating bubble while recording")
         self.bubble_action.toggled.connect(self.toggle_bubble)
         menu.addAction(self.bubble_action)
         # same action also lives in the gallery toolbar

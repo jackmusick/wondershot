@@ -1,4 +1,4 @@
-"""Loom-style camera bubble: frameless circular always-on-top window.
+"""Camera bubble: frameless circular always-on-top window.
 
 The bubble paints camera frames itself (QVideoSink → QPainter with an
 ellipse clip), so it needs no native video surface and composites cleanly
