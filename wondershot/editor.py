@@ -27,11 +27,16 @@ from PySide6.QtWidgets import (
     QGraphicsRectItem,
     QGraphicsScene,
     QGraphicsView,
+    QHBoxLayout,
     QMainWindow,
     QMessageBox,
+    QProgressBar,
+    QPushButton,
     QSpinBox,
     QToolBar,
     QLabel,
+    QVBoxLayout,
+    QWidget,
 )
 
 from . import imageops
@@ -50,6 +55,49 @@ from .items import (
     TextItem,
     is_annotation,
 )
+
+
+class AIBusyBar(QWidget):
+    """Slim inline loader between the toolbar and the canvas. Shown the
+    instant an AI action is clicked (no modal, no 400ms delay) so the
+    button feels responsive; an indeterminate bar + label + Cancel."""
+
+    cancelled = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("aibusy")
+        self.setVisible(False)
+        self.setAutoFillBackground(True)
+        row = QHBoxLayout(self)
+        row.setContentsMargins(12, 5, 8, 5)
+        row.setSpacing(10)
+        self._spin = QProgressBar(self)
+        self._spin.setRange(0, 0)          # indeterminate (busy animation)
+        self._spin.setTextVisible(False)
+        self._spin.setFixedSize(120, 6)
+        self._label = QLabel(self)
+        cancel = QPushButton("Cancel", self)
+        cancel.setFlat(True)
+        cancel.setCursor(Qt.PointingHandCursor)
+        cancel.clicked.connect(self.cancelled)
+        row.addWidget(self._spin)
+        row.addWidget(self._label, 1)
+        row.addWidget(cancel)
+        self.setStyleSheet(
+            "#aibusy { background: rgba(38,166,154,0.12); "
+            "border-bottom: 1px solid rgba(38,166,154,0.55); }"
+            "QProgressBar { background: rgba(0,0,0,0.18); border: none; "
+            "border-radius: 3px; }"
+            "QProgressBar::chunk { background: #26a69a; border-radius: 3px; }"
+            "QLabel { color: palette(text); }")
+
+    def start(self, label: str) -> None:
+        self._label.setText(label)
+        self.setVisible(True)
+
+    def finish(self) -> None:
+        self.setVisible(False)
 
 
 _checker_cache = None
@@ -411,7 +459,16 @@ class EditorWindow(QMainWindow):
         self._pending_base_pushes: list[tuple[int, QImage]] = []
 
         self.view = CanvasView(self)
-        self.setCentralWidget(self.view)
+        self._ai_busy = AIBusyBar(self)
+        self._ai_busy.cancelled.connect(self._cancel_ai_job)
+        self._ai_disabled = []
+        _central = QWidget(self)
+        _cv = QVBoxLayout(_central)
+        _cv.setContentsMargins(0, 0, 0, 0)
+        _cv.setSpacing(0)
+        _cv.addWidget(self._ai_busy)
+        _cv.addWidget(self.view, 1)
+        self.setCentralWidget(_central)
 
         self.undo_stack = QUndoStack(self)
         self.undo_stack.cleanChanged.connect(self._update_title)
@@ -780,20 +837,44 @@ class EditorWindow(QMainWindow):
 
     # -- AI actions -----------------------------------------------------------
 
+    def _ai_actions(self) -> list:
+        return [a for a in (getattr(self, "redact_action", None),
+                            getattr(self, "simplify_action", None),
+                            getattr(self, "bg_action", None)) if a is not None]
+
     def _start_ai_job(self, fn, label: str, on_done) -> None:
-        """Run `fn` on the thread pool behind a cancelable progress dialog."""
+        """Run `fn` off the GUI thread behind the inline busy bar. The bar
+        appears synchronously on click (instant feedback, non-modal); the
+        triggering actions disable until it finishes or is cancelled."""
         from PySide6.QtCore import QThreadPool
-        from PySide6.QtWidgets import QProgressDialog
         from .aiclient import AIJob
         job = AIJob(fn)
-        dlg = QProgressDialog(label, "Cancel", 0, 0, self)
-        dlg.setWindowModality(Qt.WindowModal)
-        dlg.setMinimumDuration(400)
-        dlg.canceled.connect(lambda: setattr(job, "cancel", True))
-        job.emitter.done.connect(
-            lambda result, error: (dlg.close(), on_done(result, error)))
         self._ai_job = job  # keep the signal emitter alive
+        self._ai_disabled = [a for a in self._ai_actions() if a.isEnabled()]
+        for a in self._ai_disabled:
+            a.setEnabled(False)
+        self._ai_busy.start(label)
+
+        def finished(result, error):
+            self._ai_busy.finish()
+            self._restore_ai_actions()
+            on_done(result, error)
+
+        job.emitter.done.connect(finished)
         QThreadPool.globalInstance().start(job)
+
+    def _restore_ai_actions(self) -> None:
+        for a in self._ai_disabled:
+            a.setEnabled(True)
+        self._ai_disabled = []
+
+    def _cancel_ai_job(self) -> None:
+        # AIJob suppresses `done` once cancel is set, so tear down here.
+        job = getattr(self, "_ai_job", None)
+        if job is not None:
+            job.cancel = True
+        self._ai_busy.finish()
+        self._restore_ai_actions()
 
     def ai_redact(self) -> None:
         from .aiclient import ai_configured

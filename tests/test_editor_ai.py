@@ -96,3 +96,45 @@ def test_bg_done_pushes_undoable_swap(qapp):
     assert ed.base_image.pixelColor(5, 5) == QColor(0, 255, 0)
     ed.undo_stack.undo()
     assert ed.base_image.pixelColor(5, 5) == QColor("white")
+
+
+def test_ai_busy_bar_shows_immediately_and_disables_actions(qapp):
+    """The inline loader appears synchronously on click (no 400ms modal),
+    and the AI actions disable until the job ends (Jack's responsiveness
+    ask, 2026-06-07)."""
+    ed = make_editor(qapp)
+    captured = {}
+    # stub the pool so the job never actually runs; drive done by hand
+    from PySide6.QtCore import QThreadPool
+    real_start = QThreadPool.globalInstance().start
+    QThreadPool.globalInstance().start = lambda job, *a, **k: None
+    try:
+        ed._start_ai_job(lambda: "x", "Working…", lambda r, e: captured.update(r=r, e=e))
+        # synchronous: bar visible, actions disabled, BEFORE any thread runs
+        assert not ed._ai_busy.isHidden()
+        assert not ed.redact_action.isEnabled()
+        assert not ed.simplify_action.isEnabled()
+        # now fire the job's done -> bar hides, actions restore, on_done runs
+        ed._ai_job.emitter.done.emit("result", "")
+        assert ed._ai_busy.isHidden()
+        assert ed.redact_action.isEnabled()
+        assert ed.simplify_action.isEnabled()
+        assert captured == {"r": "result", "e": ""}
+    finally:
+        QThreadPool.globalInstance().start = real_start
+
+
+def test_ai_busy_cancel_hides_bar_and_restores(qapp):
+    ed = make_editor(qapp)
+    from PySide6.QtCore import QThreadPool
+    real_start = QThreadPool.globalInstance().start
+    QThreadPool.globalInstance().start = lambda job, *a, **k: None
+    try:
+        ed._start_ai_job(lambda: "x", "Working…", lambda r, e: None)
+        assert not ed._ai_busy.isHidden()
+        ed._cancel_ai_job()
+        assert ed._ai_job.cancel is True
+        assert ed._ai_busy.isHidden()
+        assert ed.redact_action.isEnabled()
+    finally:
+        QThreadPool.globalInstance().start = real_start

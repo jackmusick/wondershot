@@ -123,3 +123,21 @@ def test_parse_regions_survives_prose_wrapped_array(qapp):
              '[{"type":"chrome","x0":0,"y0":0,"x1":1,"y1":0.1}]\nDone.')
     regions = parse_regions(reply, 200, 200)
     assert len(regions) == 1 and regions[0].kind == "chrome"
+
+
+def test_parse_regions_gathers_objects_from_markdown_list(qapp):
+    """Jack's real failure (2026-06-07): the model ignored 'one JSON array'
+    and returned a markdown list with one {...} per item in code spans.
+    Scrape every region object out of the prose."""
+    from wondershot.simplify import parse_regions
+    reply = (
+        "Here's the breakdown of the screenshot:\n"
+        '*   Header bar: `{"type": "chrome", "x0": 0, "y0": 0, "x1": 1, "y1": 0.08}`\n'
+        '*   Button: "+ Create your first table" `{"type": "chrome", "x0": 0.4, '
+        '"y0": 0.5, "x1": 0.72, "y1": 0.68}`\n'
+        '*   Body text `{"type": "text", "x0": 0.1, "y0": 0.2, "x1": 0.9, "y1": 0.4}`\n'
+        "Let me know if you'd like more detail!"
+    )
+    regions = parse_regions(reply, 1000, 1000)
+    kinds = [r.kind for r in regions]
+    assert kinds == ["chrome", "chrome", "text"], kinds

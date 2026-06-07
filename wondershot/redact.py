@@ -92,6 +92,25 @@ def _balanced_json_span(text: str) -> str | None:
     return None
 
 
+def iter_json_values(text: str):
+    """Yield every balanced [...]/{...} substring that parses as JSON, in
+    order. Lets callers recover a list of objects a model scattered
+    through prose/markdown instead of returning one array."""
+    i, n = 0, len(text)
+    while i < n:
+        if text[i] in "[{":
+            span = _span_from(text, i)
+            if span is not None:
+                try:
+                    yield json.loads(span)
+                except ValueError:
+                    pass
+                else:
+                    i += len(span)
+                    continue
+        i += 1
+
+
 def extract_json(reply: str) -> str:
     """Models love to wrap JSON in ``` fences and chatter — unwrap it.
 

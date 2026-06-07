@@ -17,7 +17,7 @@ from PySide6.QtCore import QRect
 from PySide6.QtGui import QColor, QImage
 
 from . import aiclient
-from .redact import extract_json
+from .redact import extract_json, iter_json_values
 
 # Fill for "text" regions: a neutral text-placeholder gray (Snagit-style
 # blocked-out text runs). Chrome/image regions get a sampled color instead.
@@ -75,20 +75,38 @@ REGION_PROMPT = (
 )
 
 
+def _region_dicts(reply: str):
+    """Recover the list of region objects from a model reply.
+
+    Order of robustness:
+    1. a clean JSON array (optionally fenced / prose-wrapped) — incl. an
+       object-wrapped array {"regions": [...]}; an empty one means "none".
+    2. otherwise scrape EVERY balanced {...} object out of the reply —
+       handles models that ignore "one array" and emit a markdown list
+       with one object per item.
+    Returns the list (possibly empty), or None if nothing parsed at all
+    (genuinely non-JSON reply) so the caller can raise."""
+    try:
+        data = json.loads(extract_json(reply))
+    except ValueError:
+        data = None
+    if isinstance(data, dict):
+        inner = next((v for v in data.values() if isinstance(v, list)), None)
+        if inner is not None:
+            data = inner
+    if isinstance(data, list):
+        return data
+    objs = [v for v in iter_json_values(reply) if isinstance(v, dict)]
+    return objs if objs else None
+
+
 def parse_regions(reply: str, width: int, height: int) -> list[Region]:
     """LLM reply -> clamped pixel Regions. Junk entries are dropped
     silently (unknown kind, missing/non-numeric coords, empty after
-    clamping); a non-JSON or non-array reply raises OSError, mirroring
-    redact.parse_bboxes."""
-    try:
-        data = json.loads(extract_json(reply))
-    except ValueError as e:
-        raise OSError(f"AI reply was not JSON: {reply[:120]}") from e
-    if isinstance(data, dict):
-        # some models wrap the array, e.g. {"regions": [...]}
-        data = next((v for v in data.values() if isinstance(v, list)), data)
-    if not isinstance(data, list):
-        raise OSError("AI reply was not a JSON array")
+    clamping); a reply with no parseable JSON raises OSError."""
+    data = _region_dicts(reply)
+    if data is None:
+        raise OSError(f"AI reply was not JSON: {reply[:120]}")
     img = QRect(0, 0, width, height)
     regions: list[Region] = []
     for box in data:
