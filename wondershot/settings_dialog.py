@@ -205,7 +205,8 @@ class SettingsDialog(QDialog):
             "Wondershot instantly.")
         hint.setWordWrap(True)
         hk_layout.addWidget(hint)
-        cmd = QLineEdit("grabbit --capture")
+        from . import launcher_command
+        cmd = QLineEdit(launcher_command())
         cmd.setReadOnly(True)
         cmd.setAlignment(Qt.AlignCenter)
         hk_layout.addWidget(cmd)

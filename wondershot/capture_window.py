@@ -67,7 +67,8 @@ class CaptureWindow(QWidget):
         form.addRow("Delay", self.delay_spin)
         left.addLayout(form)
 
-        hint = QLabel("Hotkey: bind <code>wondershot --capture</code> in "
+        from . import launcher_command
+        hint = QLabel(f"Hotkey: bind <code>{launcher_command()}</code> in "
                       "System Settings")
         hint.setStyleSheet("color: palette(mid); font-size: 8pt;")
         left.addWidget(hint)
