@@ -240,15 +240,27 @@ cd /home/jack/GitHub/grabbit-wt/ws-d
 4. Ctrl+C in the terminal; a `ScrollCapture_*.png` should land in the
    library dir (default `~/Pictures/Screenshots`).
 
-- Stitched tall PNG produced from a real scrolled window: YES / NO
-- Output file + dimensions: ____
-- Frames used / dropped (printed at exit): ____ / ____
-- Seam quality (duplicated or missing rows? where?): ____
-- Fixed header/footer heuristic behavior on a real page: ____
-- Scroll speed limits observed (when did matching break?): ____
-  (known limit: scrolling more than viewport_height-64px per frame at
-  10 fps breaks matching)
-- Verdict: stitcher core PRODUCTIZABLE / NEEDS algorithm work: ____
+- Stitched tall PNG produced from a real scrolled window: YES (ran
+  2026-06-06) — pipeline works end to end, output quality fails
+- Seam quality: **very jagged** — visible misaligned strips, so
+  `detect_offset`'s single 64-row band match is not accurate enough on
+  real content (likely confounds: smooth/kinetic scrolling between
+  frames, font antialiasing differences, the band landing on uniform
+  background with no texture to lock onto)
+- **Window targeting wrong**: the capture did not track the window
+  being scrolled (portal stream captured something other than the
+  intended/active window). Needs investigation: restore-token reuse
+  from prior recordings may skip the picker and reuse the previously
+  shared source — the spike should request a fresh window pick
+  (ignore `screencast_token`) so the user explicitly picks the window
+  to scroll
+- Verdict: **NEEDS algorithm work** — concept proven (portal→appsink→
+  stitcher produces a tall PNG), productization needs (a) better
+  matching: multi-band or full-overlap cross-correlation, subpixel/
+  integer refinement, texture-aware band selection; (b) fresh source
+  pick per scroll session; (c) seam blending. The FrameSource seam and
+  test harness are sound — iterate on `detect_offset`/`ScrollStitcher`
+  against captured real-frame fixtures, not just synthetic noise
 
 ### InputCapture portal (`spikes/inputcapture_probe.py`)
 
