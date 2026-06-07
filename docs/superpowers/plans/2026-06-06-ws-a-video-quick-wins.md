@@ -49,7 +49,7 @@
 - Create: `wondershot/ffmpegutil.py`
 - Test: `tests/test_ffmpegutil.py` (create)
 
-- [ ] **Step 1.1 — Write the failing tests.** Create `tests/test_ffmpegutil.py`:
+- [x] **Step 1.1 — Write the failing tests.** Create `tests/test_ffmpegutil.py`:
 
 ```python
 import subprocess
@@ -120,9 +120,9 @@ def test_run_ffmpeg_prepends_binary(monkeypatch):
     assert r.returncode == 0
 ```
 
-- [ ] **Step 1.2 — Run it, expect failure.** `python -m pytest tests/test_ffmpegutil.py -q` → fails with `ModuleNotFoundError: No module named 'wondershot.ffmpegutil'`.
+- [x] **Step 1.2 — Run it, expect failure.** `python -m pytest tests/test_ffmpegutil.py -q` → fails with `ModuleNotFoundError: No module named 'wondershot.ffmpegutil'`.
 
-- [ ] **Step 1.3 — Implement.** Create `wondershot/ffmpegutil.py`:
+- [x] **Step 1.3 — Implement.** Create `wondershot/ffmpegutil.py`:
 
 ```python
 """Single chokepoint for invoking ffmpeg.
@@ -187,9 +187,9 @@ def run_ffmpeg(args: list[str],
                           text=True, timeout=timeout)
 ```
 
-- [ ] **Step 1.4 — Run tests.** `python -m pytest tests/test_ffmpegutil.py -q` → 5 passed. Then full suite: `python -m pytest tests/ -q` → all pass (no regressions possible yet, nothing imports the new module).
+- [x] **Step 1.4 — Run tests.** `python -m pytest tests/test_ffmpegutil.py -q` → 5 passed. Then full suite: `python -m pytest tests/ -q` → all pass (no regressions possible yet, nothing imports the new module).
 
-- [ ] **Step 1.5 — Commit.**
+- [x] **Step 1.5 — Commit.**
 ```
 git add wondershot/ffmpegutil.py tests/test_ffmpegutil.py
 git commit -m "Add ffmpegutil: single ffmpeg discovery/invocation seam for WS-E"
@@ -204,7 +204,7 @@ git commit -m "Add ffmpegutil: single ffmpeg discovery/invocation seam for WS-E"
 - Modify: `wondershot/gallery.py` (lines ~201–231 `_ThumbJob._video_frame`)
 - Test: `tests/test_video_filter.py` (extend)
 
-- [ ] **Step 2.1 — Write the failing test.** Append to `tests/test_video_filter.py`:
+- [x] **Step 2.1 — Write the failing test.** Append to `tests/test_video_filter.py`:
 
 ```python
 def test_pick_encoder_falls_back_when_ffmpeg_missing(monkeypatch):
@@ -220,9 +220,9 @@ def test_pick_encoder_falls_back_when_ffmpeg_missing(monkeypatch):
     assert video.pick_encoder() == "mpeg4"
 ```
 
-- [ ] **Step 2.2 — Run it, expect failure.** `python -m pytest tests/test_video_filter.py::test_pick_encoder_falls_back_when_ffmpeg_missing -q` → fails: `pick_encoder` still calls `subprocess.run` directly (returns whatever the real machine has, e.g. `libx264`, or errors because `boom` was never invoked). Either failure mode is fine — the point is it doesn't go through ffmpegutil yet.
+- [x] **Step 2.2 — Run it, expect failure.** `python -m pytest tests/test_video_filter.py::test_pick_encoder_falls_back_when_ffmpeg_missing -q` → fails: `pick_encoder` still calls `subprocess.run` directly (returns whatever the real machine has, e.g. `libx264`, or errors because `boom` was never invoked). Either failure mode is fine — the point is it doesn't go through ffmpegutil yet.
 
-- [ ] **Step 2.3 — Migrate `video.py`.** Add to the imports block (after `import subprocess`):
+- [x] **Step 2.3 — Migrate `video.py`.** Add to the imports block (after `import subprocess`):
 
 ```python
 from . import ffmpegutil
@@ -259,7 +259,7 @@ In `_convert_gif`, replace `self._gif_proc.start("ffmpeg", [...])` → `self._gi
 
 Gotcha: `ffmpeg_path()` raises if ffmpeg is missing, but both call sites are only reachable from buttons that are disabled when `have_ffmpeg()` is False — no extra try/except needed. Keep `import shutil` in video.py (`shutil.move` is still used).
 
-- [ ] **Step 2.4 — Migrate `gallery.py`.** Replace `_ThumbJob._video_frame` (line ~201) with:
+- [x] **Step 2.4 — Migrate `gallery.py`.** Replace `_ThumbJob._video_frame` (line ~201) with:
 
 ```python
     def _video_frame(self) -> QImage:
@@ -297,9 +297,9 @@ Gotcha: `ffmpeg_path()` raises if ffmpeg is missing, but both call sites are onl
         return img
 ```
 
-- [ ] **Step 2.5 — Run tests.** `python -m pytest tests/ -q` → all pass, including the new fallback test.
+- [x] **Step 2.5 — Run tests.** `python -m pytest tests/ -q` → all pass, including the new fallback test.
 
-- [ ] **Step 2.6 — Commit.**
+- [x] **Step 2.6 — Commit.**
 ```
 git add wondershot/video.py wondershot/gallery.py tests/test_video_filter.py
 git commit -m "Route all existing ffmpeg call sites through ffmpegutil"
@@ -313,7 +313,7 @@ git commit -m "Route all existing ffmpeg call sites through ffmpegutil"
 - Modify: `wondershot/video.py` (add two module-level functions after `build_blur_filter`, ~line 70)
 - Test: `tests/test_video_filter.py` (extend)
 
-- [ ] **Step 3.1 — Write the failing tests.** Append to `tests/test_video_filter.py`:
+- [x] **Step 3.1 — Write the failing tests.** Append to `tests/test_video_filter.py`:
 
 ```python
 def test_frame_grab_args():
@@ -337,9 +337,9 @@ def test_frame_output_name():
     assert frame_output_name("clip.webm") == "clip-frame.png"
 ```
 
-- [ ] **Step 3.2 — Run them, expect failure.** `python -m pytest tests/test_video_filter.py -q` → 3 new tests fail with `ImportError: cannot import name 'build_frame_grab_args'`.
+- [x] **Step 3.2 — Run them, expect failure.** `python -m pytest tests/test_video_filter.py -q` → 3 new tests fail with `ImportError: cannot import name 'build_frame_grab_args'`.
 
-- [ ] **Step 3.3 — Implement.** In `wondershot/video.py`, after `build_blur_filter` (before the `_encoder_cache` line):
+- [x] **Step 3.3 — Implement.** In `wondershot/video.py`, after `build_blur_filter` (before the `_encoder_cache` line):
 
 ```python
 def build_frame_grab_args(src: str, position_s: float, out: str) -> list[str]:
@@ -358,9 +358,9 @@ def frame_output_name(src_name: str) -> str:
     return f"{os.path.splitext(src_name)[0]}-frame.png"
 ```
 
-- [ ] **Step 3.4 — Run tests.** `python -m pytest tests/test_video_filter.py -q` → all pass. Full suite: `python -m pytest tests/ -q` → all pass.
+- [x] **Step 3.4 — Run tests.** `python -m pytest tests/test_video_filter.py -q` → all pass. Full suite: `python -m pytest tests/ -q` → all pass.
 
-- [ ] **Step 3.5 — Commit.**
+- [x] **Step 3.5 — Commit.**
 ```
 git add wondershot/video.py tests/test_video_filter.py
 git commit -m "Frame grab: pure ffmpeg arg builder + output naming"
@@ -374,7 +374,7 @@ git commit -m "Frame grab: pure ffmpeg arg builder + output naming"
 - Modify: `wondershot/video.py` (`VideoPane.__init__` ~lines 419–455 for the button, `load` ~line 486, new `_save_frame`/`_frame_done` methods next to `_convert_gif` ~line 821)
 - Test: none new — this is GUI-only glue (QProcess + widget wiring around the already-tested builders); explicitly skipping the failing-test step. The done-handler logic is a verbatim copy of the tested-in-production `_gif_done` shape.
 
-- [ ] **Step 4.1 — Add the button.** In `VideoPane.__init__`, after the `self.gif_btn` block (~line 444):
+- [x] **Step 4.1 — Add the button.** In `VideoPane.__init__`, after the `self.gif_btn` block (~line 444):
 
 ```python
         self.frame_btn = QPushButton("Save frame", self)
@@ -397,7 +397,7 @@ Add the process slot to the `__init__` state block (next to `self._gif_proc`):
         self._frame_proc: QProcess | None = None
 ```
 
-- [ ] **Step 4.2 — Implement the render flow.** Add after `_gif_done` (end of file):
+- [x] **Step 4.2 — Implement the render flow.** Add after `_gif_done` (end of file):
 
 ```python
     # -- frame grab ----------------------------------------------------------
@@ -440,9 +440,9 @@ Add the process slot to the `__init__` state block (next to `self._gif_proc`):
 
 Why this "opens in the editor" with no further code: `GalleryWindow` connects `video_pane.file_ready` → `_file_ready` → `rescan()` + `select_path(out)`; selecting a `.png` routes to the embedded editor (`gallery.py` `_selection_changed`).
 
-- [ ] **Step 4.3 — Run the suite + manual smoke.** `python -m pytest tests/ -q` → all pass (imports must not break). Manual check (needs a desktop session): `python -m wondershot`, select a recording, scrub, click "Save frame" → `<stem>-frame.png` appears in the carousel and loads in the editor.
+- [x] **Step 4.3 — Run the suite + manual smoke.** `python -m pytest tests/ -q` → all pass (imports must not break). Manual check (needs a desktop session): `python -m wondershot`, select a recording, scrub, click "Save frame" → `<stem>-frame.png` appears in the carousel and loads in the editor.
 
-- [ ] **Step 4.4 — Commit.**
+- [x] **Step 4.4 — Commit.**
 ```
 git add wondershot/video.py
 git commit -m "Save frame: extract current video frame to <stem>-frame.png, opens in editor"
@@ -456,7 +456,7 @@ git commit -m "Save frame: extract current video frame to <stem>-frame.png, open
 - Modify: `wondershot/video.py` (module-level functions, next to the Task 3 builders)
 - Test: `tests/test_video_filter.py` (extend)
 
-- [ ] **Step 5.1 — Write the failing tests.** Append to `tests/test_video_filter.py`:
+- [x] **Step 5.1 — Write the failing tests.** Append to `tests/test_video_filter.py`:
 
 ```python
 def test_trim_output_name_keeps_container_on_copy():
@@ -513,9 +513,9 @@ def test_trim_args_reencode_fallback_encoder():
     assert "-q:v" in args and "-crf" not in args
 ```
 
-- [ ] **Step 5.2 — Run them, expect failure.** `python -m pytest tests/test_video_filter.py -q` → new tests fail with `ImportError: cannot import name 'trim_output_name'`.
+- [x] **Step 5.2 — Run them, expect failure.** `python -m pytest tests/test_video_filter.py -q` → new tests fail with `ImportError: cannot import name 'trim_output_name'`.
 
-- [ ] **Step 5.3 — Implement.** In `wondershot/video.py`, after `frame_output_name`:
+- [x] **Step 5.3 — Implement.** In `wondershot/video.py`, after `frame_output_name`:
 
 ```python
 def trim_output_name(src_name: str, reencode: bool) -> str:
@@ -550,9 +550,9 @@ def build_trim_args(src: str, start_s: float, end_s: float, out: str,
     return [*args, out]
 ```
 
-- [ ] **Step 5.4 — Run tests.** `python -m pytest tests/test_video_filter.py -q` → all pass. `python -m pytest tests/ -q` → all pass.
+- [x] **Step 5.4 — Run tests.** `python -m pytest tests/test_video_filter.py -q` → all pass. `python -m pytest tests/ -q` → all pass.
 
-- [ ] **Step 5.5 — Commit.**
+- [x] **Step 5.5 — Commit.**
 ```
 git add wondershot/video.py tests/test_video_filter.py
 git commit -m "Trim: pure ffmpeg arg builder (copy vs frame-accurate) + naming"
@@ -567,7 +567,7 @@ git commit -m "Trim: pure ffmpeg arg builder (copy vs frame-accurate) + naming"
 - Modify: `wondershot/gallery.py` — `keyPressEvent` (~line 1000, Esc exits trim mode)
 - Test: none new — RangeBar/VideoPane require a live `QMediaPlayer`/video widget stack, which is GUI-only glue not exercisable headless without a media backend; explicitly skipping the failing-test step. All command construction and naming was tested in Task 5; the timeline span-drag math is the existing, shipped RangeBar code operating on a `Redaction` object unchanged.
 
-- [ ] **Step 6.1 — VideoPane state + spans indirection.** In `VideoPane.__init__`, next to `self.redactions = []`:
+- [x] **Step 6.1 — VideoPane state + spans indirection.** In `VideoPane.__init__`, next to `self.redactions = []`:
 
 ```python
         self.trim: Redaction | None = None   # rect unused; start/end = kept span
@@ -596,7 +596,7 @@ Replace `active_redaction` with:
 
 Guard `set_active` (first line): `if self.trim is not None: return` (the trim span is always "active"; there are no rows to rebuild). Guard `sync_active_row` (first line): `if self.trim is not None: return` (no spin rows exist in trim mode; without this, `self._row_spins[self.active_idx]` IndexErrors).
 
-- [ ] **Step 6.2 — RangeBar reads spans().** In `RangeBar`:
+- [x] **Step 6.2 — RangeBar reads spans().** In `RangeBar`:
   - `_hit` (~line 276): replace both `self.pane.redactions` with `self.pane.spans()`, and replace the active-first ordering head with:
 
 ```python
@@ -625,7 +625,7 @@ Guard `set_active` (first line): `if self.trim is not None: return` (the trim sp
 ```
   (the alpha/drawRoundedRect lines below stay as they are; the playhead block is untouched). The existing edge-grab logic (`EDGE_PX = 7`, `SplitHCursor`) IS the in/out handle interaction — no new handle code needed.
 
-- [ ] **Step 6.3 — Trim widgets.** Add `QCheckBox` to the `PySide6.QtWidgets` import list at the top of video.py. In `VideoPane.__init__` after the `self.apply_btn` block (~line 439):
+- [x] **Step 6.3 — Trim widgets.** Add `QCheckBox` to the `PySide6.QtWidgets` import list at the top of video.py. In `VideoPane.__init__` after the `self.apply_btn` block (~line 439):
 
 ```python
         self.trim_btn = QPushButton("Trim", self)
@@ -654,7 +654,7 @@ Insert into the controls row after `controls.addWidget(self.apply_btn)`:
         controls.addWidget(self.trim_apply_btn)
 ```
 
-- [ ] **Step 6.4 — Mode toggle + integration points.** Add after `_blur_mode` (~line 596):
+- [x] **Step 6.4 — Mode toggle + integration points.** Add after `_blur_mode` (~line 596):
 
 ```python
     def _trim_mode(self, on: bool) -> None:
@@ -688,7 +688,7 @@ Integration edits (each is one line):
   - `load` (~line 489): add `self.trim_btn.setVisible(not is_gif)` next to `self.blur_btn.setVisible(not is_gif)`.
   - `_blur_mode` (~line 587): first line of the `if on:` branch, add `self.trim_btn.setChecked(False)` (blur and trim modes are mutually exclusive both ways).
 
-- [ ] **Step 6.5 — Render flow.** Add after `_trim_mode`:
+- [x] **Step 6.5 — Render flow.** Add after `_trim_mode`:
 
 ```python
     def _apply_trim(self) -> None:
@@ -738,7 +738,7 @@ Integration edits (each is one line):
 
 Note `tmp` (not `out`) is passed to `build_trim_args` as the output — same basename/extension, so the `-movflags` extension check behaves identically, and the half-written file stays hidden in `.rendering/` like every other render.
 
-- [ ] **Step 6.6 — Esc exits trim mode.** In `wondershot/gallery.py` `keyPressEvent` (~line 1000), extend the Esc branch:
+- [x] **Step 6.6 — Esc exits trim mode.** In `wondershot/gallery.py` `keyPressEvent` (~line 1000), extend the Esc branch:
 
 ```python
         if ev.key() == Qt.Key_Escape:
@@ -753,9 +753,9 @@ Note `tmp` (not `out`) is passed to `build_trim_args` as the output — same bas
                 self.editor.scene.clearSelection()
 ```
 
-- [ ] **Step 6.7 — Run the suite + manual smoke.** `python -m pytest tests/ -q` → all pass (the RangeBar refactor must not break the blur tests — `build_blur_filter` is untouched). Manual check (desktop session): open a recording → Trim → drag in/out edges (video scrubs) → Save trim with checkbox off (near-instant, `<stem>-trimmed.<ext>`) and on (re-encodes to `.mp4`); verify blur mode still works after exiting trim mode, and Esc exits trim.
+- [x] **Step 6.7 — Run the suite + manual smoke.** `python -m pytest tests/ -q` → all pass (the RangeBar refactor must not break the blur tests — `build_blur_filter` is untouched). Manual check (desktop session): open a recording → Trim → drag in/out edges (video scrubs) → Save trim with checkbox off (near-instant, `<stem>-trimmed.<ext>`) and on (re-encodes to `.mp4`); verify blur mode still works after exiting trim mode, and Esc exits trim.
 
-- [ ] **Step 6.8 — Commit.**
+- [x] **Step 6.8 — Commit.**
 ```
 git add wondershot/video.py wondershot/gallery.py
 git commit -m "Trim mode: in/out handles on the range timeline, stream-copy default, frame-accurate re-encode option"
@@ -772,7 +772,7 @@ git commit -m "Trim mode: in/out handles on the range timeline, stream-copy defa
 - Branch A only — Modify: `wondershot/settings.py` (new property after `noise_suppression`, ~line 97), `wondershot/settings_dialog.py` (General tab ~line 176, `apply()` ~line 602), `wondershot/record.py` (`_created` ~line 172, `_gst_args` ~line 228); Test: `tests/test_record.py`
 - Branch B only — Modify: `ROADMAP.md` (WS-A cursor halo bullet, ~lines 107–108)
 
-- [ ] **Step 7.1 — Probe the stack (no production code).** Run and capture output of each:
+- [x] **Step 7.1 — Probe the stack (no production code).** Run and capture output of each:
 
 ```
 # 1. Does the portal offer metadata cursor mode? (bitmask: 1=hidden, 2=embedded, 4=metadata)
@@ -790,13 +790,13 @@ rpm -q pipewire-gstreamer
 
 Then the empirical check: temporarily hardcode `"cursor_mode": GLib.Variant("u", 4)` in `record.py` `_created` (line ~182), run `python -m wondershot`, record 5 seconds while moving the mouse, and inspect the output: with metadata mode the cursor should be ABSENT from the frames (confirming the portal honored it) and there is no element in our pipeline string that could receive its coordinates. Revert the hardcode immediately after.
 
-- [ ] **Step 7.2 — Record the transcript.** Create `spikes/cursor_halo_probe.md` containing: the exact commands above, their verbatim output, the recorded-clip observation (cursor present/absent), and one paragraph stating which branch the evidence selects and why. Commit:
+- [x] **Step 7.2 — Record the transcript.** Create `spikes/cursor_halo_probe.md` containing: the exact commands above, their verbatim output, the recorded-clip observation (cursor present/absent), and one paragraph stating which branch the evidence selects and why. Commit:
 ```
 git add spikes/cursor_halo_probe.md
 git commit -m "Cursor halo spike: probe transcript for portal metadata cursor mode in gst-launch pipeline"
 ```
 
-- [ ] **Step 7.3 — Decision gate.** Branch A only if BOTH hold: (a) `AvailableCursorModes` includes 4, and (b) the probe found a concrete mechanism by which cursor coordinates reach a compositing element inside a `gst-launch-1.0` argv pipeline (e.g. a pipewiresrc property that re-embeds or exposes the cursor). If either fails — or the timebox expires — take branch B.
+- [x] **Step 7.3 — Decision gate.** Branch A only if BOTH hold: (a) `AvailableCursorModes` includes 4, and (b) the probe found a concrete mechanism by which cursor coordinates reach a compositing element inside a `gst-launch-1.0` argv pipeline (e.g. a pipewiresrc property that re-embeds or exposes the cursor). If either fails — or the timebox expires — take branch B.
 
 ### Branch A — implement (only if the gate passed)
 
@@ -883,7 +883,7 @@ git commit -m "Cursor halo: Settings->Recording option, portal metadata cursor m
 
 ### Branch B — document (the expected outcome)
 
-- [ ] **Step 7.B1 — Update ROADMAP.md.** Replace the WS-A cursor halo bullet (~lines 107–108, currently "Cursor halo (M): portal cursor-mode *metadata* + composite in our gst pipeline. Static halo only — click *animation* gated on WS-D input") with:
+- [x] **Step 7.B1 — Update ROADMAP.md.** Replace the WS-A cursor halo bullet (~lines 107–108, currently "Cursor halo (M): portal cursor-mode *metadata* + composite in our gst pipeline. Static halo only — click *animation* gated on WS-D input") with:
 
 ```markdown
 - Cursor halo (M): **investigated 2026-06-06, parked.** Portal cursor-mode
@@ -905,7 +905,7 @@ git commit -m "Cursor halo: Settings->Recording option, portal metadata cursor m
 
 Adjust the bullet text to match the actual probe findings if they differ in detail (e.g. metadata mode not offered at all) — the transcript file is the source of truth.
 
-- [ ] **Step 7.B2 — Verify nothing else changed and commit.** `git status` shows only `ROADMAP.md` modified (the probe transcript was committed in 7.2; any temporary hardcode in record.py is reverted). `python -m pytest tests/ -q` → all pass.
+- [x] **Step 7.B2 — Verify nothing else changed and commit.** `git status` shows only `ROADMAP.md` modified (the probe transcript was committed in 7.2; any temporary hardcode in record.py is reverted). `python -m pytest tests/ -q` → all pass.
 ```
 git add ROADMAP.md
 git commit -m "Cursor halo: document gst-launch metadata-cursor findings, park behind WS-D pipeline rewrite"

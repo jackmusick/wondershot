@@ -104,8 +104,22 @@ after Linux is feature-complete.
   the QVideoSink/Wayland subsurface landmine
 - Trim (S/M): reuse the blur range timeline; stream-copy default,
   frame-accurate re-encode checkbox; middle-cut/concat → backlog
-- Cursor halo (M): portal cursor-mode *metadata* + composite in our
-  gst pipeline. Static halo only — click *animation* gated on WS-D input
+- Cursor halo (M): **investigated 2026-06-06, parked.** Portal cursor-mode
+  *metadata* (4) delivers pointer coordinates as PipeWire `spa_meta_cursor`
+  per-buffer stream metadata — but our recorder is a `gst-launch-1.0` argv
+  subprocess, and `pipewiresrc` (1.4.11 — zero "cursor" strings in the
+  compiled plugin) does not translate that metadata into anything a
+  downstream element in a pipeline string can read, so there is nowhere to
+  composite a halo. (Probe transcript: `spikes/cursor_halo_probe.md` —
+  AvailableCursorModes=7, gst-inspect of pipewiresrc, binary grep; a
+  metadata-mode test recording — expected to show the cursor vanish with no
+  recoverable coordinates — is written up there as a manual check.)
+  Unblocking requires owning the pipeline in-process (appsink/appsrc, or a
+  pw_stream consumer) so we can read `spa_meta_cursor` per buffer and draw
+  the halo ourselves — that rewrite is the same frame-source seam WS-D's
+  scroll capture needs, so the halo rides along with WS-D rather than
+  blocking WS-A. Until then, recordings keep cursor-mode *embedded* (2).
+  Click *animation* remains gated on WS-D input capture.
 
 **WS-B — AI foundation** _(in progress)_
 - BYO OpenAI-compatible endpoint: `ai_endpoint`/`ai_api_key`/`ai_model`
