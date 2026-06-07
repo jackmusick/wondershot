@@ -590,7 +590,7 @@ def test_scroll_button_hidden_without_probe(qapp):
 
 ### Step 4.1: Failing tests
 
-- [ ] Create `tests/test_scroll_mode.py` (make_app pattern copied from
+- [x] Create `tests/test_scroll_mode.py` (make_app pattern copied from
   `tests/test_tray_tooltip.py` — same stub, same monkeypatches):
 
 ```python
@@ -779,12 +779,12 @@ def test_tray_action_finishes_running_scroll(qapp, tmp_path, monkeypatch):
     assert app._scroll_pill is None  # pill closed by the finish path
 ```
 
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_scroll_mode.py -x -q`
-- [ ] Expected failure: `AttributeError: <module 'wondershot.app'> has no attribute 'scroll_capture_available'` (the monkeypatch target doesn't exist yet).
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_scroll_mode.py -x -q`
+- [x] Expected failure: `AttributeError: <module 'wondershot.app'> has no attribute 'scroll_capture_available'` (the monkeypatch target doesn't exist yet).
 
 ### Step 4.2: Implement
 
-- [ ] `wondershot/app.py` — add to the module imports:
+- [x] `wondershot/app.py` — add to the module imports:
 
 ```python
 from .scrollsource import scroll_capture_available
@@ -793,7 +793,7 @@ from .scrollsource import scroll_capture_available
   (scrollsource only imports PySide6 + the gi-guarded `record`, so this is
   headless-safe; the heavy gi/Gst/numpy probes run inside the function.)
 
-- [ ] In `GrabbitApp.__init__`, right after the `kwin_ok` block:
+- [x] In `GrabbitApp.__init__`, right after the `kwin_ok` block:
 
 ```python
         self.scroll_ok = scroll_capture_available()
@@ -806,7 +806,7 @@ from .scrollsource import scroll_capture_available
   existing `self.tray = self._build_tray()` line comes later) — verify the
   insertion sits above it, since the tray menu reads `self.scroll_ok`.
 
-- [ ] In `_build_tray`, after the `kwin_ok` "Capture window" block:
+- [x] In `_build_tray`, after the `kwin_ok` "Capture window" block:
 
 ```python
         if self.scroll_ok:
@@ -817,7 +817,7 @@ from .scrollsource import scroll_capture_available
             menu.addAction(a)
 ```
 
-- [ ] In `trigger_capture`, add the mode entry:
+- [x] In `trigger_capture`, add the mode entry:
 
 ```python
         fn = {
@@ -829,7 +829,7 @@ from .scrollsource import scroll_capture_available
         }[mode]
 ```
 
-- [ ] Add the scroll section after `_share_from_bar` (before the recording
+- [x] Add the scroll section after `_share_from_bar` (before the recording
   section):
 
 ```python
@@ -898,13 +898,13 @@ from .scrollsource import scroll_capture_available
   `.scrollsource` at call time, so the test monkeypatch on the scrollsource
   module attribute takes effect.
 
-- [ ] Run the new tests plus every existing GrabbitApp-constructing suite
+- [x] Run the new tests plus every existing GrabbitApp-constructing suite
   (they exercise the new `__init__`/tray code against the duck-typed stubs):
   `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_scroll_mode.py tests/test_tray_tooltip.py tests/test_countdown.py tests/test_record_sync.py tests/test_quickbar.py -x -q`
-- [ ] Expected: all pass. (If a stub-based test crashes on a missing settings
+- [x] Expected: all pass. (If a stub-based test crashes on a missing settings
   attribute, you have accidentally read a new settings key — see the
   shared-stub rule in Task 8 step 2 and fix EVERY stub.)
-- [ ] Commit: `git add -A && git commit -m "Scroll capture mode: tray entry, trigger_capture routing, stop-pill lifecycle"`
+- [x] Commit: `git add -A && git commit -m "Scroll capture mode: tray entry, trigger_capture routing, stop-pill lifecycle"`
 
 ---
 
