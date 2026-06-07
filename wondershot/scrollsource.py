@@ -211,7 +211,11 @@ class ScrollCaptureController(QObject):
         from .capture import timestamp_name, unique_path
         path = unique_path(self.settings.library_dir,
                            timestamp_name("ScrollCapture"))
-        img.save(path, "PNG")
+        if not img.save(path, "PNG"):
+            # silent-False on missing dir / full disk would otherwise
+            # toast success over a lost scroll session
+            self.failed.emit(f"could not save stitched image: {path}")
+            return
         self.captured.emit(path)
 
     def _teardown(self) -> None:

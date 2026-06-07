@@ -139,3 +139,19 @@ def test_availability_gate_is_a_function_not_kde(qapp):
     # what's installed on the box running the suite.
     from wondershot.scrollsource import scroll_capture_available
     assert isinstance(scroll_capture_available(), bool)
+
+
+def test_save_failure_emits_failed_not_captured(qapp, tmp_path):
+    # library_dir vanished mid-session: QImage.save returns False and
+    # the controller must report failure, not toast success over a
+    # lost scroll session.
+    ctl, source = make(qapp, tmp_path / "gone")
+    fails, got = [], []
+    ctl.failed.connect(fails.append)
+    ctl.captured.connect(got.append)
+    ctl.start()
+    source.frame.emit(_img("#336699"))
+    qapp.processEvents()
+    ctl.stop()
+    assert got == []
+    assert len(fails) == 1 and "could not save" in fails[0]
