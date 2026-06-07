@@ -77,6 +77,15 @@ flatpak install wondershot.flatpak
 One bundle, zero distro packages. (Flathub submission is planned —
 then it's just `flatpak install wondershot` with automatic updates.)
 
+### Linux (one-liner, latest main)
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/jackmusick/wondershot/main/install.sh | sh
+```
+
+Installs user-locally (no sudo) and tells you if any system packages
+are missing. Re-run the same command to update.
+
 ### From source (developers)
 
 ```sh
