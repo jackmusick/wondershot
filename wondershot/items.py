@@ -190,24 +190,31 @@ class LineItem(_NoSelectionBox, QGraphicsPathItem):
 
 
 class RectItem(QGraphicsRectItem):
-    def __init__(self, rect: QRectF, color: QColor, width: int):
+    def __init__(self, rect: QRectF, color: QColor, width: int,
+                 fill: QColor | None = None):
         super().__init__(rect)
         _mark(self)
         self.setPen(QPen(color, width, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
-        self.setBrush(Qt.NoBrush)
+        self._fill = QColor(fill) if fill is not None else None
+        self.setBrush(QBrush(self._fill) if self._fill is not None
+                      else Qt.NoBrush)
 
     def to_dict(self) -> dict:
         r = self.rect()
-        return {"type": "rect",
-                "rect": [r.x(), r.y(), r.width(), r.height()],
-                "color": _color_str(self.pen().color()),
-                "width": self.pen().width(), **_transform_dict(self)}
+        d = {"type": "rect",
+             "rect": [r.x(), r.y(), r.width(), r.height()],
+             "color": _color_str(self.pen().color()),
+             "width": self.pen().width(), **_transform_dict(self)}
+        if self._fill is not None:
+            d["fill"] = _color_str(self._fill)
+        return d
 
     @classmethod
     def from_dict(cls, d: dict) -> "RectItem":
         r = d["rect"]
+        fill = QColor(d["fill"]) if d.get("fill") else None
         item = cls(QRectF(r[0], r[1], r[2], r[3]),
-                   QColor(d["color"]), int(d["width"]))
+                   QColor(d["color"]), int(d["width"]), fill=fill)
         _apply_transform(item, d)
         return item
 

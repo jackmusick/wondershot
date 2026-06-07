@@ -198,3 +198,25 @@ def test_arrow_rotation_roundtrip_exactly(qapp):
     assert out.rotation() == 287.123456789
     assert out.mapToScene(out.endpoints()[1]) \
         == item.mapToScene(item.endpoints()[1])
+
+
+def test_rect_fill_roundtrip(qapp):
+    from PySide6.QtCore import Qt
+    from wondershot.items import RectItem
+    item = RectItem(QRectF(1, 2, 30, 20), QColor("#202020"), 1,
+                    fill=QColor("#c8c8c8"))
+    assert item.brush().style() != Qt.NoBrush
+    out = roundtrip(item)
+    assert out.brush().color() == QColor("#c8c8c8")
+    assert out.brush().style() != Qt.NoBrush
+    assert out.pen().color() == QColor("#202020")
+
+
+def test_rect_without_fill_stays_hollow(qapp):
+    from PySide6.QtCore import Qt
+    from wondershot.items import RectItem
+    item = RectItem(QRectF(0, 0, 10, 10), QColor("red"), 3)
+    d = item.to_dict()
+    assert "fill" not in d              # old sidecars stay byte-identical
+    out = roundtrip(item)
+    assert out.brush().style() == Qt.NoBrush
