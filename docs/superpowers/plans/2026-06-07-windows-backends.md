@@ -187,7 +187,7 @@ cd /home/jack/GitHub/grabbit-wt/win-port && git add wondershot/app.py tests/test
 - Modify: `pyproject.toml` (windows extra)
 - Test: `tests/test_wincapture.py` (create)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/test_wincapture.py
@@ -317,7 +317,7 @@ def test_active_window_rect_none_for_degenerate_rect():
         user32=FakeUser32(), dwmapi=FakeDwmapi(rect=(10, 20, 10, 20))) is None
 ```
 
-- [ ] **Step 2: Run — verify failure**
+- [x] **Step 2: Run — verify failure**
 
 ```bash
 cd /home/jack/GitHub/grabbit-wt/win-port && /home/jack/GitHub/grabbit/.venv/bin/python -m pytest tests/test_wincapture.py -v
@@ -325,7 +325,7 @@ cd /home/jack/GitHub/grabbit-wt/win-port && /home/jack/GitHub/grabbit/.venv/bin/
 
 Expected: FAIL with `ModuleNotFoundError: No module named 'wondershot.wincapture'`.
 
-- [ ] **Step 3: Implement the module core**
+- [x] **Step 3: Implement the module core**
 
 ```python
 # wondershot/wincapture.py
@@ -421,7 +421,7 @@ def grab_fullscreen():
 
 Note: `ctypes.byref(rect)._obj` is how the fake reads the structure back — `byref` objects expose `_obj` in CPython; the fakes above rely on it.
 
-- [ ] **Step 4: Add the pyproject extra**
+- [x] **Step 4: Add the pyproject extra**
 
 In `pyproject.toml` under `[project.optional-dependencies]` add:
 
@@ -429,7 +429,7 @@ In `pyproject.toml` under `[project.optional-dependencies]` add:
 windows = ["mss>=9"]  # WS-E stills backend; Windows-only runtime dep
 ```
 
-- [ ] **Step 5: Run tests, then the suite**
+- [x] **Step 5: Run tests, then the suite**
 
 ```bash
 /home/jack/GitHub/grabbit/.venv/bin/python -m pytest tests/test_wincapture.py -v && /home/jack/GitHub/grabbit/.venv/bin/python -m pytest tests/ -q
@@ -437,7 +437,7 @@ windows = ["mss>=9"]  # WS-E stills backend; Windows-only runtime dep
 
 Expected: all PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add wondershot/wincapture.py tests/test_wincapture.py pyproject.toml && git commit -m "feat: wincapture core — BGRA conversion, selection math, ctypes window geometry"

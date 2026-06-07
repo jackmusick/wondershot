@@ -15,6 +15,7 @@ keywords = ["screenshot", "wayland", "kde", "snagit", "annotation"]
 
 [project.optional-dependencies]
 spike = ["numpy"]  # WS-D scroll-stitch spike only; not a runtime dep
+windows = ["mss>=9"]  # WS-E stills backend; Windows-only runtime dep
 ai-local = ["rembg>=2.0", "onnxruntime>=1.16"]
 
 [project.scripts]
