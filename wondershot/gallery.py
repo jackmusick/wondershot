@@ -650,6 +650,11 @@ class GalleryWindow(QMainWindow):
         self.record_action = self._tb_act("Record", "media-record",
                                           self._toggle_record, "Ctrl+R")
         tb.addAction(self.record_action)
+        self.pause_action = self._tb_act("Pause", "media-playback-pause",
+                                         self._toggle_pause)
+        self.pause_action.setEnabled(False)
+        self.pause_action.setVisible(False)
+        tb.addAction(self.pause_action)
         self._bubble_anchor = tb.addSeparator()
         self.main_toolbar = tb
         tb.addAction(self._tb_act("Open in window", "window-new",
@@ -958,6 +963,26 @@ class GalleryWindow(QMainWindow):
         self.record_action.setText("Stop" if on else "Record")
         self.record_action.setIcon(QIcon.fromTheme(
             "media-playback-stop" if on else "media-record"))
+        self.set_pause_enabled(on)
+
+    def _toggle_pause(self) -> None:
+        if self.recorder is None:
+            return
+        if self.recorder.paused:
+            self.recorder.resume()  # paused_changed relabels BOTH controls
+        else:
+            self.recorder.pause()
+
+    def set_pause_enabled(self, on: bool) -> None:
+        self.pause_action.setEnabled(on)
+        self.pause_action.setVisible(on)
+        if not on:
+            self.set_paused(False)
+
+    def set_paused(self, paused: bool) -> None:
+        self.pause_action.setText("Resume" if paused else "Pause")
+        self.pause_action.setIcon(QIcon.fromTheme(
+            "media-playback-start" if paused else "media-playback-pause"))
 
     def set_stopping(self) -> None:
         # finalizing: neither button should accept clicks until done

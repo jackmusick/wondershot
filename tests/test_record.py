@@ -213,6 +213,55 @@ def test_sweep_stale_tmp_removes_old_orphans_only(tmp_path):
     assert fresh.exists()
 
 
+def test_pause_gates_pipeline_and_stops_ticks(qapp, tmp_path):
+    """pause() flips recorder + pipeline state, emits paused_changed,
+    and the watchdog stops ticking while paused."""
+    rec = make_recorder(tmp_path)
+    rec._pipeline = FakePipeline(status="running")
+    rec.recording = True
+    rec._started_at = time.monotonic()
+    states = []
+    rec.paused_changed.connect(states.append)
+    rec.pause()
+    assert rec.paused is True
+    assert rec._pipeline.paused is True
+    assert states == [True]
+    ticks = []
+    rec.tick.connect(ticks.append)
+    rec._start_watchdog()
+    # a watchdog cycle must not tick while paused
+    end = time.monotonic() + 1.5
+    while time.monotonic() < end:
+        qapp.processEvents()
+        time.sleep(0.02)
+    assert ticks == []
+
+
+def test_resume_clears_pause_and_accumulates_paused_total(qapp, tmp_path):
+    rec = make_recorder(tmp_path)
+    rec._pipeline = FakePipeline(status="running")
+    rec.recording = True
+    rec._started_at = time.monotonic()
+    rec.pause()
+    rec._paused_at = time.monotonic() - 2.0  # simulate a 2s pause
+    states = []
+    rec.paused_changed.connect(states.append)
+    rec.resume()
+    assert rec.paused is False
+    assert rec._pipeline.paused is False
+    assert rec._paused_total >= 2.0
+    assert states == [False]
+
+
+def test_elapsed_excludes_paused_span(qapp, tmp_path):
+    rec = make_recorder(tmp_path)
+    rec._pipeline = FakePipeline(status="running")
+    rec.recording = True
+    rec._started_at = time.monotonic() - 100
+    rec._paused_total = 30.0  # 30s of accumulated pause
+    assert rec.elapsed_str() == "1:10"  # 70 live seconds
+
+
 def test_watchdog_death_keeps_partial_recording(qapp, tmp_path):
     """Same salvage mandate as the force_stop path: a pipeline that dies on
     its own (mux error minutes in) must not delete the partial footage."""

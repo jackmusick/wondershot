@@ -492,7 +492,7 @@ Expected: halo + cursor_mode tests pass. ROADMAP updated either way.
 
 ---
 
-## TASK C1 — Pause/resume in the recorder (feature; PTS continuity is the real risk)
+## [x] TASK C1 — Pause/resume in the recorder (feature; PTS continuity is the real risk)
 
 - **Pure PTS bookkeeping** in `record.py` + `test_record_pure.py`:
   ```python
@@ -514,7 +514,7 @@ Expected: all pass.
 
 ---
 
-## TASK C2 — Pause/resume UI (tray + toolbar) (feature)
+## [x] TASK C2 — Pause/resume UI (tray + toolbar) (feature)
 
 - `app.py`: add a tray `pause_action` ("Pause recording"). On `_on_recording_started` enable+show it; on stopping/finished/failed reset+hide. `toggle_pause()` → `recorder.resume() if recorder.paused else recorder.pause()`, then relabel ("Pause"/"Resume"). Connect `recorder.paused_changed` to relabel BOTH controls (single source of truth, same discipline as `stopping`).
 - `gallery.py`: add a toolbar Pause/Resume button (`media-playback-pause`/`media-playback-start`) next to record; enable only while `recording`; click → app coordinator (add a `pause_requested` signal OR call `self.recorder` directly mirroring `_toggle_record`). Relabel via `recorder.paused_changed`.
@@ -528,7 +528,7 @@ Expected: pass.
 
 ---
 
-## TASK C3 — Pause/resume live continuity smoke (THE risk; Linux dev box)
+## [x] TASK C3 — Pause/resume live continuity smoke (THE risk; Linux dev box)
 
 `test_record_live.py` (importorskip): build a `videotestsrc` pipeline with `identity name=pause`, run; `pause()`; pump ~0.5 s; `resume()`; run; `stop()`; assert the mp4 finalizes (no mux error → `finished`, not `failed`), is non-empty, and — if `ffprobe` is on PATH — that duration is plausibly continuous (no negative/backwards-PTS warning). If mp4mux breaks on the resumed segment despite the offset probe, document findings in `ROADMAP.md` and PARK pause/resume (keep C1/C2 behind `recorder.pause_supported`), per spec's timeboxed mandate.
 

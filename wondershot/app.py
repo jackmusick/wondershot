@@ -80,6 +80,7 @@ class GrabbitApp(QObject):
         self.recorder.finished.connect(self._on_recording_finished)
         self.recorder.failed.connect(self._on_recording_failed)
         self.recorder.stopping.connect(self._on_recording_stopping)
+        self.recorder.paused_changed.connect(self._on_paused_changed)
 
         self.gallery = GalleryWindow(self.settings, self.capture,
                                      recorder=self.recorder)
@@ -143,6 +144,11 @@ class GrabbitApp(QObject):
         self.record_action = QAction("Record screen…", menu)
         self.record_action.triggered.connect(self.toggle_recording)
         menu.addAction(self.record_action)
+        self.pause_action = QAction("Pause recording", menu)
+        self.pause_action.triggered.connect(self.toggle_pause)
+        self.pause_action.setEnabled(False)
+        self.pause_action.setVisible(False)
+        menu.addAction(self.pause_action)
         self.bubble_action = QAction(QIcon.fromTheme("camera-web"),
                                      "Camera", menu)
         self.bubble_action.setCheckable(True)
@@ -346,11 +352,32 @@ class GrabbitApp(QObject):
     def _countdown_cancelled(self) -> None:
         self._countdown = None
 
+    def toggle_pause(self) -> None:
+        if self.recorder.paused:
+            self.recorder.resume()
+        else:
+            self.recorder.pause()
+
+    def _on_paused_changed(self, paused: bool) -> None:
+        # single source of truth: relabel BOTH controls (same discipline
+        # as 'stopping')
+        self.pause_action.setText(
+            "Resume recording" if paused else "Pause recording")
+        self.gallery.set_paused(paused)
+
+    def _set_pause_enabled(self, on: bool) -> None:
+        self.pause_action.setEnabled(on)
+        self.pause_action.setVisible(on)
+        if not on:
+            self.pause_action.setText("Pause recording")
+        self.gallery.set_pause_enabled(on)
+
     def _on_recording_stopping(self) -> None:
         # The gallery toolbar resets itself via its own stopping
         # connection (gallery.py __init__); only the tray is ours.
         self.record_action.setText("Stopping…")
         self.record_action.setEnabled(False)
+        self._set_pause_enabled(False)
 
     def _on_recording_tick(self, t: str) -> None:
         self.record_action.setText(
@@ -361,6 +388,7 @@ class GrabbitApp(QObject):
 
     def _on_recording_started(self) -> None:
         self.record_action.setText("Stop recording")
+        self._set_pause_enabled(True)
         self.gallery.set_recording(True)
         mic = "with mic" if self.settings.mic_enabled else "no mic"
         self.tray.showMessage("Wondershot — recording",
@@ -370,6 +398,7 @@ class GrabbitApp(QObject):
     def _on_recording_finished(self, path: str) -> None:
         self.record_action.setText("Record screen…")
         self.record_action.setEnabled(True)
+        self._set_pause_enabled(False)
         self.gallery.set_recording(False)
         self.tray.setToolTip("Wondershot — screenshots")
         self.gallery.rescan()
@@ -381,6 +410,7 @@ class GrabbitApp(QObject):
     def _on_recording_failed(self, message: str) -> None:
         self.record_action.setText("Record screen…")
         self.record_action.setEnabled(True)
+        self._set_pause_enabled(False)
         self.gallery.set_recording(False)
         self.tray.setToolTip("Wondershot — screenshots")
         self.tray.showMessage("Wondershot — recording failed", message,
