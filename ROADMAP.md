@@ -132,6 +132,14 @@ after Linux is feature-complete.
   valves ahead of the mux and accumulated-offset PTS rewriting — the
   same frame-source seam as the cursor halo and WS-D scroll capture;
   pause/resume rides along with that rewrite.
+- Region-only recording (M): out of scope for now. The portal ScreenCast
+  source types are monitor|window (record.py SelectSources `types: 3`) —
+  there is no region source on Wayland. A fixed crop *could* be injected
+  at launch time (`videocrop` after videoconvert in _gst_args, with a
+  region picked by the existing region selector before the portal dance),
+  but mid-recording region changes and DPI/multi-monitor mapping need the
+  same in-process pipeline rewrite as pause/resume and the cursor halo.
+  Design crop-in-pipeline alongside that seam; do not bolt onto gst-launch.
 
 **WS-B — AI foundation** _(shipped; Jack verified 2026-06-07: "they work okay")_
 - BYO OpenAI-compatible endpoint: `ai_endpoint`/`ai_api_key`/`ai_model`

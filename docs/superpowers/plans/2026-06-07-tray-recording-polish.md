@@ -1071,7 +1071,7 @@ Why this is expected to fail — reason from the architecture before running any
 **Files:**
 - `ROADMAP.md`
 
-- [ ] Add to `ROADMAP.md`, in the same recording section as the Task 6 note:
+- [x] Add to `ROADMAP.md`, in the same recording section as the Task 6 note:
 
 ```markdown
 - Region-only recording (M): out of scope for now. The portal ScreenCast
@@ -1084,10 +1084,10 @@ Why this is expected to fail — reason from the architecture before running any
   Design crop-in-pipeline alongside that seam; do not bolt onto gst-launch.
 ```
 
-- [ ] Run the full suite one final time: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q`
+- [x] Run the full suite one final time: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q`
       Expected: green.
 
-- [ ] Commit: `git add -A && git commit -m "roadmap: region-only recording parked (portal has no region source)"`
+- [x] Commit: `git add -A && git commit -m "roadmap: region-only recording parked (portal has no region source)"`
 
 ---
 
