@@ -55,7 +55,7 @@ python -m venv .venv && .venv/bin/pip install -e ".[spike]" pytest
 - Modify: `wondershot/settings.py` (insert after line 298, the `quick_bar_timeout` setter, before the `# -- AI` section comment at line 300)
 - Create: `tests/test_settings_video.py`
 
-- [ ] **Write the failing test** — create `tests/test_settings_video.py`:
+- [x] **Write the failing test** — create `tests/test_settings_video.py`:
 
 ```python
 import os
@@ -100,9 +100,9 @@ def test_video_tool_values_survive_string_storage(tmp_path):
     assert s.gif_max_width == 1280
 ```
 
-- [ ] **Run it, expect failure:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_settings_video.py -q` → 3 failures, `AttributeError: 'Settings' object has no attribute 'video_blur_strength'`.
+- [x] **Run it, expect failure:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_settings_video.py -q` → 3 failures, `AttributeError: 'Settings' object has no attribute 'video_blur_strength'`.
 
-- [ ] **Implement** — in `wondershot/settings.py`, insert between the `quick_bar_timeout` setter (line 298) and the `# -- AI (OpenAI-compatible chat endpoint)` comment (line 300):
+- [x] **Implement** — in `wondershot/settings.py`, insert between the `quick_bar_timeout` setter (line 298) and the `# -- AI (OpenAI-compatible chat endpoint)` comment (line 300):
 
 ```python
     # -- video tools (persisted defaults) ------------------------------------
@@ -134,9 +134,9 @@ def test_video_tool_values_survive_string_storage(tmp_path):
         self._s.setValue("gif_max_width", int(value))
 ```
 
-- [ ] **Run:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_settings_video.py -q` → 3 passed.
-- [ ] **Full suite:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q` → 189 passed.
-- [ ] **Commit:** `git add wondershot/settings.py tests/test_settings_video.py && git commit -m "Settings: persisted video-tool defaults (blur strength, GIF fps/width)"`
+- [x] **Run:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_settings_video.py -q` → 3 passed.
+- [x] **Full suite:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q` → 189 passed.
+- [x] **Commit:** `git add wondershot/settings.py tests/test_settings_video.py && git commit -m "Settings: persisted video-tool defaults (blur strength, GIF fps/width)"`
 
 ---
 

@@ -297,6 +297,34 @@ class Settings:
     def quick_bar_timeout(self, value: int) -> None:
         self._s.setValue("quick_bar_timeout", int(value))
 
+    # -- video tools (persisted defaults) ------------------------------------
+
+    @property
+    def video_blur_strength(self) -> int:
+        """boxblur radius for the video blur render (and its preview)."""
+        return int(self._s.value("video_blur_strength", 14))
+
+    @video_blur_strength.setter
+    def video_blur_strength(self, value: int) -> None:
+        self._s.setValue("video_blur_strength", int(value))
+
+    @property
+    def gif_fps(self) -> int:
+        return int(self._s.value("gif_fps", 12))
+
+    @gif_fps.setter
+    def gif_fps(self, value: int) -> None:
+        self._s.setValue("gif_fps", int(value))
+
+    @property
+    def gif_max_width(self) -> int:
+        """GIF output is scaled down to at most this width (never up)."""
+        return int(self._s.value("gif_max_width", 720))
+
+    @gif_max_width.setter
+    def gif_max_width(self, value: int) -> None:
+        self._s.setValue("gif_max_width", int(value))
+
     # -- AI (OpenAI-compatible chat endpoint) -------------------------------
     # NOTE: the API key is stored in plaintext QSettings, same as the
     # S3/Azure credentials; the AI tab warns about this.
