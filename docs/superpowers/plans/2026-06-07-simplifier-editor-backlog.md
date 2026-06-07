@@ -1339,7 +1339,7 @@ git commit -m "feat(editor): Blur tool — live gaussian region blur alongside P
 - Modify: `wondershot/editor.py` (new command after `StyleCommand`; hooks on `EditorWindow`; two calls in `CanvasView.mousePressEvent`/`mouseReleaseEvent` ~lines 269-303; `self._step_drag = None` in `EditorWindow.__init__` near `self._adjusting = False`)
 - Test: `tests/test_editor_backlog.py`
 
-- [ ] **Step 1: Write the failing tests** — append to `tests/test_editor_backlog.py`:
+- [x] **Step 1: Write the failing tests** — append to `tests/test_editor_backlog.py`:
 
 ```python
 def _two_steps(ed):
@@ -1389,12 +1389,12 @@ def test_non_step_press_is_ignored(qapp):
     ed.finish_step_drag()                # must not raise
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `QT_QPA_PLATFORM=offscreen .venv/bin/pytest tests/test_editor_backlog.py -v -k step`
 Expected: FAIL — `AttributeError: 'EditorWindow' object has no attribute 'note_step_press'`
 
-- [ ] **Step 3: Implement** — in `wondershot/editor.py`:
+- [x] **Step 3: Implement** — in `wondershot/editor.py`:
 
 (a) New command after `StyleCommand`:
 
@@ -1488,12 +1488,12 @@ In `mouseReleaseEvent`, add `self.editor.finish_step_drag()` immediately after t
         ev.accept()
 ```
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `QT_QPA_PLATFORM=offscreen .venv/bin/pytest tests/test_editor_backlog.py tests/test_editor.py -v`
 Expected: ALL PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add wondershot/editor.py tests/test_editor_backlog.py

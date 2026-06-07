@@ -136,3 +136,50 @@ def test_blur_item_gets_corner_grips(qapp):
     item.setSelected(True)
     roles = {h.role for h in ed._handles}
     assert roles == {"tl", "tr", "bl", "br"}
+
+
+def _two_steps(ed):
+    from wondershot.items import StepItem
+    a = StepItem(QPointF(50, 50), 1, QColor("#e3242b"))
+    b = StepItem(QPointF(200, 200), 2, QColor("#e3242b"))
+    ed.scene.addItem(a)
+    ed.scene.addItem(b)
+    return a, b
+
+
+def test_dropping_step_on_step_swaps_numbers_and_snaps_back(qapp):
+    ed = make_editor(qapp)
+    a, b = _two_steps(ed)
+    ed.note_step_press(a)
+    a.setPos(b.pos())                    # simulate the drag
+    ed.finish_step_drag()
+    assert (a.number, b.number) == (2, 1)
+    assert a.pos() == QPointF(50, 50)    # dragged badge snapped back
+    assert b.pos() == QPointF(200, 200)
+    ed.undo_stack.undo()
+    assert (a.number, b.number) == (1, 2)
+    assert a.pos() == QPointF(50, 50)
+    ed.undo_stack.redo()
+    assert (a.number, b.number) == (2, 1)
+
+
+def test_step_drag_to_empty_space_is_a_plain_move(qapp):
+    ed = make_editor(qapp)
+    a, b = _two_steps(ed)
+    n = ed.undo_stack.count()
+    ed.note_step_press(a)
+    a.setPos(QPointF(120, 30))           # nowhere near b
+    ed.finish_step_drag()
+    assert (a.number, b.number) == (1, 2)
+    assert a.pos() == QPointF(120, 30)   # the move sticks
+    assert ed.undo_stack.count() == n    # no swap command pushed
+
+
+def test_non_step_press_is_ignored(qapp):
+    from wondershot.items import RectItem
+    ed = make_editor(qapp)
+    r = RectItem(QRectF(0, 0, 30, 30), QColor("red"), 2)
+    ed.scene.addItem(r)
+    ed.note_step_press(r)                # not a StepItem -> no-op
+    ed.note_step_press(None)
+    ed.finish_step_drag()                # must not raise

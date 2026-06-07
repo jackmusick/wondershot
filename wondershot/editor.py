@@ -266,6 +266,31 @@ class StyleCommand(QUndoCommand):
             apply_style(it, **b)
 
 
+class SwapStepNumbersCommand(QUndoCommand):
+    """Drop one step badge onto another: the two numbers swap and the
+    dragged badge snaps back to where it started — the gesture is a
+    renumber, not a move (otherwise two badges would overlap)."""
+
+    def __init__(self, editor: "EditorWindow", dragged, target,
+                 dragged_start: QPointF):
+        super().__init__("swap step numbers")
+        self.editor = editor
+        self.a, self.b = dragged, target
+        self.a_start = QPointF(dragged_start)
+
+    def redo(self):
+        self.a.number, self.b.number = self.b.number, self.a.number
+        self.a.setPos(self.a_start)
+        self.a.update()
+        self.b.update()
+
+    def undo(self):
+        self.a.number, self.b.number = self.b.number, self.a.number
+        self.a.setPos(self.a_start)
+        self.a.update()
+        self.b.update()
+
+
 class CanvasView(QGraphicsView):
     def __init__(self, editor: "EditorWindow"):
         super().__init__(editor.scene)
@@ -306,6 +331,9 @@ class CanvasView(QGraphicsView):
             super().wheelEvent(ev)
 
     def mousePressEvent(self, ev):  # noqa: N802
+        if ev.button() == Qt.LeftButton:
+            self.editor.note_step_press(
+                self.itemAt(ev.position().toPoint()))
         if self.editor.tool == Tool.SELECT or ev.button() != Qt.LeftButton:
             super().mousePressEvent(ev)
             return
@@ -333,9 +361,11 @@ class CanvasView(QGraphicsView):
         if self._passthrough:
             self._passthrough = False
             super().mouseReleaseEvent(ev)
+            self.editor.finish_step_drag()
             return
         if self.editor.tool == Tool.SELECT or ev.button() != Qt.LeftButton:
             super().mouseReleaseEvent(ev)
+            self.editor.finish_step_drag()
             return
         if self.editor.drawing:
             self.editor.end_draw(self.mapToScene(ev.position().toPoint()))
@@ -402,6 +432,7 @@ class EditorWindow(QMainWindow):
         self._overlay: QGraphicsRectItem | None = None
         self._handles: list[HandleItem] = []
         self._adjusting = False
+        self._step_drag = None  # (StepItem, press pos) during a badge drag
         self.scene.selectionChanged.connect(self._rebuild_handles)
 
         self._build_toolbar()
@@ -1501,6 +1532,32 @@ class EditorWindow(QMainWindow):
         items = [i for i in self.scene.selectedItems() if is_annotation(i)]
         if items:
             self.undo_stack.push(RemoveItemsCommand(self, items))
+
+    def note_step_press(self, item) -> None:
+        """Called by the view on mouse-press with the item under the
+        cursor; remembers a StepItem's start position for the
+        drop-to-swap gesture."""
+        self._step_drag = ((item, QPointF(item.pos()))
+                           if isinstance(item, StepItem) else None)
+
+    def finish_step_drag(self) -> None:
+        """Called by the view on mouse-release: if the pressed badge
+        moved onto another badge, swap their numbers (undoable)."""
+        drag, self._step_drag = self._step_drag, None
+        if drag is None:
+            return
+        item, start = drag
+        if item.scene() is not self.scene or item.pos() == start:
+            return
+        targets = [i for i in item.collidingItems()
+                   if isinstance(i, StepItem)]
+        if not targets:
+            return
+        target = min(targets, key=lambda t: (t.scenePos()
+                                             - item.scenePos()
+                                             ).manhattanLength())
+        self.undo_stack.push(
+            SwapStepNumbersCommand(self, item, target, start))
 
     def copy_to_clipboard(self) -> None:
         QGuiApplication.clipboard().setImage(self.flattened())
