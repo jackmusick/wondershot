@@ -462,6 +462,13 @@ class EditorWindow(QMainWindow):
             a.triggered.connect(fn)
             self.addAction(a)  # window-level: keeps the shortcut alive
 
+        tb.addSeparator()
+        self.redact_action = self._act("AI Redact", "view-private")
+        self.redact_action.setToolTip(
+            "Find and pixelate sensitive text (Settings → AI)")
+        self.redact_action.triggered.connect(self.ai_redact)
+        tb.addAction(self.redact_action)
+
         from PySide6.QtWidgets import QMenu, QSizePolicy, QToolButton, QWidget
         spacer = QWidget(self)
         spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
@@ -550,6 +557,68 @@ class EditorWindow(QMainWindow):
             msg = "Copied URL to clipboard"
         self.statusBar().showMessage(msg, 10000 if error else 5000)
         self.share_status.emit(msg)
+
+    # -- AI actions -----------------------------------------------------------
+
+    def _start_ai_job(self, fn, label: str, on_done) -> None:
+        """Run `fn` on the thread pool behind a cancelable progress dialog."""
+        from PySide6.QtCore import QThreadPool
+        from PySide6.QtWidgets import QProgressDialog
+        from .aiclient import AIJob
+        job = AIJob(fn)
+        dlg = QProgressDialog(label, "Cancel", 0, 0, self)
+        dlg.setWindowModality(Qt.WindowModal)
+        dlg.setMinimumDuration(400)
+        dlg.canceled.connect(lambda: setattr(job, "cancel", True))
+        job.emitter.done.connect(
+            lambda result, error: (dlg.close(), on_done(result, error)))
+        self._ai_job = job  # keep the signal emitter alive
+        QThreadPool.globalInstance().start(job)
+
+    def ai_redact(self) -> None:
+        from .aiclient import ai_configured
+        from . import redact
+        if not (self.settings and ai_configured(self.settings)):
+            self.statusBar().showMessage(
+                "Configure an AI endpoint in Settings → AI first", 6000)
+            return
+        s = self.settings
+        image = self.base_image.copy()  # snapshot off the GUI thread's state
+        endpoint, key, model = s.ai_endpoint, s.ai_api_key, s.ai_model
+        self._start_ai_job(
+            lambda: redact.redact_regions(image, endpoint, key, model),
+            "Finding sensitive text…", self._redact_done)
+
+    def _redact_done(self, rects, error: str) -> None:
+        if error:
+            QMessageBox.warning(self, "Wondershot",
+                                f"AI Redact failed: {error}")
+            return
+        self.apply_redact_regions(rects or [])
+
+    def apply_redact_regions(self, rects) -> int:
+        """Add a PixelateItem per region — non-destructive, one undo step."""
+        img_rect = QRect(0, 0, self.base_image.width(),
+                         self.base_image.height())
+        clamped = []
+        for r in rects:
+            c = QRect(r).intersected(img_rect)
+            if c.width() >= 4 and c.height() >= 4:
+                clamped.append(c)
+        if clamped:
+            self.undo_stack.beginMacro("AI redact")
+            try:
+                for c in clamped:
+                    item = PixelateItem(lambda: self.base_image, QRectF(c))
+                    self.undo_stack.push(
+                        AddItemCommand(self, item, "AI redact"))
+            finally:
+                self.undo_stack.endMacro()
+        msg = (f"AI Redact: pixelated {len(clamped)} region(s) — review, "
+               "adjust, then save" if clamped
+               else "AI Redact: nothing sensitive found")
+        self.statusBar().showMessage(msg, 8000)
+        return len(clamped)
 
     def _build_statusbar(self) -> None:
         from PySide6.QtWidgets import QComboBox, QToolButton

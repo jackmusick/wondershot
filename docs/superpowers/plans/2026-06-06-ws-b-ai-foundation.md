@@ -1095,7 +1095,7 @@ def redact_regions(image, endpoint: str, api_key: str,
 - Modify: `wondershot/editor.py` — toolbar insertion in `_build_toolbar` before the spacer block (~line 465), new methods after `_share_done` (~line 552)
 - Test: `tests/test_editor_ai.py` (create)
 
-- [ ] Write the failing test:
+- [x] Write the failing test:
 
 ```python
 # tests/test_editor_ai.py
@@ -1157,8 +1157,8 @@ def test_redact_action_exists_on_toolbar(qapp):
     assert ed.redact_action.text() == "AI Redact"
 ```
 
-- [ ] Run and confirm failure: `python -m pytest tests/test_editor_ai.py -q` — expect `AttributeError: 'EditorWindow' object has no attribute 'apply_redact_regions'`.
-- [ ] Implement. In `wondershot/editor.py` `_build_toolbar`, insert immediately BEFORE the `from PySide6.QtWidgets import QMenu, QSizePolicy, QToolButton, QWidget` / spacer block (~line 465):
+- [x] Run and confirm failure: `python -m pytest tests/test_editor_ai.py -q` — expect `AttributeError: 'EditorWindow' object has no attribute 'apply_redact_regions'`.
+- [x] Implement. In `wondershot/editor.py` `_build_toolbar`, insert immediately BEFORE the `from PySide6.QtWidgets import QMenu, QSizePolicy, QToolButton, QWidget` / spacer block (~line 465):
 
 ```python
         tb.addSeparator()
@@ -1236,8 +1236,8 @@ def test_redact_action_exists_on_toolbar(qapp):
 ```
 
   Note: `ai_redact`/`_start_ai_job`/`_redact_done` are GUI glue (thread pool + modal dialog) and are exercised only via the headless-safe `apply_redact_regions` test — stated explicitly here; do not try to unit-test the progress dialog.
-- [ ] Run tests: `python -m pytest tests/test_editor_ai.py tests/test_editor.py -q` — expect all passed (3 new + 17 existing).
-- [ ] Commit: `git add wondershot/editor.py tests/test_editor_ai.py && git commit -m "WS-B: AI Redact editor action — non-destructive PixelateItems"`
+- [x] Run tests: `python -m pytest tests/test_editor_ai.py tests/test_editor.py -q` — expect all passed (3 new + 17 existing).
+- [x] Commit: `git add wondershot/editor.py tests/test_editor_ai.py && git commit -m "WS-B: AI Redact editor action — non-destructive PixelateItems"`
 
 ---
 
