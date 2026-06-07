@@ -78,7 +78,7 @@ Gotchas to keep in mind throughout:
 
 `to_dict`/`from_dict` for `ArrowItem`, `LineItem`, `RectItem`, `EllipseItem`, `HighlightItem`, `FreehandItem`, plus the shared transform helpers and the `item_from_dict` dispatcher (which Task 2 extends).
 
-- [ ] **Step 1.1 — failing tests.** Create `tests/test_items_serialize.py`:
+- [x] **Step 1.1 — failing tests.** Create `tests/test_items_serialize.py`:
 
 ```python
 """Round-trip tests for annotation item serialization (sidecar format).
@@ -191,7 +191,7 @@ def test_dispatcher_unknown_type_returns_none(qapp):
     assert item_from_dict({}) is None
 ```
 
-- [ ] **Step 1.2 — run, expect failure:**
+- [x] **Step 1.2 — run, expect failure:**
 
 ```bash
 QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_items_serialize.py -x -q
@@ -199,7 +199,7 @@ QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_items_serialize.
 
 Expected: `ImportError: cannot import name 'item_from_dict' from 'wondershot.items'` (or `AttributeError: 'ArrowItem' object has no attribute 'to_dict'`).
 
-- [ ] **Step 1.3 — implement.** In `wondershot/items.py`:
+- [x] **Step 1.3 — implement.** In `wondershot/items.py`:
 
 (a) After the existing `is_annotation` function (line ~50), add the shared helpers:
 
@@ -349,13 +349,13 @@ _ITEM_TYPES = {
 
 (Note: `"pixelate"` is special-cased above the table; `PixelateItem.from_dict`, `TextItem`, `StepItem` arrive in Task 2 — the `pixelate` branch will raise AttributeError if hit before then, which no Task-1 test does.)
 
-- [ ] **Step 1.4 — run, expect pass:**
+- [x] **Step 1.4 — run, expect pass:**
 
 ```bash
 QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_items_serialize.py -x -q
 ```
 
-- [ ] **Step 1.5 — commit:**
+- [x] **Step 1.5 — commit:**
 
 ```bash
 git add wondershot/items.py tests/test_items_serialize.py
