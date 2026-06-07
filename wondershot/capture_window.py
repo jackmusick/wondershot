@@ -114,6 +114,56 @@ class CaptureWindow(QWidget):
         self.capture_requested.emit(mode)
 
 
+# -- scroll-capture stop pill -------------------------------------------------
+
+class ScrollStopPill(QWidget):
+    """Frameless always-on-top pill shown while a scroll capture runs.
+
+    One affordance: click (or Esc) to finish. Short-lived like
+    countdown.CountdownOverlay, so the compositor places it — no KWin
+    position rule is written (Wayland clients can't self-position;
+    bubble.py documents the rule mechanism we deliberately skip).
+    Note for the manual checklist: when the user picks a MONITOR (not
+    a window) in the portal, the pill itself can appear in captured
+    frames; window picks stream the window buffer and exclude it."""
+
+    stop_requested = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowFlags(Qt.FramelessWindowHint
+                            | Qt.WindowStaysOnTopHint | Qt.Tool)
+        self.setWindowTitle("wondershot scroll stop")
+        self._fired = False
+
+        row = QHBoxLayout(self)
+        row.setContentsMargins(10, 8, 10, 8)
+        btn = QPushButton("Scrolling — click to finish")
+        btn.setStyleSheet("""
+            QPushButton {
+                background: #d3382c; color: white; font-weight: bold;
+                border-radius: 14px; border: none; padding: 6px 18px;
+            }
+            QPushButton:hover { background: #e4493d; }
+            QPushButton:pressed { background: #b32a20; }
+        """)
+        btn.clicked.connect(self._fire)
+        row.addWidget(btn)
+        self.setFixedSize(self.sizeHint())
+
+    def _fire(self) -> None:
+        if self._fired:
+            return  # a double click must not double-stop
+        self._fired = True
+        self.stop_requested.emit()
+
+    def keyPressEvent(self, ev):  # noqa: N802
+        if ev.key() == Qt.Key_Escape:
+            self._fire()
+        else:
+            super().keyPressEvent(ev)
+
+
 # -- post-capture quick-action bar -------------------------------------------
 
 QUICKBAR_TITLE = "wondershot quick actions"

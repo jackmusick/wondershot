@@ -388,7 +388,7 @@ class ScrollCaptureController(QObject):
 
 ### Step 2.1: Failing tests
 
-- [ ] Create `tests/test_scroll_pill.py`:
+- [x] Create `tests/test_scroll_pill.py`:
 
 ```python
 """The scroll-capture stop pill: one affordance (click to finish),
@@ -440,12 +440,12 @@ def test_window_flags_frameless_on_top(qapp):
     assert flags & Qt.WindowStaysOnTopHint
 ```
 
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_scroll_pill.py -x -q`
-- [ ] Expected failure: `ImportError: cannot import name 'ScrollStopPill'`
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_scroll_pill.py -x -q`
+- [x] Expected failure: `ImportError: cannot import name 'ScrollStopPill'`
 
 ### Step 2.2: Implement
 
-- [ ] In `wondershot/capture_window.py`, after the `CaptureWindow` class (and
+- [x] In `wondershot/capture_window.py`, after the `CaptureWindow` class (and
   before the quick-bar section), add:
 
 ```python
@@ -499,9 +499,9 @@ class ScrollStopPill(QWidget):
             super().keyPressEvent(ev)
 ```
 
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_scroll_pill.py -x -q`
-- [ ] Expected: pass.
-- [ ] Commit: `git add -A && git commit -m "Scroll capture: frameless stop pill (compositor-placed)"`
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_scroll_pill.py -x -q`
+- [x] Expected: pass.
+- [x] Commit: `git add -A && git commit -m "Scroll capture: frameless stop pill (compositor-placed)"`
 
 ---
 
