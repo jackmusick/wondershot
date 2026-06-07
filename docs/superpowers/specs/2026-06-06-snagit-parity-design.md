@@ -140,3 +140,69 @@ no separate physical machine needed for WS-E's Windows track.
 
 Four parallel worktree-isolated tracks (A, B, D, CI+ROADMAP), each: TDD where
 testable, self-review, tests green. Jack reviews branches at the end.
+
+---
+
+# Addendum (2026-06-07): WS-C + Stitch v2
+
+Session 2, approved by Jack. Two parallel tracks. Rule of engagement: nothing
+reaches Jack until done — code complete, tests green, reviewed; desktop-only
+verification batched into one checklist at the end.
+
+## Session 2: WS-C — Capture UX
+
+1. **Post-capture quick-action bar.** After a capture lands (and preview is
+   enabled), show a small frameless always-on-top bar near the capture flow's
+   existing surfaces (no self-positioning tricks — Wayland; a plain
+   always-on-top window the compositor places is acceptable, KWin rule if
+   needed per the bubble precedent): thumbnail + actions Edit / Copy /
+   Save-as / Share / Trash / dismiss. Acts on the just-captured file;
+   auto-dismiss timeout (setting, default ~8s); Esc dismisses. Edit opens the
+   editor as today; Copy puts the image on the clipboard; Share triggers the
+   existing share path on that file. Keyboard-light, mouse-first.
+2. **Auto-size-to-window.** A "Window" capture mode that grabs the active
+   window without an interactive pick: query the active window's frame
+   geometry via KWin scripting D-Bus (registerScript + tiny JS returning
+   `workspace.activeWindow` geometry — defensive posture per the KGlobalAccel
+   landmine: typed variants, timeouts, never crash the compositor; feature
+   probes at startup and hides itself off-KDE), then fullscreen-capture and
+   crop to that rect (multi-monitor aware via QScreen geometry union).
+   KDE-only by design; off-KDE the option doesn't appear.
+
+Both live in `capture.py` / `capture_window.py` / `app.py` (+ a new
+`kwin.py` for the geometry query). Crop math and KWin-script plumbing are
+unit-testable headless; the bar's GUI glue is not — explicit in the plan.
+
+## Session 2: Stitch v2 — make scroll capture real
+
+Findings from Jack's first run (ROADMAP): output jagged; captured the wrong
+window. Fixes, in priority order:
+
+1. **Fresh source pick per scroll session.** The spike subclasses
+   `ScreenRecorder`, which reuses the persisted ScreenCast restore token —
+   so it streamed the previously-shared source, not the window Jack wanted.
+   Scroll sessions must ignore the stored token (request a fresh pick) and
+   must NOT overwrite the recorder's token with the scroll session's grant
+   (separate token key or none).
+2. **Matching that survives real content.** Replace single 64-row-band
+   matching with: multiple bands sampled at different x-positions, chosen by
+   texture (variance threshold — skip flat regions); offset consensus across
+   bands with outlier rejection; full-overlap correlation fallback when bands
+   disagree. Handle smooth/kinetic scrolling: frames land at fractional
+   offsets — match at integer resolution but score confidence, and skip
+   frames mid-animation (low confidence) rather than stitching them.
+3. **Realistic test fixtures.** Generate text-like pages with QPainter
+   (lines of varying-width rounded rects or actual text rendering, margins,
+   a fixed header) instead of noise; simulate kinetic scroll with fractional
+   offsets via smooth-scaled sampling. The synthetic-noise tests stay; the
+   new fixtures are the bar to clear.
+4. **Seam quality.** Stitch at the consensus offset; on low-confidence seams
+   prefer dropping the frame over visible misalignment (a longer scroll with
+   more frames beats a jagged seam).
+
+Out of scope for v2: header/footer auto-crop improvements beyond what exists,
+horizontal scrolling, UI polish (still CLI-flag spike harness; promotion to a
+real UI happens once Jack's next run looks clean).
+
+All in `stitch.py` / `scrollsource.py` / `cli.py` / tests — no overlap with
+WS-C's files; the two tracks can run in parallel worktrees.
