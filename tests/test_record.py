@@ -230,3 +230,26 @@ def test_sweep_stale_tmp_removes_old_orphans_only(tmp_path):
     sweep_stale_tmp(str(d))
     assert not old.exists()
     assert fresh.exists()
+
+
+def test_watchdog_death_keeps_partial_recording(qapp, tmp_path):
+    """Same salvage mandate as the SIGKILL path: a pipeline that dies on
+    its own (mux error minutes in) must not delete the partial footage."""
+    rec = make_recorder(tmp_path)
+    d = tmp_path / ".rendering"
+    d.mkdir()
+    tmp = d / "r.mp4"
+    tmp.write_bytes(b"partial-footage")
+    out = tmp_path / "r.mp4"
+    rec._proc = dead_proc()
+    rec.recording = True
+    rec._tmp = str(tmp)
+    rec._out = str(out)
+    failures = []
+    rec.failed.connect(failures.append)
+    rec._start_watchdog()
+    assert wait_until(qapp, lambda: failures, 3)
+    assert out.exists() and out.read_bytes() == b"partial-footage", \
+        "the partial recording must survive a watchdog-detected death"
+    assert not tmp.exists()
+    assert "partial" in failures[0]

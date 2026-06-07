@@ -376,15 +376,27 @@ class ScreenRecorder(QObject):
             return  # _poll_exit owns the exit path now
         if self._proc is not None and self._proc.poll() is not None:
             self.recording = False
-            tmp = self._tmp
+            tmp, out = self._tmp, self._out
             self._cleanup()
-            if tmp and os.path.exists(tmp):
-                os.unlink(tmp)
+            partial = self._salvage_partial(tmp, out)
             self.failed.emit(
                 f"recorder died: {self._log_tail()[:160]} "
-                f"(full log: {self.log_path})")
+                f"(full log: {self.log_path}){partial}")
             return
         self.tick.emit(self.elapsed_str())
+
+    @staticmethod
+    def _salvage_partial(tmp, out) -> str:
+        """KEEP whatever was written — a dead or SIGKILLed pipeline can
+        leave minutes of salvageable footage; deleting it was part of
+        the "Stop did nothing / recording vanished" bug."""
+        if not tmp or not os.path.exists(tmp):
+            return ""
+        if out and os.path.getsize(tmp) > 0:
+            shutil.move(tmp, out)
+            return f"; partial recording kept: {os.path.basename(out)}"
+        os.unlink(tmp)  # zero bytes: nothing to salvage
+        return ""
 
     def _poll_exit(self, elapsed_ms: int = 0, nudged: bool = False) -> None:
         if self._proc is None:
@@ -409,15 +421,7 @@ class ScreenRecorder(QObject):
             shutil.move(tmp, out)
             self.finished.emit(out)
             return
-        # KEEP whatever was written — a SIGKILLed pipeline can leave
-        # minutes of salvageable footage; deleting it was part of the
-        # "Stop did nothing / recording vanished" bug.
-        partial = ""
-        if tmp and os.path.exists(tmp) and os.path.getsize(tmp) > 0:
-            shutil.move(tmp, out)
-            partial = f"; partial recording kept: {os.path.basename(out)}"
-        elif tmp and os.path.exists(tmp):
-            os.unlink(tmp)  # zero bytes: nothing to salvage
+        partial = self._salvage_partial(tmp, out)
         self.failed.emit(
             f"recording did not finalize: {self._log_tail()[:160]} "
             f"(log: {getattr(self, 'log_path', '?')}){partial}")
