@@ -50,6 +50,27 @@ def is_annotation(item: QGraphicsItem) -> bool:
     return getattr(item, ANNOTATION_FLAG, False)
 
 
+def _color_str(c: QColor) -> str:
+    return QColor(c).name(QColor.HexArgb)
+
+
+def _transform_dict(item) -> dict:
+    """Common geometry every serialized item carries."""
+    p, o = item.pos(), item.transformOriginPoint()
+    return {"pos": [p.x(), p.y()], "rotation": item.rotation(),
+            "origin": [o.x(), o.y()]}
+
+
+def _apply_transform(item, d: dict) -> None:
+    # Same order as EditorWindow.apply_snapshot: origin, rotation, pos —
+    # any other order shifts rotated items.
+    o = d.get("origin", [0.0, 0.0])
+    item.setTransformOriginPoint(QPointF(o[0], o[1]))
+    item.setRotation(d.get("rotation", 0.0))
+    p = d.get("pos", [0.0, 0.0])
+    item.setPos(QPointF(p[0], p[1]))
+
+
 class ArrowItem(_NoSelectionBox, QGraphicsPathItem):
     """Line with a filled arrowhead at the end point."""
 
@@ -86,6 +107,20 @@ class ArrowItem(_NoSelectionBox, QGraphicsPathItem):
         self.setPen(pen)
         self.setBrush(QBrush(self._color))
         self._rebuild()
+
+    def to_dict(self) -> dict:
+        return {"type": "arrow",
+                "p1": [self._p1.x(), self._p1.y()],
+                "p2": [self._p2.x(), self._p2.y()],
+                "color": _color_str(self._color), "width": self._width,
+                **_transform_dict(self)}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ArrowItem":
+        item = cls(QPointF(*d["p1"]), QPointF(*d["p2"]),
+                   QColor(d["color"]), int(d["width"]))
+        _apply_transform(item, d)
+        return item
 
     def _rebuild(self) -> None:
         p1, p2 = self._p1, self._p2
@@ -133,6 +168,20 @@ class LineItem(_NoSelectionBox, QGraphicsPathItem):
     def endpoints(self) -> tuple[QPointF, QPointF]:
         return QPointF(self._p1), QPointF(self._p2)
 
+    def to_dict(self) -> dict:
+        return {"type": "line",
+                "p1": [self._p1.x(), self._p1.y()],
+                "p2": [self._p2.x(), self._p2.y()],
+                "color": _color_str(self.pen().color()),
+                "width": self.pen().width(), **_transform_dict(self)}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "LineItem":
+        item = cls(QPointF(*d["p1"]), QPointF(*d["p2"]),
+                   QColor(d["color"]), int(d["width"]))
+        _apply_transform(item, d)
+        return item
+
     def _rebuild(self) -> None:
         path = QPainterPath()
         path.moveTo(self._p1)
@@ -147,6 +196,21 @@ class RectItem(QGraphicsRectItem):
         self.setPen(QPen(color, width, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
         self.setBrush(Qt.NoBrush)
 
+    def to_dict(self) -> dict:
+        r = self.rect()
+        return {"type": "rect",
+                "rect": [r.x(), r.y(), r.width(), r.height()],
+                "color": _color_str(self.pen().color()),
+                "width": self.pen().width(), **_transform_dict(self)}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "RectItem":
+        r = d["rect"]
+        item = cls(QRectF(r[0], r[1], r[2], r[3]),
+                   QColor(d["color"]), int(d["width"]))
+        _apply_transform(item, d)
+        return item
+
 
 class EllipseItem(QGraphicsEllipseItem):
     def __init__(self, rect: QRectF, color: QColor, width: int):
@@ -154,6 +218,21 @@ class EllipseItem(QGraphicsEllipseItem):
         _mark(self)
         self.setPen(QPen(color, width, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
         self.setBrush(Qt.NoBrush)
+
+    def to_dict(self) -> dict:
+        r = self.rect()
+        return {"type": "ellipse",
+                "rect": [r.x(), r.y(), r.width(), r.height()],
+                "color": _color_str(self.pen().color()),
+                "width": self.pen().width(), **_transform_dict(self)}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "EllipseItem":
+        r = d["rect"]
+        item = cls(QRectF(r[0], r[1], r[2], r[3]),
+                   QColor(d["color"]), int(d["width"]))
+        _apply_transform(item, d)
+        return item
 
 
 class HighlightItem(QGraphicsRectItem):
@@ -166,6 +245,21 @@ class HighlightItem(QGraphicsRectItem):
         c.setAlpha(90)
         self.setPen(QPen(Qt.NoPen))
         self.setBrush(QBrush(c))
+
+    def to_dict(self) -> dict:
+        r = self.rect()
+        c = QColor(self.brush().color())
+        c.setAlpha(255)
+        return {"type": "highlight",
+                "rect": [r.x(), r.y(), r.width(), r.height()],
+                "color": c.name(), **_transform_dict(self)}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "HighlightItem":
+        r = d["rect"]
+        item = cls(QRectF(r[0], r[1], r[2], r[3]), QColor(d["color"]))
+        _apply_transform(item, d)
+        return item
 
 
 class FreehandItem(QGraphicsPathItem):
@@ -182,6 +276,24 @@ class FreehandItem(QGraphicsPathItem):
         path = self.path()
         path.lineTo(p)
         self.setPath(path)
+
+    def to_dict(self) -> dict:
+        path = self.path()
+        pts = [[path.elementAt(i).x, path.elementAt(i).y]
+               for i in range(path.elementCount())]
+        return {"type": "freehand", "points": pts,
+                "color": _color_str(self.pen().color()),
+                "width": self.pen().width(), **_transform_dict(self)}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "FreehandItem":
+        pts = d["points"]
+        item = cls(QPointF(pts[0][0], pts[0][1]),
+                   QColor(d["color"]), int(d["width"]))
+        for x, y in pts[1:]:
+            item.add_point(QPointF(x, y))
+        _apply_transform(item, d)
+        return item
 
 
 class TextItem(QGraphicsTextItem):
@@ -209,6 +321,32 @@ class TextItem(QGraphicsTextItem):
         self.start_editing()
         super().mouseDoubleClickEvent(event)
 
+    def to_dict(self) -> dict:
+        f = self.font()
+        return {"type": "text", "text": self.toPlainText(),
+                "color": _color_str(self.defaultTextColor()),
+                "family": f.family(), "point_size": f.pointSize(),
+                "bold": f.bold(), "text_width": self.textWidth(),
+                **_transform_dict(self)}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "TextItem":
+        item = cls(QPointF(0, 0), QColor(d["color"]),
+                   int(d.get("point_size", 18)))
+        f = item.font()
+        if d.get("family"):
+            f.setFamily(d["family"])
+        f.setBold(bool(d.get("bold", True)))
+        item.setFont(f)
+        item.setPlainText(d.get("text", ""))
+        tw = d.get("text_width", -1.0)
+        if tw is not None and tw > 0:
+            item.setTextWidth(tw)
+        # restored items are not mid-edit; double-click re-enables editing
+        item.setTextInteractionFlags(Qt.NoTextInteraction)
+        _apply_transform(item, d)
+        return item
+
 
 class StepItem(QGraphicsItem):
     """Numbered circle stamp, Snagit-style step tool."""
@@ -226,6 +364,18 @@ class StepItem(QGraphicsItem):
         self.prepareGeometryChange()
         self.radius = max(8.0, min(80.0, r))
         self.update()
+
+    def to_dict(self) -> dict:
+        return {"type": "step", "number": self.number,
+                "color": _color_str(self._color), "radius": self.radius,
+                **_transform_dict(self)}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "StepItem":
+        item = cls(QPointF(0, 0), int(d["number"]), QColor(d["color"]),
+                   radius=float(d.get("radius", 16.0)))
+        _apply_transform(item, d)
+        return item
 
     def boundingRect(self) -> QRectF:  # noqa: N802
         r = self.radius
@@ -471,6 +621,20 @@ class PixelateItem(QGraphicsItem):
         self._regen()
         self.update()
 
+    def to_dict(self) -> dict:
+        r = self._rect
+        return {"type": "pixelate",
+                "rect": [r.x(), r.y(), r.width(), r.height()],
+                "block": self._block, **_transform_dict(self)}
+
+    @classmethod
+    def from_dict(cls, d: dict, base_provider) -> "PixelateItem":
+        r = d["rect"]
+        item = cls(base_provider, QRectF(r[0], r[1], r[2], r[3]),
+                   block=int(d.get("block", 14)))
+        _apply_transform(item, d)
+        return item
+
     def _regen(self) -> None:
         from . import imageops
         base = self._base_provider()
@@ -500,3 +664,26 @@ class PixelateItem(QGraphicsItem):
             painter.setPen(QPen(QColor(0, 120, 255, 200), 1, Qt.DashLine))
             painter.setBrush(Qt.NoBrush)
             painter.drawRect(r)
+
+
+def item_from_dict(d: dict, base_provider=None):
+    """Rebuild a live annotation item from its serialized dict.
+
+    Returns None for unknown/future types (the editor skips them rather
+    than crashing on a newer sidecar). PixelateItem needs the editor's
+    base_provider callable to regenerate its patch.
+    """
+    t = d.get("type")
+    if t == "pixelate":
+        if base_provider is None:
+            return None
+        return PixelateItem.from_dict(d, base_provider)
+    cls = _ITEM_TYPES.get(t)
+    return cls.from_dict(d) if cls is not None else None
+
+
+_ITEM_TYPES = {
+    "arrow": ArrowItem, "line": LineItem, "rect": RectItem,
+    "ellipse": EllipseItem, "highlight": HighlightItem,
+    "freehand": FreehandItem, "text": TextItem, "step": StepItem,
+}

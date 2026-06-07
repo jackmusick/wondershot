@@ -35,6 +35,7 @@ from PySide6.QtWidgets import (
 )
 
 from . import imageops
+from . import sidecar
 from .items import (
     ArrowItem,
     EllipseItem,
@@ -82,6 +83,15 @@ class Tool(enum.Enum):
     CROP = "crop"
     CUTOUT_V = "cutout_v"  # removes a vertical band, joins left+right
     CUTOUT_H = "cutout_h"  # removes a horizontal band, joins top+bottom
+
+
+def _images_equal(a: QImage, b: QImage) -> bool:
+    """Pixel equality across a PNG round-trip: in-memory images are
+    premultiplied, loaded PNGs aren't — normalize before comparing."""
+    if a.isNull() or b.isNull() or a.size() != b.size():
+        return False
+    return (a.convertToFormat(QImage.Format_ARGB32)
+            == b.convertToFormat(QImage.Format_ARGB32))
 
 
 _EDIT_KEYS = {
@@ -163,6 +173,33 @@ class SetBaseImageCommand(QUndoCommand):
         self.new_image = new_image
 
     def redo(self):
+        self.editor.set_base_image(self.new_image)
+
+    def undo(self):
+        self.editor.set_base_image(self.old_image)
+
+
+class HistoryBaseCommand(QUndoCommand):
+    """Revisit-undo for a persisted destructive op (sidecar base stack).
+
+    Pushed at load time, one per stack transition; the first redo is a
+    no-op because the editor already shows the post-op base (same
+    pattern as GripCommand). Ctrl+Z then walks the base stack down to
+    the original capture; redo walks it back up.
+    """
+
+    def __init__(self, editor: "EditorWindow", old_image: QImage,
+                 new_image: QImage):
+        super().__init__("destructive edit (previous session)")
+        self.editor = editor
+        self.old_image = old_image
+        self.new_image = new_image
+        self._first = True
+
+    def redo(self):
+        if self._first:
+            self._first = False
+            return
         self.editor.set_base_image(self.new_image)
 
     def undo(self):
@@ -275,6 +312,8 @@ class EditorWindow(QMainWindow):
         super().__init__(parent)
         self.path = path
         self.settings = settings
+        self._sidecar_boot = image is None and bool(path) \
+            and sidecar.load(path) is not None
         if image is None and path:
             image = QImage(path)
         if image is None or image.isNull():
@@ -295,6 +334,12 @@ class EditorWindow(QMainWindow):
         self.scene.addItem(self.base_item)
         self.base_image = QImage()
         self.set_base_image(image)
+
+        # -- sidecar persistence state (library files only) ------------
+        self._loaded_original = image.copy()   # base.0 on first save
+        self._base_stack_count = 0             # bases already on disk
+        # (undo_index_after_push, pre-op image) — written at save time
+        self._pending_base_pushes: list[tuple[int, QImage]] = []
 
         self.view = CanvasView(self)
         self.setCentralWidget(self.view)
@@ -326,13 +371,28 @@ class EditorWindow(QMainWindow):
         self._update_title()
         self.resize(1100, 750)
         self._fit_if_large()
+        if self._sidecar_boot:
+            self.load(path)  # reconstruct items + arm revisit-undo
 
     # -- base image -------------------------------------------------------
 
     def load(self, path: str | None, image: QImage | None = None) -> bool:
-        """Swap the editor to a different image, dropping edit history."""
+        """Swap the editor to a different image, dropping edit history.
+
+        When `path` has a sidecar, the top-of-stack base is loaded and
+        the annotations come back as live objects; otherwise the file
+        opens flat exactly as before (pre-sidecar migration path)."""
+        data = None
         if image is None and path:
-            image = QImage(path)
+            data = sidecar.load(path)
+            if data and data.get("bases"):
+                image = QImage(sidecar.base_path(path,
+                                                 int(data["bases"]) - 1))
+                if image.isNull():  # bases missing/deleted: fall back
+                    image, data = QImage(path), None
+            else:
+                data = None
+                image = QImage(path)
         if image is None or image.isNull():
             return False
         self.scene.clearSelection()
@@ -343,7 +403,14 @@ class EditorWindow(QMainWindow):
         self.preview_only = False
         self.undo_stack.clear()
         self.step_counter = 1
+        self._loaded_original = image.copy()
+        self._base_stack_count = int(data["bases"]) if data else 0
+        self._pending_base_pushes = []
         self.set_base_image(image)
+        if data:
+            self._restore_items(data)
+            self._push_base_history(path, int(data["bases"]))
+            self.undo_stack.setClean()
         self._fit_if_large()  # fit-to-window by default
         self._update_title()
         return True
@@ -358,10 +425,39 @@ class EditorWindow(QMainWindow):
         self._update_title()
         return True
 
+    def _restore_items(self, data: dict) -> None:
+        """Reconstruct serialized annotations as live scene objects.
+
+        Items come back in bottom-to-top order (how they were saved), so
+        plain addItem reproduces the stacking. Unknown future item types
+        deserialize to None and are skipped, never crash."""
+        from .items import item_from_dict
+        for d in data.get("items", []):
+            it = item_from_dict(d, base_provider=lambda: self.base_image)
+            if it is None:
+                continue
+            self.scene.addItem(it)
+            if isinstance(it, StepItem):
+                self.step_counter = max(self.step_counter, it.number + 1)
+
+    def _push_base_history(self, path: str, count: int) -> None:
+        """Arm revisit-undo: one no-op-first command per stack step."""
+        for k in range(1, count):
+            old = QImage(sidecar.base_path(path, k - 1))
+            new = QImage(sidecar.base_path(path, k))
+            if old.isNull() or new.isNull():
+                continue
+            self.undo_stack.push(HistoryBaseCommand(self, old, new))
+
     def maybe_save(self) -> bool:
-        """Offer to save pending changes. False means the user cancelled."""
+        """Save pending changes. Library files autosave silently (Jack's
+        bar: no prompts, ever); only files opened from outside the
+        library still ask. False means the user cancelled a prompt."""
         if self.undo_stack.isClean():
             return True
+        if self._is_library_file():
+            self.save()
+            return True  # even on disk error: the warning already showed
         ret = QMessageBox.question(
             self, "Wondershot", "Save changes to this image?",
             QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel,
@@ -370,6 +466,21 @@ class EditorWindow(QMainWindow):
             self.save()
             return self.undo_stack.isClean()
         return ret == QMessageBox.Discard
+
+    def _is_library_file(self) -> bool:
+        return (not self.preview_only
+                and sidecar.is_library_file(self.path, self.settings))
+
+    def _record_base_push(self, image: QImage) -> None:
+        """Remember a pre-destructive-op image for the on-disk base stack.
+
+        Call IMMEDIATELY BEFORE pushing the destructive QUndoCommand: the
+        recorded undo index (current + 1) is where that command will sit,
+        so at save time pushes whose command was undone are dropped.
+        """
+        if self._is_library_file():
+            self._pending_base_pushes.append(
+                (self.undo_stack.index() + 1, image.copy()))
 
     # Padding around the image so rounded corners / fade are visible
     # against the mat (proportional, capped).
@@ -665,6 +776,7 @@ class EditorWindow(QMainWindow):
             QMessageBox.warning(self, "Wondershot",
                                 f"Remove Background failed: {error}")
             return
+        self._record_base_push(self.base_image)
         self.undo_stack.push(
             SetBaseImageCommand(self, image, "remove background"))
         self.statusBar().showMessage(
@@ -1225,13 +1337,18 @@ class EditorWindow(QMainWindow):
         self._select_only(item)
 
     def _apply_crop(self, rect: QRect) -> None:
-        new_image = imageops.crop(self.flattened(), rect)
+        flat = self.flattened()
+        # pre-op FLATTENED image: a crop folds annotations into the base,
+        # so revisit-undo must restore what was visible, not just pixels
+        self._record_base_push(flat)
+        new_image = imageops.crop(flat, rect)
         self.undo_stack.push(FlattenCommand(self, new_image, "crop"))
 
     def _apply_cutout(self, tool: Tool, r: QRect) -> None:
         flat = self.flattened()
         if r.isEmpty():
             return
+        self._record_base_push(flat)
         # note: QRect.right()/bottom() are x+w-1, not the true edge
         if tool == Tool.CUTOUT_V:
             new_image = imageops.cut_out(flat, r.x(), r.x() + r.width(),
@@ -1258,11 +1375,78 @@ class EditorWindow(QMainWindow):
             return
         self._cleanup_empty_text()
         if self.flattened().save(self.path):
+            if self._is_library_file():
+                self._write_sidecar()
             self.undo_stack.setClean()
             self.saved.emit(self.path)
             self.statusBar().showMessage("Saved", 2000)
         else:
             QMessageBox.warning(self, "Wondershot", f"Could not save {self.path}")
+
+    def _ordered_annotations(self) -> list:
+        """Annotations bottom-to-top — re-adding in this order reproduces
+        the stacking (all annotations share zValue 0; order = insertion)."""
+        return [i for i in self.scene.items(Qt.AscendingOrder)
+                if is_annotation(i)]
+
+    def _write_sidecar(self) -> None:
+        """Persist the editable document: base stack + live items.
+
+        Stack discipline (N=0 = original capture, top = current base):
+        1. first save ever writes base.0 from the originally-loaded image
+        2. surviving (not-undone) pre-destructive-op snapshots append
+        3. if the current base matches an EARLIER entry, the user
+           revisit-undid — truncate above it and delete orphan files;
+           otherwise, a changed current base becomes the new top
+        """
+        path = self.path
+        os.makedirs(sidecar.sidecar_dir(path), exist_ok=True)
+        count = self._base_stack_count
+        if count == 0:
+            self._loaded_original.save(sidecar.base_path(path, 0))
+            count = 1
+        for idx, img in self._pending_base_pushes:
+            if self.undo_stack.index() < idx:
+                continue  # the op was undone in-session
+            if _images_equal(img, QImage(sidecar.base_path(path,
+                                                           count - 1))):
+                continue  # already the top (e.g. first op after open)
+            img.save(sidecar.base_path(path, count))
+            count += 1
+        self._pending_base_pushes = []
+        if not _images_equal(self.base_image,
+                             QImage(sidecar.base_path(path, count - 1))):
+            matched = -1
+            for k in range(count - 2, -1, -1):
+                if _images_equal(self.base_image,
+                                 QImage(sidecar.base_path(path, k))):
+                    matched = k
+                    break
+            if matched >= 0:  # revisit-undo landed on an earlier base
+                for j in range(matched + 1, count):
+                    try:
+                        os.remove(sidecar.base_path(path, j))
+                    except OSError:
+                        pass
+                count = matched + 1
+            else:
+                self.base_image.save(sidecar.base_path(path, count))
+                count += 1
+        self._base_stack_count = count
+        s = self.settings
+        effects = {
+            "rounded": bool(getattr(s, "effect_rounded", False)),
+            "corner_radius": int(getattr(s, "effect_corner_radius", 0)
+                                 or 0),
+            "fade": bool(getattr(s, "effect_fade", False)),
+            "fade_height": int(getattr(s, "effect_fade_height", 0) or 0),
+        }
+        sidecar.save(path, {
+            "version": sidecar.FORMAT_VERSION,
+            "bases": count,
+            "items": [it.to_dict() for it in self._ordered_annotations()],
+            "effects": effects,
+        })
 
     def save_as(self) -> None:
         start_dir = (self.settings.library_dir if self.settings

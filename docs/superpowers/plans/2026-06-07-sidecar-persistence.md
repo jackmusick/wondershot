@@ -78,7 +78,7 @@ Gotchas to keep in mind throughout:
 
 `to_dict`/`from_dict` for `ArrowItem`, `LineItem`, `RectItem`, `EllipseItem`, `HighlightItem`, `FreehandItem`, plus the shared transform helpers and the `item_from_dict` dispatcher (which Task 2 extends).
 
-- [ ] **Step 1.1 — failing tests.** Create `tests/test_items_serialize.py`:
+- [x] **Step 1.1 — failing tests.** Create `tests/test_items_serialize.py`:
 
 ```python
 """Round-trip tests for annotation item serialization (sidecar format).
@@ -191,7 +191,7 @@ def test_dispatcher_unknown_type_returns_none(qapp):
     assert item_from_dict({}) is None
 ```
 
-- [ ] **Step 1.2 — run, expect failure:**
+- [x] **Step 1.2 — run, expect failure:**
 
 ```bash
 QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_items_serialize.py -x -q
@@ -199,7 +199,7 @@ QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_items_serialize.
 
 Expected: `ImportError: cannot import name 'item_from_dict' from 'wondershot.items'` (or `AttributeError: 'ArrowItem' object has no attribute 'to_dict'`).
 
-- [ ] **Step 1.3 — implement.** In `wondershot/items.py`:
+- [x] **Step 1.3 — implement.** In `wondershot/items.py`:
 
 (a) After the existing `is_annotation` function (line ~50), add the shared helpers:
 
@@ -349,13 +349,13 @@ _ITEM_TYPES = {
 
 (Note: `"pixelate"` is special-cased above the table; `PixelateItem.from_dict`, `TextItem`, `StepItem` arrive in Task 2 — the `pixelate` branch will raise AttributeError if hit before then, which no Task-1 test does.)
 
-- [ ] **Step 1.4 — run, expect pass:**
+- [x] **Step 1.4 — run, expect pass:**
 
 ```bash
 QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_items_serialize.py -x -q
 ```
 
-- [ ] **Step 1.5 — commit:**
+- [x] **Step 1.5 — commit:**
 
 ```bash
 git add wondershot/items.py tests/test_items_serialize.py
@@ -372,7 +372,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - `tests/test_items_serialize.py` (extend)
 - `wondershot/items.py` (modify)
 
-- [ ] **Step 2.1 — failing tests.** Append to `tests/test_items_serialize.py`:
+- [x] **Step 2.1 — failing tests.** Append to `tests/test_items_serialize.py`:
 
 ```python
 def test_text_roundtrip_fonts_and_width(qapp):
@@ -467,7 +467,7 @@ def test_arrow_rotation_roundtrip_exactly(qapp):
         == item.mapToScene(item.endpoints()[1])
 ```
 
-- [ ] **Step 2.2 — run, expect failure:**
+- [x] **Step 2.2 — run, expect failure:**
 
 ```bash
 QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_items_serialize.py -x -q
@@ -475,7 +475,7 @@ QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_items_serialize.
 
 Expected: `AttributeError: 'TextItem' object has no attribute 'to_dict'`.
 
-- [ ] **Step 2.3 — implement.** In `wondershot/items.py`:
+- [x] **Step 2.3 — implement.** In `wondershot/items.py`:
 
 (a) `TextItem` (after `mouseDoubleClickEvent`):
 
@@ -551,13 +551,13 @@ _ITEM_TYPES = {
 }
 ```
 
-- [ ] **Step 2.4 — run, expect pass** (same command). Also run the full suite to catch regressions:
+- [x] **Step 2.4 — run, expect pass** (same command). Also run the full suite to catch regressions:
 
 ```bash
 QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q
 ```
 
-- [ ] **Step 2.5 — commit:**
+- [x] **Step 2.5 — commit:**
 
 ```bash
 git add wondershot/items.py tests/test_items_serialize.py
@@ -574,7 +574,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - `tests/test_sidecar.py` (new)
 - `wondershot/sidecar.py` (new)
 
-- [ ] **Step 3.1 — failing tests.** Create `tests/test_sidecar.py`:
+- [x] **Step 3.1 — failing tests.** Create `tests/test_sidecar.py`:
 
 ```python
 """Sidecar file plumbing: paths, atomic JSON, versioning, related files."""
@@ -696,7 +696,7 @@ def test_rename_files_noop_without_sidecar(tmp_path):
     assert not os.path.isdir(sidecar.sidecar_dir(str(tmp_path / "a.png")))
 ```
 
-- [ ] **Step 3.2 — run, expect failure:**
+- [x] **Step 3.2 — run, expect failure:**
 
 ```bash
 QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_sidecar.py -x -q
@@ -704,7 +704,7 @@ QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_sidecar.py -x -q
 
 Expected: `ModuleNotFoundError: No module named 'wondershot.sidecar'`.
 
-- [ ] **Step 3.3 — implement.** Create `wondershot/sidecar.py`:
+- [x] **Step 3.3 — implement.** Create `wondershot/sidecar.py`:
 
 ```python
 """Sidecar persistence for library images — pure file plumbing, no widgets.
@@ -821,13 +821,13 @@ def rename_files(old_image: str, new_image: str) -> None:
         os.replace(f, base_path(new_image, n))
 ```
 
-- [ ] **Step 3.4 — run, expect pass:**
+- [x] **Step 3.4 — run, expect pass:**
 
 ```bash
 QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_sidecar.py -x -q
 ```
 
-- [ ] **Step 3.5 — commit:**
+- [x] **Step 3.5 — commit:**
 
 ```bash
 git add wondershot/sidecar.py tests/test_sidecar.py
@@ -846,7 +846,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 What lands here: state attributes, `_is_library_file`, `_images_equal`, `_record_base_push` hooks in `_apply_crop`/`_apply_cutout`/`_bg_done`, `_write_sidecar` (including truncate-on-revisit-undo, fully exercised in Task 5), the no-prompt `maybe_save`, and `save()` writing the sidecar.
 
-- [ ] **Step 4.1 — failing tests.** Create `tests/test_editor_sidecar.py`:
+- [x] **Step 4.1 — failing tests.** Create `tests/test_editor_sidecar.py`:
 
 ```python
 """Editor <-> sidecar integration: autosave, base stack, reconstruction."""
@@ -1034,7 +1034,7 @@ def test_resave_without_changes_does_not_grow_stack(qapp, tmp_path):
     assert read_sidecar(ed.path)["bases"] == 1
 ```
 
-- [ ] **Step 4.2 — run, expect failure:**
+- [x] **Step 4.2 — run, expect failure:**
 
 ```bash
 QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_editor_sidecar.py -x -q
@@ -1042,7 +1042,7 @@ QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_editor_sidecar.p
 
 Expected: first test fails — `FileNotFoundError` reading the sidecar (save() doesn't write one yet), and the prompt test fails with the `pytest.fail` message.
 
-- [ ] **Step 4.3 — implement.** All edits in `wondershot/editor.py`:
+- [x] **Step 4.3 — implement.** All edits in `wondershot/editor.py`:
 
 (a) Add the import. After the existing `from . import imageops` (line 37):
 
@@ -1258,14 +1258,14 @@ And add the new method after `save()`:
 
 (Gotcha: `getattr(stub, "effect_rounded")` returns `""` with the test stub — `bool("")`/`int("" or 0)` handle it; never call `int(...)` on the raw value.)
 
-- [ ] **Step 4.4 — run, expect pass**, then the full suite (existing `test_editor.py` exercises `save`/crop paths with `settings=None` — `_is_library_file()` is False there, so behavior is unchanged):
+- [x] **Step 4.4 — run, expect pass**, then the full suite (existing `test_editor.py` exercises `save`/crop paths with `settings=None` — `_is_library_file()` is False there, so behavior is unchanged):
 
 ```bash
 QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_editor_sidecar.py -x -q
 QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q
 ```
 
-- [ ] **Step 4.5 — commit:**
+- [x] **Step 4.5 — commit:**
 
 ```bash
 git add wondershot/editor.py tests/test_editor_sidecar.py
@@ -1282,7 +1282,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - `tests/test_editor_sidecar.py` (extend)
 - `wondershot/editor.py` (modify)
 
-- [ ] **Step 5.1 — failing tests.** Append to `tests/test_editor_sidecar.py`:
+- [x] **Step 5.1 — failing tests.** Append to `tests/test_editor_sidecar.py`:
 
 ```python
 def reopen(ed, tmp_path):
@@ -1403,7 +1403,7 @@ def test_corrupt_sidecar_falls_back_to_flat_open(qapp, tmp_path):
     assert ed2.base_image.width() == 200
 ```
 
-- [ ] **Step 5.2 — run, expect failure:**
+- [x] **Step 5.2 — run, expect failure:**
 
 ```bash
 QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_editor_sidecar.py -x -q
@@ -1411,7 +1411,7 @@ QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_editor_sidecar.p
 
 Expected: `test_reopen_restores_live_items` fails — reopened editor has 0 live annotations (it opened the flattened PNG).
 
-- [ ] **Step 5.3 — implement.** All edits in `wondershot/editor.py`:
+- [x] **Step 5.3 — implement.** All edits in `wondershot/editor.py`:
 
 (a) `HistoryBaseCommand`, placed directly after `SetBaseImageCommand` (line ~170):
 
@@ -1543,7 +1543,7 @@ Then at the very end of `__init__`, after `self._fit_if_large()`:
 
 (The double `QImage(path)` read only happens when a sidecar exists, and `load()` immediately replaces it with the stack base — cheap and keeps one canonical code path.)
 
-- [ ] **Step 5.4 — run, expect pass**, then full suite:
+- [x] **Step 5.4 — run, expect pass**, then full suite:
 
 ```bash
 QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_editor_sidecar.py -x -q
@@ -1552,7 +1552,7 @@ QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q
 
 Watch for: `tests/test_editor.py` and `test_editor_ai.py` construct editors with `settings=None` or raw images — those must stay green untouched.
 
-- [ ] **Step 5.5 — commit:**
+- [x] **Step 5.5 — commit:**
 
 ```bash
 git add wondershot/editor.py tests/test_editor_sidecar.py
@@ -1569,7 +1569,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - `tests/test_gallery_sidecar.py` (new)
 - `wondershot/gallery.py` (modify)
 
-- [ ] **Step 6.1 — failing tests.** Create `tests/test_gallery_sidecar.py`:
+- [x] **Step 6.1 — failing tests.** Create `tests/test_gallery_sidecar.py`:
 
 ```python
 """Gallery <-> sidecar integration: trash, undo-delete, rename, scan, quit."""
@@ -1716,7 +1716,7 @@ def test_really_quit_autosaves_standalone_editor(qapp, tmp_path,
     assert len(data["items"]) == 1, "standalone window autosaved on quit"
 ```
 
-- [ ] **Step 6.2 — run, expect failure:**
+- [x] **Step 6.2 — run, expect failure:**
 
 ```bash
 QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_gallery_sidecar.py -x -q
@@ -1724,7 +1724,7 @@ QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_gallery_sidecar.
 
 Expected: `test_trash_takes_sidecar_files_along` fails — the sidecar JSON/base remain after trashing.
 
-- [ ] **Step 6.3 — implement.** All edits in `wondershot/gallery.py`:
+- [x] **Step 6.3 — implement.** All edits in `wondershot/gallery.py`:
 
 (a) Trash carries sidecar files. In `_trash_paths` (line 813), replace the staging loop block:
 
@@ -1845,14 +1845,14 @@ with
         self.close()
 ```
 
-- [ ] **Step 6.4 — run, expect pass**, then full suite (especially `tests/test_gallery_trash.py` — its message-count behavior must be unchanged for plain images):
+- [x] **Step 6.4 — run, expect pass**, then full suite (especially `tests/test_gallery_trash.py` — its message-count behavior must be unchanged for plain images):
 
 ```bash
 QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_gallery_sidecar.py tests/test_gallery_trash.py -x -q
 QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q
 ```
 
-- [ ] **Step 6.5 — commit:**
+- [x] **Step 6.5 — commit:**
 
 ```bash
 git add wondershot/gallery.py tests/test_gallery_sidecar.py
@@ -1870,7 +1870,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 GUI-only/doc-only glue — no failing-test step (nothing executable changes).
 
-- [ ] **Step 7.1 — ROADMAP updates.** In `ROADMAP.md`:
+- [x] **Step 7.1 — ROADMAP updates.** In `ROADMAP.md`:
 
 (a) Under the `**Editor**` bullet list in "Working today", append:
 
@@ -1890,7 +1890,7 @@ GUI-only/doc-only glue — no failing-test step (nothing executable changes).
   video annotation objects.
 ```
 
-- [ ] **Step 7.2 — full suite, twice (second run catches sidecar leakage between tests):**
+- [x] **Step 7.2 — full suite, twice (second run catches sidecar leakage between tests):**
 
 ```bash
 QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q
@@ -1899,7 +1899,7 @@ QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q
 
 Expected: all green — 186 pre-existing + the new serialization/sidecar/editor/gallery tests, 0 failures.
 
-- [ ] **Step 7.3 — commit:**
+- [x] **Step 7.3 — commit:**
 
 ```bash
 git add ROADMAP.md

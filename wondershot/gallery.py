@@ -826,7 +826,9 @@ class GalleryWindow(QMainWindow):
                 return
         import shutil
         import time
+        from . import sidecar
         batch = []
+        primary = []
         stage = self._staging_dir()
         for p in paths:
             staged = os.path.join(
@@ -836,12 +838,23 @@ class GalleryWindow(QMainWindow):
             except OSError:
                 continue
             batch.append((staged, p))
+            primary.append(p)
+            # sidecar JSON + base stack ride along in the same undo batch
+            for extra in sidecar.related_files(p):
+                staged_extra = os.path.join(
+                    stage,
+                    f"{time.monotonic_ns()}-{os.path.basename(extra)}")
+                try:
+                    shutil.move(extra, staged_extra)
+                except OSError:
+                    continue
+                batch.append((staged_extra, extra))
         if batch:
             self._trash_undo.append(batch)
             while len(self._trash_undo) > 20:  # keep undo shallow-ish
                 self._flush_batch(self._trash_undo.pop(0))
-            n = len(batch)
-            what = (os.path.basename(batch[0][1]) if n == 1
+            n = len(primary)
+            what = (os.path.basename(primary[0]) if n == 1
                     else f"{n} files")
             self.editor.statusBar().showMessage(
                 f"Moved {what} to trash — Ctrl+Z to undo", 6000)
@@ -862,15 +875,22 @@ class GalleryWindow(QMainWindow):
         for staged, original in self._trash_undo.pop():
             if os.path.exists(staged):
                 try:
+                    # sidecar files live under .wondershot/, which may be
+                    # gone after the delete — recreate before restoring
+                    os.makedirs(os.path.dirname(original), exist_ok=True)
                     shutil.move(staged, original)
                     restored.append(original)
                 except OSError:
                     pass
         self.rescan()
-        if restored:
-            self.select_path(restored[0])
+        from .sidecar import SIDECAR_DIRNAME
+        images = [r for r in restored
+                  if os.path.basename(os.path.dirname(r))
+                  != SIDECAR_DIRNAME]
+        if images:
+            self.select_path(images[0])
             self.editor.statusBar().showMessage(
-                f"Restored {os.path.basename(restored[0])}", 4000)
+                f"Restored {os.path.basename(images[0])}", 4000)
 
     @staticmethod
     def _flush_batch(batch: list[tuple[str, str]]) -> None:
@@ -895,6 +915,8 @@ class GalleryWindow(QMainWindow):
         new = os.path.join(os.path.dirname(old), name)
         try:
             os.rename(old, new)
+            from . import sidecar
+            sidecar.rename_files(old, new)
             if self.editor.path == old:
                 self.editor.path = new
         except OSError as e:
@@ -1008,6 +1030,11 @@ class GalleryWindow(QMainWindow):
         self.setWindowTitle(f"{name}{dirty} — Wondershot")
 
     def really_quit(self) -> None:
+        # Standalone editors autosave library files in their closeEvent;
+        # only a non-library file with a cancelled prompt can stop quit.
+        for w in list(self._windows):
+            if not w.close():
+                return
         self.flush_trash()
         self._really_quit = True
         self.close()
