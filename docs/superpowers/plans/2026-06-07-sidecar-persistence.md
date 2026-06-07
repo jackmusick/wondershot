@@ -574,7 +574,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - `tests/test_sidecar.py` (new)
 - `wondershot/sidecar.py` (new)
 
-- [ ] **Step 3.1 — failing tests.** Create `tests/test_sidecar.py`:
+- [x] **Step 3.1 — failing tests.** Create `tests/test_sidecar.py`:
 
 ```python
 """Sidecar file plumbing: paths, atomic JSON, versioning, related files."""
@@ -696,7 +696,7 @@ def test_rename_files_noop_without_sidecar(tmp_path):
     assert not os.path.isdir(sidecar.sidecar_dir(str(tmp_path / "a.png")))
 ```
 
-- [ ] **Step 3.2 — run, expect failure:**
+- [x] **Step 3.2 — run, expect failure:**
 
 ```bash
 QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_sidecar.py -x -q
@@ -704,7 +704,7 @@ QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_sidecar.py -x -q
 
 Expected: `ModuleNotFoundError: No module named 'wondershot.sidecar'`.
 
-- [ ] **Step 3.3 — implement.** Create `wondershot/sidecar.py`:
+- [x] **Step 3.3 — implement.** Create `wondershot/sidecar.py`:
 
 ```python
 """Sidecar persistence for library images — pure file plumbing, no widgets.
@@ -821,13 +821,13 @@ def rename_files(old_image: str, new_image: str) -> None:
         os.replace(f, base_path(new_image, n))
 ```
 
-- [ ] **Step 3.4 — run, expect pass:**
+- [x] **Step 3.4 — run, expect pass:**
 
 ```bash
 QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_sidecar.py -x -q
 ```
 
-- [ ] **Step 3.5 — commit:**
+- [x] **Step 3.5 — commit:**
 
 ```bash
 git add wondershot/sidecar.py tests/test_sidecar.py
