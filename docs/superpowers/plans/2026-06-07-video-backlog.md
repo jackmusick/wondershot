@@ -864,8 +864,8 @@ def test_convert_gif_full_range_omits_seek(qapp, tmp_path, monkeypatch):
 **Files:**
 - Modify: `ROADMAP.md` (lines 192–194 only — see cross-track caution in File Structure)
 
-- [ ] **Full suite, clean:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q` → 212 passed. Also run the video-touching files verbosely to eyeball nothing was skipped: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_video_filter.py tests/test_video_pane.py tests/test_video_preview.py tests/test_settings_video.py -v`.
-- [ ] **Update ROADMAP** — replace lines 192–194:
+- [x] **Full suite, clean:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q` → 212 passed. Also run the video-touching files verbosely to eyeball nothing was skipped: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_video_filter.py tests/test_video_pane.py tests/test_video_preview.py tests/test_settings_video.py -v`.
+- [x] **Update ROADMAP** — replace lines 192–194:
 
 ```
 4. **Video backlog** — blur strength setting, GIF options
@@ -883,5 +883,5 @@ with:
    (trim/cut moved to WS-A)
 ```
 
-- [ ] **Hand these manual items to the consolidated desktop checklist** (the orchestrator owns `docs/superpowers/plans/2026-06-07-desktop-checklist.md`; do NOT create a separate checklist file — list them in your final task report): (1) draw a blur on a real recording, drag the Strength spinbox and watch the frost re-blur live; render and compare preview vs output; (2) re-open the app — strength/fps/width remember their last values; (3) Convert to GIF with a sub-range on the timeline, confirm the GIF covers only that range and respects fps/width; (4) confirm trim and frame-grab still behave exactly as before (regression items); (5) confirm blur/trim/GIF buttons mutually exclude on click.
-- [ ] **Commit:** `git add ROADMAP.md && git commit -m "ROADMAP: track 3c video backlog done (blur strength, true preview, GIF options)"`
+- [x] **Hand these manual items to the consolidated desktop checklist** (the orchestrator owns `docs/superpowers/plans/2026-06-07-desktop-checklist.md`; do NOT create a separate checklist file — list them in your final task report): (1) draw a blur on a real recording, drag the Strength spinbox and watch the frost re-blur live; render and compare preview vs output; (2) re-open the app — strength/fps/width remember their last values; (3) Convert to GIF with a sub-range on the timeline, confirm the GIF covers only that range and respects fps/width; (4) confirm trim and frame-grab still behave exactly as before (regression items); (5) confirm blur/trim/GIF buttons mutually exclude on click.
+- [x] **Commit:** `git add ROADMAP.md && git commit -m "ROADMAP: track 3c video backlog done (blur strength, true preview, GIF options)"`
