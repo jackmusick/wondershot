@@ -127,6 +127,14 @@ def test_bottom_fade_gradient():
     assert 50 < mid < 220, f"midway through fade should be partial: {mid}"
 
 
+def _require_widgets_app():
+    # blurred_patch needs a full QApplication; in subset runs another
+    # file may have created a bare QGuiApplication first.
+    from PySide6.QtWidgets import QApplication
+    if not isinstance(QApplication.instance(), QApplication):
+        pytest.skip("a QGuiApplication-only test file ran first")
+
+
 def _half_and_half(w=120, h=80):
     from PySide6.QtGui import QPainter
     img = QImage(w, h, QImage.Format_ARGB32_Premultiplied)
@@ -139,6 +147,7 @@ def _half_and_half(w=120, h=80):
 
 def test_blurred_patch_softens_the_boundary(qapp):
     from wondershot.imageops import blurred_patch
+    _require_widgets_app()
     img = _half_and_half()
     r = QRect(30, 10, 60, 60)            # straddles the black/white edge
     patch = blurred_patch(img, r, radius=10)
@@ -151,8 +160,31 @@ def test_blurred_patch_softens_the_boundary(qapp):
 
 def test_blurred_patch_clamps_and_empty(qapp):
     from wondershot.imageops import blurred_patch
+    _require_widgets_app()
     img = _half_and_half()
     assert blurred_patch(img, QRect(500, 500, 10, 10)).isNull()
     patch = blurred_patch(img, QRect(110, 70, 50, 50), radius=6)
     assert patch.size() == QRect(110, 70, 50, 50).intersected(
         img.rect()).size()
+
+
+def test_blurred_patch_never_segfaults_without_widgets_app():
+    # Regression: under a bare QGuiApplication (e.g. a pytest subset run
+    # where test_ocr.py is collected first), QGraphicsScene used to
+    # segfault the interpreter. blurred_patch must return null instead.
+    import subprocess
+    import sys
+    code = (
+        "import os; os.environ['QT_QPA_PLATFORM'] = 'offscreen'\n"
+        "from PySide6.QtCore import QRect\n"
+        "from PySide6.QtGui import QColor, QGuiApplication, QImage\n"
+        "app = QGuiApplication([])\n"
+        "from wondershot.imageops import blurred_patch\n"
+        "img = QImage(50, 50, QImage.Format_ARGB32_Premultiplied)\n"
+        "img.fill(QColor('red'))\n"
+        "print(blurred_patch(img, QRect(5, 5, 20, 20)).isNull())\n"
+    )
+    out = subprocess.run([sys.executable, "-c", code],
+                         capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip() == "True"

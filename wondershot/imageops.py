@@ -122,8 +122,13 @@ def blurred_patch(image: QImage, rect: QRect, radius: int = 12) -> QImage:
     from PySide6.QtCore import QRectF
     from PySide6.QtGui import QPixmap
     from PySide6.QtWidgets import (
-        QGraphicsBlurEffect, QGraphicsPixmapItem, QGraphicsScene,
+        QApplication, QGraphicsBlurEffect, QGraphicsPixmapItem,
+        QGraphicsScene,
     )
+    if not isinstance(QApplication.instance(), QApplication):
+        # QGraphicsScene segfaults under a bare QGuiApplication (or no
+        # app at all). Null patch -> PixelateItem's gray-rect fallback.
+        return QImage()
     r = rect.normalized().intersected(image.rect())
     if r.isEmpty():
         return QImage()
