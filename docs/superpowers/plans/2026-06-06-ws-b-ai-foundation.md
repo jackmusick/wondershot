@@ -656,7 +656,7 @@ def test_ai_test_button_requires_endpoint_and_model(qapp, tmp_path,
 - Create: `wondershot/ocr.py`
 - Test: `tests/test_ocr.py` (create)
 
-- [ ] Write the failing tests:
+- [x] Write the failing tests:
 
 ```python
 # tests/test_ocr.py
@@ -736,8 +736,8 @@ def test_ocr_words_runs_binary(monkeypatch):
     assert len(words) == 4
 ```
 
-- [ ] Run and confirm failure: `python -m pytest tests/test_ocr.py -q` — expect `ModuleNotFoundError: No module named 'wondershot.ocr'`.
-- [ ] Implement `wondershot/ocr.py`:
+- [x] Run and confirm failure: `python -m pytest tests/test_ocr.py -q` — expect `ModuleNotFoundError: No module named 'wondershot.ocr'`.
+- [x] Implement `wondershot/ocr.py`:
 
 ```python
 """Optional local OCR via the tesseract binary — word boxes for AI redact.
@@ -821,8 +821,8 @@ def ocr_words(image, binary: str | None = None) -> list[Word]:
     return parse_tsv(out.stdout.decode("utf-8", "replace"))
 ```
 
-- [ ] Run tests: `python -m pytest tests/test_ocr.py -q` — expect 4 passed.
-- [ ] Commit: `git add wondershot/ocr.py tests/test_ocr.py && git commit -m "WS-B: optional tesseract OCR helper with graceful degradation"`
+- [x] Run tests: `python -m pytest tests/test_ocr.py -q` — expect 4 passed.
+- [x] Commit: `git add wondershot/ocr.py tests/test_ocr.py && git commit -m "WS-B: optional tesseract OCR helper with graceful degradation"`
 
 ---
 
