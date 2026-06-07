@@ -35,6 +35,7 @@ class _DeviceAuthJob(QRunnable):
     def __init__(self, client_id: str):
         super().__init__()
         self.client_id = client_id
+        self.cancel = False
         self.emitter = _AuthSignal()
 
     def run(self) -> None:
@@ -42,11 +43,16 @@ class _DeviceAuthJob(QRunnable):
         from . import msgraph
         try:
             dc = msgraph.request_device_code(self.client_id)
+            if self.cancel:
+                return
             self.emitter.code_ready.emit(dc["user_code"],
                                          dc["verification_uri"])
             deadline = time.time() + int(dc.get("expires_in", 900))
             while time.time() < deadline:
-                time.sleep(int(dc.get("interval", 5)))
+                for _ in range(int(dc.get("interval", 5)) * 4):
+                    if self.cancel:
+                        return
+                    time.sleep(0.25)
                 tokens = msgraph.poll_token(self.client_id,
                                             dc["device_code"])
                 if tokens is not None:
@@ -67,6 +73,7 @@ class _ExchangeJob(QRunnable):
         self.client_id = client_id
         self.code = code
         self.verifier = verifier
+        self.cancel = False
         self.emitter = _AuthSignal()
 
     def run(self) -> None:
@@ -74,6 +81,8 @@ class _ExchangeJob(QRunnable):
         try:
             tokens = msgraph.exchange_code(self.client_id, self.code,
                                            self.verifier)
+            if self.cancel:
+                return
             account = msgraph.whoami(tokens["access_token"])
             msgraph.save_tokens(tokens, self.client_id, account)
             self.emitter.done.emit(account, "")
@@ -273,16 +282,19 @@ class SettingsDialog(QDialog):
             f"Connected as <b>{account}</b>" if account else "Not connected")
         odf.addRow("Status:", self.graph_status)
 
+        from PySide6.QtWidgets import QCheckBox
         self.graph_btn = QPushButton("Disconnect" if account else "Connect…")
         self.graph_btn.clicked.connect(self._graph_connect)
-        self.graph_code_btn = QPushButton("Use a code instead")
-        self.graph_code_btn.setFlat(True)
-        self.graph_code_btn.clicked.connect(self._graph_connect_code)
+        self.device_toggle = QCheckBox("Use device code")
+        self.device_toggle.setToolTip(
+            "Sign in by entering a short code instead of a browser redirect")
         btn_row = QHBoxLayout()
         btn_row.addWidget(self.graph_btn)
-        btn_row.addWidget(self.graph_code_btn)
+        btn_row.addWidget(self.device_toggle)
         btn_row.addStretch(1)
         odf.addRow("", self._wrap(btn_row))
+        self._connecting = False
+        self._auth_gen = 0
 
         # -- destination, inline (no popup) -------------------------------
         self.dest_combo = QComboBox()
@@ -317,17 +329,25 @@ class SettingsDialog(QDialog):
         odf.addRow("", self.sp_box)
         self.sp_box.setVisible(on_sp)
 
-        # -- client id: default unless changed ----------------------------
-        self.client_is_default = (s.graph_client_id == DEFAULT_CLIENT_ID)
-        self.graph_client = QLineEdit(s.graph_client_id)
-        self.graph_client.setReadOnly(self.client_is_default)
+        # -- client id: hidden behind a friendly label unless changed -----
+        is_default = (s.graph_client_id == DEFAULT_CLIENT_ID
+                      or not s.graph_client_id)
+        self._client_custom = not is_default
+        self.client_label = QLabel("Wondershot Built-In")
+        self.client_label.setStyleSheet("color: palette(mid);")
+        self.graph_client = QLineEdit(
+            "" if is_default else s.graph_client_id)
+        self.graph_client.setPlaceholderText("your Azure app client ID")
+        self.graph_client.setVisible(not is_default)
+        self.client_label.setVisible(is_default)
         client_row = QHBoxLayout()
+        client_row.addWidget(self.client_label, 1)
         client_row.addWidget(self.graph_client, 1)
         self.client_change_btn = QPushButton(
-            "Change" if self.client_is_default else "Use default")
+            "Change" if is_default else "Use default")
         self.client_change_btn.clicked.connect(self._toggle_client)
         client_row.addWidget(self.client_change_btn)
-        odf.addRow("Client ID:", self._wrap(client_row))
+        odf.addRow("App:", self._wrap(client_row))
         self._sites_cache = []
         self._drives_cache = []
         return od
@@ -341,15 +361,21 @@ class SettingsDialog(QDialog):
         return w
 
     def _toggle_client(self) -> None:
-        from .msgraph import DEFAULT_CLIENT_ID
-        if self.graph_client.isReadOnly():  # was default → allow editing
-            self.graph_client.setReadOnly(False)
+        self._client_custom = not self._client_custom
+        self.client_label.setVisible(not self._client_custom)
+        self.graph_client.setVisible(self._client_custom)
+        if self._client_custom:
             self.graph_client.setFocus()
             self.client_change_btn.setText("Use default")
-        else:  # reset to the shipped default
-            self.graph_client.setText(DEFAULT_CLIENT_ID)
-            self.graph_client.setReadOnly(True)
+        else:
+            self.graph_client.clear()
             self.client_change_btn.setText("Change")
+
+    def _client_id(self) -> str:
+        from .msgraph import DEFAULT_CLIENT_ID
+        if not self._client_custom:
+            return DEFAULT_CLIENT_ID
+        return self.graph_client.text().strip() or DEFAULT_CLIENT_ID
 
     def _dest_mode_changed(self) -> None:
         sharepoint = self.dest_combo.currentData() == "sharepoint"
@@ -359,26 +385,52 @@ class SettingsDialog(QDialog):
             self.settings.graph_drive_label = ""
             self.sp_current.setText("")
 
-    # -- connect (browser redirect, with device-code fallback) -----------
+    # -- connect: Connect → Cancel → Disconnect --------------------------
 
     def _graph_connect(self) -> None:
         from . import msgraph
-        from PySide6.QtCore import QUrl
-        from PySide6.QtGui import QDesktopServices
+        if self._connecting:
+            self._cancel_connect()
+            return
         if msgraph.connected_account():
             msgraph.disconnect()
             self.graph_status.setText("Not connected")
             self.graph_btn.setText("Connect…")
+            self.device_toggle.setEnabled(True)
             return
+        self._auth_gen += 1
+        self._connecting = True
+        self.graph_btn.setText("Cancel")
+        self.device_toggle.setEnabled(False)
+        if self.device_toggle.isChecked():
+            self._start_device_code()
+        else:
+            self._start_redirect()
+
+    def _cancel_connect(self) -> None:
+        self._auth_gen += 1  # invalidate any in-flight job/callback
+        self._oauth_state = ""
+        job = getattr(self, "_auth_job", None)
+        if job is not None:
+            job.cancel = True
+        self._connecting = False
+        self.graph_btn.setText("Connect…")
+        self.device_toggle.setEnabled(True)
+        self.graph_status.setText("Not connected")
+
+    def _start_redirect(self) -> None:
+        from . import msgraph
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
         parent = self.parent()
         if parent is not None and hasattr(parent, "oauth_callback"):
             parent.oauth_callback.connect(self._oauth_redirect,
                                           Qt.UniqueConnection)
         self._pkce_verifier, challenge = msgraph.make_pkce()
         self._oauth_state = msgraph.new_state()
-        url = msgraph.build_auth_url(self.graph_client.text().strip(),
-                                     challenge, self._oauth_state)
-        self.graph_status.setText("Waiting for sign-in in your browser…")
+        url = msgraph.build_auth_url(self._client_id(), challenge,
+                                     self._oauth_state)
+        self.graph_status.setText("Waiting for sign-in… (Cancel to stop)")
         QDesktopServices.openUrl(QUrl(url))
 
     def _oauth_redirect(self, url: str) -> None:
@@ -386,44 +438,48 @@ class SettingsDialog(QDialog):
         from PySide6.QtCore import QThreadPool
         params = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
         if params.get("state", [""])[0] != getattr(self, "_oauth_state", ""):
-            return  # not ours / stale
+            return  # not ours / stale / cancelled
         if "error" in params:
-            self.graph_status.setText(
-                f"<i>{params.get('error_description', params['error'])[0]}</i>")
+            self._graph_done("", params.get("error_description",
+                                            params["error"])[0], self._auth_gen)
             return
         code = params.get("code", [""])[0]
         if not code:
             return
         self.graph_status.setText("Completing sign-in…")
-        job = _ExchangeJob(self.graph_client.text().strip(), code,
-                           self._pkce_verifier)
-        job.emitter.done.connect(self._graph_done)
+        gen = self._auth_gen
+        job = _ExchangeJob(self._client_id(), code, self._pkce_verifier)
+        job.emitter.done.connect(
+            lambda a, e, g=gen: self._graph_done(a, e, g))
         self._auth_job = job
         QThreadPool.globalInstance().start(job)
 
-    def _graph_connect_code(self) -> None:
-        from . import msgraph
+    def _start_device_code(self) -> None:
         from PySide6.QtCore import QThreadPool
-        if msgraph.connected_account():
-            return
-        self.graph_btn.setEnabled(False)
+        gen = self._auth_gen
         self.graph_status.setText("Starting sign-in…")
-        job = _DeviceAuthJob(self.graph_client.text().strip())
-        job.emitter.code_ready.connect(self._graph_show_code)
-        job.emitter.done.connect(self._graph_done)
+        job = _DeviceAuthJob(self._client_id())
+        job.emitter.code_ready.connect(
+            lambda code, uri, g=gen: self._graph_show_code(code, uri, g))
+        job.emitter.done.connect(
+            lambda a, e, g=gen: self._graph_done(a, e, g))
         self._auth_job = job
         QThreadPool.globalInstance().start(job)
 
-    def _graph_show_code(self, user_code: str, uri: str) -> None:
+    def _graph_show_code(self, user_code: str, uri: str, gen: int) -> None:
+        if gen != self._auth_gen:
+            return  # cancelled
         from PySide6.QtGui import QDesktopServices, QGuiApplication
         from PySide6.QtCore import QUrl
         QGuiApplication.clipboard().setText(user_code)
-        self.graph_status.setText(
-            f"Enter code <b>{user_code}</b> (copied) at {uri}")
+        self.graph_status.setText(f"Use Device Code: <b>{user_code}</b> (copied)")
         QDesktopServices.openUrl(QUrl(uri))
 
-    def _graph_done(self, account: str, error: str) -> None:
-        self.graph_btn.setEnabled(True)
+    def _graph_done(self, account: str, error: str, gen: int = -1) -> None:
+        if gen != -1 and gen != self._auth_gen:
+            return  # superseded by a newer attempt / cancel
+        self._connecting = False
+        self.device_toggle.setEnabled(True)
         if error:
             self.graph_status.setText(f"<i>{error}</i>")
             self.graph_btn.setText("Connect…")
@@ -536,9 +592,7 @@ class SettingsDialog(QDialog):
         self.settings.copy_after_capture = self.copy_check.isChecked()
         self.settings.show_gallery_after_capture = self.show_check.isChecked()
         self.settings.share_provider = self.share_default.currentData()
-        from .msgraph import DEFAULT_CLIENT_ID
-        self.settings.graph_client_id = (
-            self.graph_client.text().strip() or DEFAULT_CLIENT_ID)
+        self.settings.graph_client_id = self._client_id()
         self.settings.share_expiry_days = self.share_expiry.value()
         for field in ("s3_endpoint", "s3_region", "s3_bucket",
                       "s3_access_key", "s3_secret_key",
