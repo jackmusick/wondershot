@@ -46,7 +46,7 @@
 - Modify: `wondershot/settings.py` (append properties at end of class, after `pin_on_top` setter, ~line 279)
 - Test: `tests/test_settings_ai.py` (create)
 
-- [ ] Write the failing test:
+- [x] Write the failing test:
 
 ```python
 # tests/test_settings_ai.py
@@ -86,8 +86,8 @@ def test_ai_settings_roundtrip(tmp_path):
     assert s.ai_model == "llava"
 ```
 
-- [ ] Run it and confirm the failure: `python -m pytest tests/test_settings_ai.py -q` — expect `AttributeError: 'Settings' object has no attribute 'ai_endpoint'`.
-- [ ] Implement: in `wondershot/settings.py`, append at the end of the `Settings` class (after the `pin_on_top` setter):
+- [x] Run it and confirm the failure: `python -m pytest tests/test_settings_ai.py -q` — expect `AttributeError: 'Settings' object has no attribute 'ai_endpoint'`.
+- [x] Implement: in `wondershot/settings.py`, append at the end of the `Settings` class (after the `pin_on_top` setter):
 
 ```python
     # -- AI (OpenAI-compatible chat endpoint) -------------------------------
@@ -120,8 +120,8 @@ def test_ai_settings_roundtrip(tmp_path):
         self._s.setValue("ai_model", value)
 ```
 
-- [ ] Run tests: `python -m pytest tests/test_settings_ai.py -q` — expect 2 passed.
-- [ ] Commit: `git add wondershot/settings.py tests/test_settings_ai.py && git commit -m "WS-B: ai_endpoint/ai_api_key/ai_model settings keys"`
+- [x] Run tests: `python -m pytest tests/test_settings_ai.py -q` — expect 2 passed.
+- [x] Commit: `git add wondershot/settings.py tests/test_settings_ai.py && git commit -m "WS-B: ai_endpoint/ai_api_key/ai_model settings keys"`
 
 ---
 

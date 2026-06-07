@@ -276,3 +276,32 @@ class Settings:
     @pin_on_top.setter
     def pin_on_top(self, value: bool) -> None:
         self._s.setValue("pin_on_top", "true" if value else "false")
+
+    # -- AI (OpenAI-compatible chat endpoint) -------------------------------
+    # NOTE: the API key is stored in plaintext QSettings, same as the
+    # S3/Azure credentials; the AI tab warns about this.
+
+    @property
+    def ai_endpoint(self) -> str:
+        """Base URL, e.g. https://api.openai.com or http://localhost:11434."""
+        return self._s.value("ai_endpoint", "")
+
+    @ai_endpoint.setter
+    def ai_endpoint(self, value: str) -> None:
+        self._s.setValue("ai_endpoint", value)
+
+    @property
+    def ai_api_key(self) -> str:
+        return self._s.value("ai_api_key", "")
+
+    @ai_api_key.setter
+    def ai_api_key(self, value: str) -> None:
+        self._s.setValue("ai_api_key", value)
+
+    @property
+    def ai_model(self) -> str:
+        return self._s.value("ai_model", "")
+
+    @ai_model.setter
+    def ai_model(self, value: str) -> None:
+        self._s.setValue("ai_model", value)
