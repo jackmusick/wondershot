@@ -265,13 +265,13 @@ work, not accepted limitations:
   via `winget upgrade`. Blocker with lead time + cost: code signing
   (SmartScreen + winget moderation) — Azure Trusted Signing (~$10/mo)
   or an OV cert. Resolves the PyInstaller-vs-briefcase deferred call.
-- **Linux now**: `curl | sh` installer script — check distro deps
-  (python3-gobject, gstreamer pipewire plugin, ffmpeg), venv with
-  `--system-site-packages`, pip install, run `--install-desktop`;
-  self-update via re-running pip.
-- **Linux end-state**: Flatpak on Flathub (auto-updates, portals are
-  native to the sandbox). Costs: GStreamer/gi in the manifest, sandbox
-  holes for ffmpeg/tesseract/KWin-scripting D-Bus.
+- **Linux**: Flatpak on Flathub is the PRIMARY plan (Jack 2026-06-07:
+  "if we have to use Python, I want the install to be a bundle" — no
+  external distro packages). The runtime bundles Qt/GStreamer/gi/ffmpeg;
+  one install, auto-updates, portals are native to the sandbox.
+  Manifest must bundle shelled-out helpers too (ffmpeg, tesseract) or
+  those features probe-and-hide. A `curl | sh` venv script (needs
+  distro packages) is dev-convenience only, not the user story.
 - Implication: avoid compiled C extensions where ctypes works (cursor
   halo pw_stream reader, libei) — keeps every package pure-Python.
 
