@@ -1569,7 +1569,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - `tests/test_gallery_sidecar.py` (new)
 - `wondershot/gallery.py` (modify)
 
-- [ ] **Step 6.1 — failing tests.** Create `tests/test_gallery_sidecar.py`:
+- [x] **Step 6.1 — failing tests.** Create `tests/test_gallery_sidecar.py`:
 
 ```python
 """Gallery <-> sidecar integration: trash, undo-delete, rename, scan, quit."""
@@ -1716,7 +1716,7 @@ def test_really_quit_autosaves_standalone_editor(qapp, tmp_path,
     assert len(data["items"]) == 1, "standalone window autosaved on quit"
 ```
 
-- [ ] **Step 6.2 — run, expect failure:**
+- [x] **Step 6.2 — run, expect failure:**
 
 ```bash
 QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_gallery_sidecar.py -x -q
@@ -1724,7 +1724,7 @@ QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_gallery_sidecar.
 
 Expected: `test_trash_takes_sidecar_files_along` fails — the sidecar JSON/base remain after trashing.
 
-- [ ] **Step 6.3 — implement.** All edits in `wondershot/gallery.py`:
+- [x] **Step 6.3 — implement.** All edits in `wondershot/gallery.py`:
 
 (a) Trash carries sidecar files. In `_trash_paths` (line 813), replace the staging loop block:
 
@@ -1845,14 +1845,14 @@ with
         self.close()
 ```
 
-- [ ] **Step 6.4 — run, expect pass**, then full suite (especially `tests/test_gallery_trash.py` — its message-count behavior must be unchanged for plain images):
+- [x] **Step 6.4 — run, expect pass**, then full suite (especially `tests/test_gallery_trash.py` — its message-count behavior must be unchanged for plain images):
 
 ```bash
 QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_gallery_sidecar.py tests/test_gallery_trash.py -x -q
 QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q
 ```
 
-- [ ] **Step 6.5 — commit:**
+- [x] **Step 6.5 — commit:**
 
 ```bash
 git add wondershot/gallery.py tests/test_gallery_sidecar.py
