@@ -374,7 +374,7 @@ git commit -m "Frame grab: pure ffmpeg arg builder + output naming"
 - Modify: `wondershot/video.py` (`VideoPane.__init__` ~lines 419–455 for the button, `load` ~line 486, new `_save_frame`/`_frame_done` methods next to `_convert_gif` ~line 821)
 - Test: none new — this is GUI-only glue (QProcess + widget wiring around the already-tested builders); explicitly skipping the failing-test step. The done-handler logic is a verbatim copy of the tested-in-production `_gif_done` shape.
 
-- [ ] **Step 4.1 — Add the button.** In `VideoPane.__init__`, after the `self.gif_btn` block (~line 444):
+- [x] **Step 4.1 — Add the button.** In `VideoPane.__init__`, after the `self.gif_btn` block (~line 444):
 
 ```python
         self.frame_btn = QPushButton("Save frame", self)
@@ -397,7 +397,7 @@ Add the process slot to the `__init__` state block (next to `self._gif_proc`):
         self._frame_proc: QProcess | None = None
 ```
 
-- [ ] **Step 4.2 — Implement the render flow.** Add after `_gif_done` (end of file):
+- [x] **Step 4.2 — Implement the render flow.** Add after `_gif_done` (end of file):
 
 ```python
     # -- frame grab ----------------------------------------------------------
@@ -440,9 +440,9 @@ Add the process slot to the `__init__` state block (next to `self._gif_proc`):
 
 Why this "opens in the editor" with no further code: `GalleryWindow` connects `video_pane.file_ready` → `_file_ready` → `rescan()` + `select_path(out)`; selecting a `.png` routes to the embedded editor (`gallery.py` `_selection_changed`).
 
-- [ ] **Step 4.3 — Run the suite + manual smoke.** `python -m pytest tests/ -q` → all pass (imports must not break). Manual check (needs a desktop session): `python -m wondershot`, select a recording, scrub, click "Save frame" → `<stem>-frame.png` appears in the carousel and loads in the editor.
+- [x] **Step 4.3 — Run the suite + manual smoke.** `python -m pytest tests/ -q` → all pass (imports must not break). Manual check (needs a desktop session): `python -m wondershot`, select a recording, scrub, click "Save frame" → `<stem>-frame.png` appears in the carousel and loads in the editor.
 
-- [ ] **Step 4.4 — Commit.**
+- [x] **Step 4.4 — Commit.**
 ```
 git add wondershot/video.py
 git commit -m "Save frame: extract current video frame to <stem>-frame.png, opens in editor"

@@ -409,6 +409,7 @@ class VideoPane(QWidget):
         self.path: str | None = None
         self._gif_proc: QProcess | None = None
         self._blur_proc: QProcess | None = None
+        self._frame_proc: QProcess | None = None
         self.redactions: list[Redaction] = []
         self.active_idx = -1
         self._row_spins: list[tuple[QDoubleSpinBox, QDoubleSpinBox]] = []
@@ -461,6 +462,13 @@ class VideoPane(QWidget):
         self.gif_btn.clicked.connect(self._convert_gif)
         self.gif_btn.setEnabled(ffmpegutil.have_ffmpeg())
 
+        self.frame_btn = QPushButton("Save frame", self)
+        self.frame_btn.setIcon(QIcon.fromTheme("camera-photo"))
+        self.frame_btn.setToolTip(
+            "Save the current frame as a PNG in the library")
+        self.frame_btn.clicked.connect(self._save_frame)
+        self.frame_btn.setEnabled(ffmpegutil.have_ffmpeg())
+
         controls = QHBoxLayout()
         controls.setContentsMargins(8, 4, 8, 0)
         controls.addWidget(self.play_btn)
@@ -470,6 +478,7 @@ class VideoPane(QWidget):
         controls.addWidget(self.blur_btn)
         controls.addWidget(self.apply_btn)
         controls.addWidget(self.gif_btn)
+        controls.addWidget(self.frame_btn)
 
         self.range_bar = RangeBar(self)
         self.range_bar.hide()
@@ -866,5 +875,42 @@ class VideoPane(QWidget):
             self.file_ready.emit(out)
         else:
             self._notify("GIF conversion failed", 6000)
+            if os.path.exists(tmp):
+                os.unlink(tmp)
+
+    # -- frame grab ----------------------------------------------------------
+
+    def _save_frame(self) -> None:
+        if not self.path or self._frame_proc is not None:
+            return
+        from .capture import unique_path
+        self.player.pause()
+        pos = self.player.position() / 1000.0
+        out = unique_path(self.settings.library_dir,
+                          frame_output_name(os.path.basename(self.path)))
+        tmp = self._render_temp(out)
+        self._frame_proc = QProcess(self)
+        self._frame_proc.finished.connect(
+            lambda code, _st: self._frame_done(code, tmp, out))
+        self.frame_btn.setEnabled(False)
+        self._notify("Saving frame…", 0)
+        self._frame_proc.start(ffmpegutil.ffmpeg_path(),
+                               build_frame_grab_args(self.path, pos, tmp))
+
+    def _frame_done(self, code: int, tmp: str, out: str) -> None:
+        proc, self._frame_proc = self._frame_proc, None
+        if proc is not None:
+            err = bytes(proc.readAllStandardError()).decode(errors="replace")
+            proc.deleteLater()
+        else:
+            err = ""
+        self.frame_btn.setEnabled(True)
+        if code == 0 and os.path.exists(tmp) and os.path.getsize(tmp) > 0:
+            shutil.move(tmp, out)
+            self._notify(f"Saved {os.path.basename(out)}")
+            self.file_ready.emit(out)
+        else:
+            tail = err.strip().splitlines()[-1] if err.strip() else "unknown"
+            self._notify(f"Frame grab failed: {tail[:160]}", 8000)
             if os.path.exists(tmp):
                 os.unlink(tmp)
