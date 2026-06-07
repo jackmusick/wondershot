@@ -1971,7 +1971,7 @@ git add wondershot/winrecord.py tests/test_winrecord.py && git commit -m "feat: 
 - Modify: `wondershot/app.py:74-75`
 - Test: `tests/test_win_factories.py` (append)
 
-- [ ] **Step 1: Write the failing tests** (append to `tests/test_win_factories.py`)
+- [x] **Step 1: Write the failing tests** (append to `tests/test_win_factories.py`)
 
 ```python
 # -- recorder factory ----------------------------------------------------------
@@ -2002,7 +2002,7 @@ def test_win_recorder_has_screenrecorder_signal_contract(qapp):
     assert callable(rec.elapsed_str)
 ```
 
-- [ ] **Step 2: Run — verify failure**
+- [x] **Step 2: Run — verify failure**
 
 ```bash
 /home/jack/GitHub/grabbit/.venv/bin/python -m pytest tests/test_win_factories.py -v
@@ -2010,7 +2010,7 @@ def test_win_recorder_has_screenrecorder_signal_contract(qapp):
 
 Expected: FAIL with `AttributeError: ... no attribute 'create_screen_recorder'`.
 
-- [ ] **Step 3: Implement** — in `wondershot/record.py` add `import sys` to the imports block and append at the end:
+- [x] **Step 3: Implement** — in `wondershot/record.py` add `import sys` to the imports block and append at the end:
 
 ```python
 # -- platform factory (WS-E seam) ---------------------------------------------
@@ -2040,7 +2040,7 @@ with:
         self.recorder = create_screen_recorder(self.settings, self)
 ```
 
-- [ ] **Step 4: Run tests + full suite**
+- [x] **Step 4: Run tests + full suite**
 
 ```bash
 /home/jack/GitHub/grabbit/.venv/bin/python -m pytest tests/test_win_factories.py -v && /home/jack/GitHub/grabbit/.venv/bin/python -m pytest tests/ -q
@@ -2048,7 +2048,7 @@ with:
 
 Expected: all PASS, including the untouched `test_record.py`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add wondershot/record.py wondershot/app.py tests/test_win_factories.py && git commit -m "feat: recorder platform factory; app uses it; Linux pinned byte-identical"

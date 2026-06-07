@@ -18,6 +18,7 @@ from __future__ import annotations
 import os
 import random
 import shutil
+import sys
 import signal
 import subprocess
 import time
@@ -451,3 +452,16 @@ class ScreenRecorder(QObject):
         self._proc = None
         self._tmp = self._out = None
         self._close_session()
+
+
+# -- platform factory (WS-E seam) ---------------------------------------------
+
+def create_screen_recorder(settings, parent=None):
+    """sys.platform factory mirroring create_capture_manager.
+
+    Linux behavior is byte-identical: same class, same constructor.
+    """
+    if sys.platform == "win32":
+        from .winrecord import WinScreenRecorder
+        return WinScreenRecorder(settings, parent)
+    return ScreenRecorder(settings, parent)

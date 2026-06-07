@@ -74,8 +74,8 @@ class GrabbitApp(QObject):
         self.capture.captured.connect(self._on_captured)
         self.capture.failed.connect(self._on_capture_failed)
 
-        from .record import ScreenRecorder
-        self.recorder = ScreenRecorder(self.settings, self)
+        from .record import create_screen_recorder
+        self.recorder = create_screen_recorder(self.settings, self)
         self.recorder.started.connect(self._on_recording_started)
         self.recorder.finished.connect(self._on_recording_finished)
         self.recorder.failed.connect(self._on_recording_failed)

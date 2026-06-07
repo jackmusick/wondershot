@@ -60,3 +60,31 @@ def test_window_capture_available_linux_delegates_to_kwin(monkeypatch):
     assert capture.window_capture_available() is False
     monkeypatch.setattr("wondershot.kwin.kwin_available", lambda: True)
     assert capture.window_capture_available() is True
+
+
+# -- recorder factory ----------------------------------------------------------
+
+def test_recorder_factory_linux_is_byte_identical(qapp, monkeypatch):
+    from wondershot import record
+    monkeypatch.setattr(sys, "platform", "linux")
+    r = record.create_screen_recorder(_Settings())
+    assert type(r) is record.ScreenRecorder
+
+
+def test_recorder_factory_windows(qapp, monkeypatch):
+    from wondershot import record
+    from wondershot.winrecord import WinScreenRecorder
+    monkeypatch.setattr(sys, "platform", "win32")
+    r = record.create_screen_recorder(_Settings())
+    assert type(r) is WinScreenRecorder
+
+
+def test_win_recorder_has_screenrecorder_signal_contract(qapp):
+    """app.py connects these five names blind; both classes must have them."""
+    from wondershot.winrecord import WinScreenRecorder
+    rec = WinScreenRecorder(_Settings())
+    for name in ("started", "stopping", "finished", "failed", "tick"):
+        assert hasattr(rec, name), name
+    assert hasattr(rec, "recording") and hasattr(rec, "available")
+    assert callable(rec.start) and callable(rec.stop)
+    assert callable(rec.elapsed_str)
