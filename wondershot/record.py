@@ -143,6 +143,17 @@ class ScreenRecorder(QObject):
     def _token() -> str:
         return f"grabbit{random.randint(0, 2**31)}"
 
+    # Restore-token policy hooks. The recorder reuses its persisted
+    # ScreenCast grant so the share picker shows only once; subclasses
+    # that need a fresh pick per session (scroll capture) override BOTH:
+    # returning "" forces the picker, and a no-op save keeps the scroll
+    # grant from clobbering the recorder's stored token.
+    def _restore_token(self) -> str:
+        return self.settings.screencast_token
+
+    def _save_restore_token(self, token: str) -> None:
+        self.settings.screencast_token = token
+
     def _sender_path(self, token: str) -> str:
         sender = self._conn.get_unique_name()[1:].replace(".", "_")
         return f"/org/freedesktop/portal/desktop/request/{sender}/{token}"
@@ -191,7 +202,7 @@ class ScreenRecorder(QObject):
             "cursor_mode": GLib.Variant("u", 2),  # embedded
             "persist_mode": GLib.Variant("u", 2),  # remember permanently
         }
-        restore = self.settings.screencast_token
+        restore = self._restore_token()
         if restore:
             options["restore_token"] = GLib.Variant("s", restore)
         self._on_request(token, self._sources_selected)
@@ -208,7 +219,7 @@ class ScreenRecorder(QObject):
     def _started_cb(self, results: dict) -> None:
         restore = results.get("restore_token")
         if restore:
-            self.settings.screencast_token = str(restore)
+            self._save_restore_token(str(restore))
         streams = results.get("streams") or []
         if not streams:
             self._fail("portal returned no stream")

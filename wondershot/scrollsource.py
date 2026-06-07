@@ -43,7 +43,8 @@ class ScreenCastFrameSource(ScreenRecorder):
     """FrameSource over the existing portal ScreenCast dance.
 
     Inherits the whole CreateSession/SelectSources/Start/
-    OpenPipeWireRemote flow (and the persisted restore token) from
+    OpenPipeWireRemote flow (but NOT the persisted restore token — see
+    the hook overrides below) from
     ScreenRecorder; only the pipeline endpoint differs.
     Duck-types stitch.FrameSource: start()/stop()/frame/started/failed.
     """
@@ -63,6 +64,17 @@ class ScreenCastFrameSource(ScreenRecorder):
             return True
         except (ImportError, ValueError):
             return False
+
+    # Fresh pick every scroll session (Jack's first run streamed the
+    # recorder's remembered source — the wrong window). Returning ""
+    # makes SelectSources omit restore_token, so the portal always
+    # shows the picker; the no-op save keeps the scroll grant from
+    # clobbering the recorder's persisted token.
+    def _restore_token(self) -> str:
+        return ""
+
+    def _save_restore_token(self, token: str) -> None:
+        pass
 
     # ScreenRecorder.start() runs the portal dance, then calls this
     # with the PipeWire fd + node id.

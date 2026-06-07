@@ -119,3 +119,19 @@ def test_log_dir_uses_standard_cache_location():
     base = QStandardPaths.writableLocation(
         QStandardPaths.GenericCacheLocation)
     assert log_dir() == os.path.join(base, "wondershot")
+
+
+def test_recorder_restore_token_hook_reads_settings(qapp, tmp_path):
+    from wondershot.record import ScreenRecorder
+    settings = FakeSettings(str(tmp_path))
+    settings.screencast_token = "recorder-grant"
+    rec = ScreenRecorder(settings)
+    assert rec._restore_token() == "recorder-grant"
+
+
+def test_recorder_save_token_hook_persists(qapp, tmp_path):
+    from wondershot.record import ScreenRecorder
+    settings = FakeSettings(str(tmp_path))
+    rec = ScreenRecorder(settings)
+    rec._save_restore_token("new-grant")
+    assert settings.screencast_token == "new-grant"
