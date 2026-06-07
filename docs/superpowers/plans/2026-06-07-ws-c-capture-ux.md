@@ -134,7 +134,7 @@ The bar's Share button is one click — no provider menu — so it needs a deter
 - Modify: `wondershot/share.py` (insert after `configured_providers`, which ends at line 138)
 - Create: `tests/test_share_default.py`
 
-- [ ] Write the failing test:
+- [x] Write the failing test:
 
 ```python
 # tests/test_share_default.py
@@ -202,8 +202,8 @@ def test_stale_default_falls_back_to_first_configured():
 
 Note: the autouse `_no_onedrive` fixture above is REQUIRED, not optional — verified: `onedrive_configured` (share.py line 125) calls `msgraph.connected_account()` which reads the real token file on disk, so without the monkeypatch `test_no_providers_gives_empty` fails on any machine with OneDrive connected (Jack's likely is — see the recent OneDrive sign-in commits).
 
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_share_default.py -q` — expect `ImportError: cannot import name 'default_provider'`.
-- [ ] Implement — in `wondershot/share.py`, after `configured_providers` (line 138):
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_share_default.py -q` — expect `ImportError: cannot import name 'default_provider'`.
+- [x] Implement — in `wondershot/share.py`, after `configured_providers` (line 138):
 
 ```python
 def default_provider(settings) -> str:
@@ -217,8 +217,8 @@ def default_provider(settings) -> str:
     return providers[0]
 ```
 
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_share_default.py -q` — expect 4 passed.
-- [ ] Commit: `git add wondershot/share.py tests/test_share_default.py && git commit -m "WS-C: default_provider() for one-click share surfaces"`
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_share_default.py -q` — expect 4 passed.
+- [x] Commit: `git add wondershot/share.py tests/test_share_default.py && git commit -m "WS-C: default_provider() for one-click share surfaces"`
 
 ---
 

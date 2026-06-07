@@ -138,6 +138,17 @@ def configured_providers(settings) -> list[str]:
     return out
 
 
+def default_provider(settings) -> str:
+    """Provider for one-click share surfaces (quick bar): the user's
+    default if it's configured, else the first configured one, else ''."""
+    providers = configured_providers(settings)
+    if not providers:
+        return ""
+    if settings.share_provider in providers:
+        return settings.share_provider
+    return providers[0]
+
+
 def _put(url: str, path: str, headers: dict) -> None:
     with open(path, "rb") as f:
         data = f.read()
