@@ -75,3 +75,56 @@ def test_frame_output_name():
     assert frame_output_name("Recording_20260606_1.mp4") == \
         "Recording_20260606_1-frame.png"
     assert frame_output_name("clip.webm") == "clip-frame.png"
+
+def test_trim_output_name_keeps_container_on_copy():
+    from wondershot.video import trim_output_name
+    assert trim_output_name("Rec.webm", reencode=False) == "Rec-trimmed.webm"
+    assert trim_output_name("Rec.mp4", reencode=False) == "Rec-trimmed.mp4"
+
+
+def test_trim_output_name_reencode_is_mp4():
+    from wondershot.video import trim_output_name
+    assert trim_output_name("Rec.webm", reencode=True) == "Rec-trimmed.mp4"
+    assert trim_output_name("Rec.mkv", reencode=True) == "Rec-trimmed.mp4"
+
+
+def test_trim_args_stream_copy():
+    from wondershot.video import build_trim_args
+    args = build_trim_args("/l/in.mp4", 1.0, 8.5,
+                           "/l/.rendering/in-trimmed.mp4", reencode=False)
+    i = args.index("-i")
+    # -ss AND -to as input options (before -i): both absolute timestamps
+    assert args[:i] == ["-y", "-ss", "1.000", "-to", "8.500"]
+    assert args[i + 1] == "/l/in.mp4"
+    c = args.index("-c")
+    assert args[c + 1] == "copy"
+    assert "-movflags" in args  # mp4 output gets +faststart
+    assert args[-1] == "/l/.rendering/in-trimmed.mp4"
+
+
+def test_trim_args_copy_to_webm_has_no_movflags():
+    from wondershot.video import build_trim_args
+    args = build_trim_args("/l/in.webm", 0.0, 2.0,
+                           "/l/.rendering/in-trimmed.webm", reencode=False)
+    assert "-movflags" not in args
+
+
+def test_trim_args_reencode_x264():
+    from wondershot.video import build_trim_args
+    args = build_trim_args("/l/in.webm", 0.5, 3.25,
+                           "/l/.rendering/in-trimmed.mp4",
+                           reencode=True, encoder="libx264")
+    v = args.index("-c:v")
+    assert args[v + 1] == "libx264"
+    assert "-crf" in args and "-preset" in args
+    a = args.index("-c:a")
+    assert args[a + 1] == "aac"
+    assert "-movflags" in args
+
+
+def test_trim_args_reencode_fallback_encoder():
+    from wondershot.video import build_trim_args
+    args = build_trim_args("/l/in.mp4", 0.0, 1.0,
+                           "/l/.rendering/in-trimmed.mp4",
+                           reencode=True, encoder="mpeg4")
+    assert "-q:v" in args and "-crf" not in args

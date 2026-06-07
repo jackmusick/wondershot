@@ -87,6 +87,38 @@ def frame_output_name(src_name: str) -> str:
     return f"{os.path.splitext(src_name)[0]}-frame.png"
 
 
+def trim_output_name(src_name: str, reencode: bool) -> str:
+    """'<stem>-trimmed.<ext>' library name.
+
+    Stream copy must keep the source container (H.264 can't live in WebM
+    and vice versa — same constraint the blur pass handles); re-encode is
+    always x264-family, so it always lands in .mp4.
+    """
+    base, ext = os.path.splitext(src_name)
+    return f"{base}-trimmed{'.mp4' if reencode else ext}"
+
+
+def build_trim_args(src: str, start_s: float, end_s: float, out: str,
+                    reencode: bool, encoder: str = "libx264") -> list[str]:
+    """ffmpeg args trimming src to [start_s, end_s].
+
+    Both -ss and -to are INPUT options (before -i), so both are absolute
+    source timestamps. Stream copy snaps the start back to the previous
+    keyframe (instant, lossless); re-encode decodes from that keyframe and
+    cuts exactly (frame-accurate, slower).
+    """
+    args = ["-y", "-ss", f"{start_s:.3f}", "-to", f"{end_s:.3f}", "-i", src]
+    if reencode:
+        enc_opts = (["-crf", "20", "-preset", "veryfast"]
+                    if encoder == "libx264" else ["-q:v", "4"])
+        args += ["-c:v", encoder, *enc_opts, "-c:a", "aac", "-b:a", "160k"]
+    else:
+        args += ["-c", "copy"]
+    if os.path.splitext(out)[1].lower() in (".mp4", ".m4v", ".mov"):
+        args += ["-movflags", "+faststart"]  # instant seeking
+    return [*args, out]
+
+
 _encoder_cache: str | None = None
 
 

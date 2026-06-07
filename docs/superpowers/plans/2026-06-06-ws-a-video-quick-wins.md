@@ -456,7 +456,7 @@ git commit -m "Save frame: extract current video frame to <stem>-frame.png, open
 - Modify: `wondershot/video.py` (module-level functions, next to the Task 3 builders)
 - Test: `tests/test_video_filter.py` (extend)
 
-- [ ] **Step 5.1 — Write the failing tests.** Append to `tests/test_video_filter.py`:
+- [x] **Step 5.1 — Write the failing tests.** Append to `tests/test_video_filter.py`:
 
 ```python
 def test_trim_output_name_keeps_container_on_copy():
@@ -513,9 +513,9 @@ def test_trim_args_reencode_fallback_encoder():
     assert "-q:v" in args and "-crf" not in args
 ```
 
-- [ ] **Step 5.2 — Run them, expect failure.** `python -m pytest tests/test_video_filter.py -q` → new tests fail with `ImportError: cannot import name 'trim_output_name'`.
+- [x] **Step 5.2 — Run them, expect failure.** `python -m pytest tests/test_video_filter.py -q` → new tests fail with `ImportError: cannot import name 'trim_output_name'`.
 
-- [ ] **Step 5.3 — Implement.** In `wondershot/video.py`, after `frame_output_name`:
+- [x] **Step 5.3 — Implement.** In `wondershot/video.py`, after `frame_output_name`:
 
 ```python
 def trim_output_name(src_name: str, reencode: bool) -> str:
@@ -550,9 +550,9 @@ def build_trim_args(src: str, start_s: float, end_s: float, out: str,
     return [*args, out]
 ```
 
-- [ ] **Step 5.4 — Run tests.** `python -m pytest tests/test_video_filter.py -q` → all pass. `python -m pytest tests/ -q` → all pass.
+- [x] **Step 5.4 — Run tests.** `python -m pytest tests/test_video_filter.py -q` → all pass. `python -m pytest tests/ -q` → all pass.
 
-- [ ] **Step 5.5 — Commit.**
+- [x] **Step 5.5 — Commit.**
 ```
 git add wondershot/video.py tests/test_video_filter.py
 git commit -m "Trim: pure ffmpeg arg builder (copy vs frame-accurate) + naming"
