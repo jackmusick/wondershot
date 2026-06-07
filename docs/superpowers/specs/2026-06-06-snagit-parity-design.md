@@ -366,3 +366,69 @@ read), so no human in the loop for the build-test cycle.
    on-VM verification steps embedded in the plan.
 4. Iterate on-VM until the definition of done holds; consolidated checklist
    updated; windev skill updated (VM now lives on this host too).
+
+---
+
+# Addendum 4 (2026-06-07): In-process recorder pipeline — unlock the parked cluster
+
+Honest-accounting follow-up. Four roadmap items are parked on ONE root
+cause: the Linux recorder is a `gst-launch-1.0 -e` subprocess
+(record.py), so nothing can reach the stream mid-flight. Converting it to
+an in-process GStreamer pipeline (the same appsink technique
+scrollsource.py already uses for scroll capture) unlocks three of them.
+Step capture's click-animation needs the EI verdict too, so it stays out.
+
+## Foundation (must land first, behavior-preserving)
+
+Rewrite `ScreenRecorder` to drive an **in-process** Gst pipeline instead
+of spawning gst-launch:
+- Build via `Gst.parse_launch` (or element-by-element) ending in the
+  same encode→mux→filesink chain; keep the `videorate` + fixed-framerate
+  no-PTS fix VERBATIM (ROADMAP landmine — pipewiresrc emits PTS-less
+  buffers; mp4mux aborts on them).
+- Replace QProcess/subprocess lifecycle with `GstBus` watching +
+  pipeline state. Preserve EVERY existing observable: `started`,
+  `stopping`, `finished`, `failed`, `tick` signals; the watchdog
+  (detect pipeline death, salvage partial, never hang on "Stopping");
+  graceful stop = send EOS and wait for it (the in-process analog of
+  `-e` + SIGINT), with the same terminate→kill escalation timer; the
+  `.rendering` tmp + salvage-on-crash + `sweep_stale_tmp`.
+- Audio (mic) mux path unchanged in behavior.
+- Existing tests/test_record.py must stay green (adapt the harness from
+  "fake subprocess" to "fake/real Gst pipeline" — keep assertions on
+  observable behavior, not on argv). This is the riskiest part; if a
+  test pins argv, rewrite it to pin behavior.
+- Windows recorder (winrecord.py) is UNTOUCHED — it stays QProcess+ffmpeg.
+
+## Unlocked features (layer on the in-process pipeline)
+
+1. **Cursor halo** (the WS-A item parked twice): request portal
+   cursor-mode *metadata* (mode 4) in SelectSources; read the
+   `spa_meta_cursor` position per buffer off the appsink sample; composite
+   a translucent halo (cairo/QPainter overlay element, or a pad-probe
+   draw) at that position. Setting in Settings→Recording, default off.
+   If metadata cursor coords still prove unreadable through gi bindings,
+   document precisely why and park AGAIN (but this time from the
+   in-process vantage, which is the one that's supposed to work).
+2. **Pause/resume**: toolbar + tray Pause/Resume. Implement by gating the
+   stream into the encoder (a `valve` element drop=true, or
+   set the pipeline to PAUSED) while keeping output PTS continuous — the
+   resumed segment must not break mp4mux (test the PTS continuity; this
+   is the real risk). Tick clock pauses too.
+3. **Region-only recording**: an in-app region choice that inserts
+   `videocrop`/`videobox` (or a capsfilter on a cropped src) so only the
+   chosen rect is encoded. Portal still streams the whole monitor; we
+   crop in-pipeline. UI: reuse the owned-region selection overlay pattern
+   from wincapture's RegionOverlay (it's portable Qt).
+
+## Out (still gated/parked)
+- Click *animation* (needs EI click events — same gate as step capture).
+- Step capture feature UI (needs the interception-semantics verdict).
+- macOS (hardware).
+- During-capture toolbar (don't own the Wayland picker).
+
+## Verification
+Linux suite green throughout (behavior-preserving foundation first).
+Live-desktop checks (actual recording, halo visible, pause/resume
+produces a continuous playable mp4, region crop correct) append to the
+consolidated desktop checklist — not blocking, per the testing rule.
