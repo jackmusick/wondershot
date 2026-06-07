@@ -453,7 +453,7 @@ Mirrors `CaptureManager`'s contract exactly: `captured(str)`/`failed(str)` signa
 - Modify: `wondershot/wincapture.py` (append)
 - Test: `tests/test_wincapture.py` (append)
 
-- [ ] **Step 1: Write the failing tests** (append to `tests/test_wincapture.py`)
+- [x] **Step 1: Write the failing tests** (append to `tests/test_wincapture.py`)
 
 ```python
 # -- WinCaptureManager --------------------------------------------------------
@@ -571,7 +571,7 @@ def test_capture_delay_defers_the_grab(qapp, tmp_path):
     assert len(got) == 1
 ```
 
-- [ ] **Step 2: Run — verify failure**
+- [x] **Step 2: Run — verify failure**
 
 ```bash
 /home/jack/GitHub/grabbit/.venv/bin/python -m pytest tests/test_wincapture.py -v
@@ -579,7 +579,7 @@ def test_capture_delay_defers_the_grab(qapp, tmp_path):
 
 Expected: new tests FAIL with `ImportError: cannot import name 'WinCaptureManager'`.
 
-- [ ] **Step 3: Implement** (append to `wondershot/wincapture.py`)
+- [x] **Step 3: Implement** (append to `wondershot/wincapture.py`)
 
 ```python
 class WinCaptureManager(QObject):
@@ -673,7 +673,7 @@ class WinCaptureManager(QObject):
         self.captured.emit(path)
 ```
 
-- [ ] **Step 4: Run tests + suite**
+- [x] **Step 4: Run tests + suite**
 
 ```bash
 /home/jack/GitHub/grabbit/.venv/bin/python -m pytest tests/test_wincapture.py -v && /home/jack/GitHub/grabbit/.venv/bin/python -m pytest tests/ -q
@@ -681,7 +681,7 @@ class WinCaptureManager(QObject):
 
 Expected: all PASS (`_do_region` doesn't exist yet — `capture_region` is untested until Task 5; do NOT reference it in tests yet. If the interpreter complains at definition time it won't — it's resolved at call time).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add wondershot/wincapture.py tests/test_wincapture.py && git commit -m "feat: WinCaptureManager — fullscreen/active-window with CaptureManager parity"

@@ -123,3 +123,118 @@ def test_active_window_rect_none_for_degenerate_rect():
     from wondershot.wincapture import active_window_rect
     assert active_window_rect(
         user32=FakeUser32(), dwmapi=FakeDwmapi(rect=(10, 20, 10, 20))) is None
+
+
+# -- WinCaptureManager --------------------------------------------------------
+
+from PySide6.QtGui import QImage as _QImage  # noqa: E402
+from PySide6.QtCore import Qt as _Qt  # noqa: E402
+
+
+class _Settings:
+    capture_cursor = False
+    capture_delay = 0
+
+    def __init__(self, library_dir):
+        self.library_dir = library_dir
+
+
+def _fake_grab(w=200, h=100, virtual=None):
+    """A grab seam returning a blue frame + its virtual rect."""
+    img = _QImage(w, h, _QImage.Format_ARGB32)
+    img.fill(_Qt.blue)
+    v = virtual or QRect(0, 0, w, h)
+    return lambda: (img, v)
+
+
+def _manager(tmp_path, grab=None, window_rect=None):
+    from wondershot.wincapture import WinCaptureManager
+    return WinCaptureManager(_Settings(str(tmp_path)),
+                             grab=grab or _fake_grab(),
+                             window_rect=window_rect or (lambda: None))
+
+
+def test_fullscreen_saves_png_and_emits_captured(qapp, tmp_path):
+    m = _manager(tmp_path)
+    got = []
+    m.captured.connect(got.append)
+    m.capture_fullscreen()
+    assert len(got) == 1
+    assert got[0].startswith(str(tmp_path))
+    assert got[0].endswith(".png")
+    out = _QImage(got[0])
+    assert (out.width(), out.height()) == (200, 100)
+
+
+def test_fullscreen_grab_failure_emits_failed(qapp, tmp_path):
+    def boom():
+        raise OSError("no display")
+    m = _manager(tmp_path, grab=boom)
+    fails = []
+    m.failed.connect(fails.append)
+    m.capture_fullscreen()
+    assert fails and "no display" in fails[0]
+
+
+def test_active_window_crops_to_window_rect(qapp, tmp_path):
+    m = _manager(tmp_path, window_rect=lambda: (10, 20, 50, 40))
+    got = []
+    m.captured.connect(got.append)
+    m.capture_active_window()
+    assert len(got) == 1
+    out = _QImage(got[0])
+    assert (out.width(), out.height()) == (50, 40)
+    assert m._pending_crop is None  # one-shot, like CaptureManager
+
+
+def test_capture_window_is_active_window_on_windows(qapp, tmp_path):
+    """No interactive window picker on Windows; 'window' == active window."""
+    m = _manager(tmp_path, window_rect=lambda: (0, 0, 80, 60))
+    got = []
+    m.captured.connect(got.append)
+    m.capture_window()
+    out = _QImage(got[0])
+    assert (out.width(), out.height()) == (80, 60)
+
+
+def test_active_window_no_window_emits_failed(qapp, tmp_path):
+    m = _manager(tmp_path, window_rect=lambda: None)
+    fails = []
+    m.failed.connect(fails.append)
+    m.capture_active_window()
+    assert fails and "window" in fails[0]
+
+
+def test_finish_emits_uncropped_when_rect_unusable(qapp, tmp_path):
+    """Parity with test_capture_crop.py: degrade to the full shot."""
+    m = _manager(tmp_path, window_rect=lambda: (9999, 9999, 10, 10))
+    got = []
+    m.captured.connect(got.append)
+    m.capture_active_window()
+    assert len(got) == 1
+    assert _QImage(got[0]).width() == 200
+
+
+def test_crop_respects_negative_virtual_origin(qapp, tmp_path):
+    """Monitor left of primary: virtual origin is negative; the window
+    rect is global. Same mapping rules as kwin.map_global_rect."""
+    grab = _fake_grab(300, 100, virtual=QRect(-100, 0, 300, 100))
+    m = _manager(tmp_path, grab=grab, window_rect=lambda: (-50, 10, 60, 40))
+    got = []
+    m.captured.connect(got.append)
+    m.capture_active_window()
+    out = _QImage(got[0])
+    assert (out.width(), out.height()) == (60, 40)
+
+
+def test_capture_delay_defers_the_grab(qapp, tmp_path):
+    m = _manager(tmp_path)
+    m.settings.capture_delay = 1
+    got = []
+    m.captured.connect(got.append)
+    m.capture_fullscreen()
+    assert got == []  # deferred via QTimer, not synchronous
+    deadline = __import__("time").monotonic() + 3
+    while not got and __import__("time").monotonic() < deadline:
+        qapp.processEvents()
+    assert len(got) == 1

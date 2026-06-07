@@ -96,3 +96,94 @@ def grab_fullscreen():
         img = bgra_to_qimage(shot.bgra, shot.width, shot.height)
         return img, QRect(mon["left"], mon["top"],
                           mon["width"], mon["height"])
+
+
+class WinCaptureManager(QObject):
+    """Windows capture backend with CaptureManager's exact contract.
+
+    Same signals (captured/failed), same public methods, same one-shot
+    _pending_crop -> _finish seam. capture_window has no interactive
+    picker on Windows and aliases the active-window mode.
+    capture_cursor is unsupported (see module docstring).
+    """
+
+    captured = Signal(str)
+    failed = Signal(str)
+
+    def __init__(self, settings, parent=None, grab=None, window_rect=None):
+        super().__init__(parent)
+        self.settings = settings
+        self._grab = grab or grab_fullscreen          # test seam
+        self._window_rect = window_rect or active_window_rect  # test seam
+        self._pending_crop = None    # QRect: crop the next capture to this
+        self._grab_virtual = None    # QRect of the last grab's desktop union
+        self._crop_virtual = None    # test seam; None = use _grab_virtual
+        self._overlay = None         # RegionOverlay while picking
+
+    # -- public API (CaptureManager parity) -----------------------------
+
+    def capture_region(self) -> None:
+        self._pending_crop = None
+        self._delayed(self._do_region)
+
+    def capture_fullscreen(self) -> None:
+        self._pending_crop = None
+        self._delayed(self._do_fullscreen)
+
+    def capture_window(self) -> None:
+        # Windows has no single-window interactive pick; window mode IS
+        # the active-window mode (the kwin "window-auto" analog).
+        self.capture_active_window()
+
+    def capture_active_window(self) -> None:
+        self._pending_crop = None
+        self._delayed(self._do_active_window)
+
+    # -- plumbing ----------------------------------------------------------
+
+    def _delayed(self, fn) -> None:
+        delay_ms = int(getattr(self.settings, "capture_delay", 0) or 0) * 1000
+        if delay_ms:
+            QTimer.singleShot(delay_ms, fn)
+        else:
+            fn()
+
+    def _grab_or_fail(self):
+        try:
+            img, virtual = self._grab()
+        except Exception as e:  # noqa: BLE001 — mss raises ScreenShotError
+            self.failed.emit(f"screen grab failed: {e}")
+            return None
+        self._grab_virtual = virtual
+        return img
+
+    def _do_fullscreen(self) -> None:
+        img = self._grab_or_fail()
+        if img is None:
+            return
+        self._save_and_finish(img)
+
+    def _do_active_window(self) -> None:
+        rect = self._window_rect()
+        if rect is None:
+            self.failed.emit("window geometry: no active window")
+            return
+        self._pending_crop = QRect(*rect)
+        self._do_fullscreen()
+
+    def _save_and_finish(self, img: QImage) -> None:
+        path = unique_path(self.settings.library_dir, timestamp_name())
+        if not img.save(path):
+            self.failed.emit("could not save screenshot")
+            return
+        self._finish(path)
+
+    def _finish(self, path: str) -> None:
+        """Common tail: apply a pending window crop (CaptureManager seam)."""
+        crop, self._pending_crop = self._pending_crop, None
+        if crop is not None:
+            virtual = self._crop_virtual or self._grab_virtual
+            if virtual is not None:
+                # False = unusable rect; degrade to the full shot
+                crop_file_to_global_rect(path, crop, virtual)
+        self.captured.emit(path)
