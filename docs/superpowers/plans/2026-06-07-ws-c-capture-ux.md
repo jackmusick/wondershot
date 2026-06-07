@@ -1589,8 +1589,8 @@ Also update the signal docstring comment on line 26: `capture_requested = Signal
 **Files**
 - Modify: `ROADMAP.md` (WS-C section, lines 133–138)
 
-- [ ] Run the complete suite: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q` — expect ~160 passed (129 baseline + ~31 new), 0 failures.
-- [ ] Update `ROADMAP.md` WS-C section (lines 133–138) — replace the two bullets with:
+- [x] Run the complete suite: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q` — expect ~160 passed (129 baseline + ~31 new), 0 failures.
+- [x] Update `ROADMAP.md` WS-C section (lines 133–138) — replace the two bullets with:
 
 ```markdown
 **WS-C — Capture UX** _(done 2026-06-07)_
@@ -1607,7 +1607,7 @@ Also update the signal docstring comment on line 26: `capture_requested = Signal
   GNOME needs an extension — documented, not built.
 ```
 
-- [ ] Append the following to the desktop-only verification checklist that the session batches for Jack (per the Addendum's rule of engagement — create `docs/superpowers/plans/2026-06-07-ws-c-desktop-checklist.md` if the orchestrator hasn't designated a shared one):
+- [x] Append the following to the desktop-only verification checklist that the session batches for Jack (per the Addendum's rule of engagement — create `docs/superpowers/plans/2026-06-07-ws-c-desktop-checklist.md` if the orchestrator hasn't designated a shared one):
 
 ```markdown
 # WS-C desktop checklist (live KDE session, NOT offscreen)
@@ -1631,5 +1631,5 @@ Also update the signal docstring comment on line 26: `capture_requested = Signal
    "Window" button in the capture panel.
 ```
 
-- [ ] Commit: `git add ROADMAP.md docs/superpowers/plans/2026-06-07-ws-c-desktop-checklist.md && git commit -m "WS-C: roadmap + desktop verification checklist"`
-- [ ] Request code review per superpowers:requesting-code-review before merge; do NOT merge to main yourself — finishing-a-development-branch handles integration.
+- [x] Commit: `git add ROADMAP.md docs/superpowers/plans/2026-06-07-ws-c-desktop-checklist.md && git commit -m "WS-C: roadmap + desktop verification checklist"`
+- [x] Request code review per superpowers:requesting-code-review before merge; do NOT merge to main yourself — finishing-a-development-branch handles integration.

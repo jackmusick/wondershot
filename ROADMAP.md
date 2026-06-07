@@ -131,12 +131,18 @@ after Linux is feature-complete.
   extra — chat endpoints can't return alpha mattes, so never the LLM
 - Image simplifier (L): later; reuses redaction's vision→regions pipeline
 
-**WS-C — Capture UX**
-- Post-capture quick-action toolbar (M): scoped *post*-capture only —
-  selection UI belongs to Spectacle and Wayland windows can't
-  self-position (LayerShellQt on KDE when we own the picker)
-- Auto-size-to-window (M): KDE-only via KWin scripting D-Bus; trivial
-  on X11/Win/mac later; GNOME needs an extension — documented, not built
+**WS-C — Capture UX** _(done 2026-06-07)_
+- Post-capture quick-action toolbar: DONE — frameless always-on-top bar
+  (KWin position rule, bubble precedent) with Edit/Copy/Save-as/Share/
+  Trash/dismiss on the just-captured file; auto-dismiss setting
+  (default 8 s), Esc dismisses; shown only when the gallery isn't
+  brought forward.
+- Auto-size-to-window: DONE — KDE-only via KWin scripting D-Bus
+  (`kwin.py`: script injected via loadScript, geometry returned as one
+  string to a registered slot, hard timeouts, feature-probe hides the
+  mode off-KDE); fullscreen capture cropped to the active window's
+  frame, multi-monitor + HiDPI aware. Trivial on X11/Win/mac later;
+  GNOME needs an extension — documented, not built.
 
 **WS-D — Capture engine** _(spike in progress)_
 - Scroll capture (XL): user scrolls, we stitch — frames from the
