@@ -1288,7 +1288,7 @@ Note for the implementer: `test_query_load_failure` expects cleanup (`unregister
 - Modify: `wondershot/capture.py`
 - Create: `tests/test_capture_crop.py`
 
-- [ ] Write the failing test:
+- [x] Write the failing test:
 
 ```python
 # tests/test_capture_crop.py
@@ -1374,8 +1374,8 @@ def test_public_capture_modes_clear_pending_crop(qapp, tmp_path, monkeypatch):
     assert m._pending_crop is None
 ```
 
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_capture_crop.py -q` — expect `AttributeError: ... has no attribute '_finish'`.
-- [ ] Implement — in `wondershot/capture.py`:
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_capture_crop.py -q` — expect `AttributeError: ... has no attribute '_finish'`.
+- [x] Implement — in `wondershot/capture.py`:
 
 1. In `__init__` (after line 46, `self._portal_pending_path ...`), add:
 
@@ -1442,9 +1442,9 @@ def test_public_capture_modes_clear_pending_crop(qapp, tmp_path, monkeypatch):
 
 4. Replace the two emit sites: in `_spectacle_done` (line 119) change `self.captured.emit(out)` → `self._finish(out)`; in `_portal_response` (line 167) change `self.captured.emit(dest)` → `self._finish(dest)`.
 
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_capture_crop.py -q` — expect 4 passed.
-- [ ] Full suite: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q` — all green.
-- [ ] Commit: `git add wondershot/capture.py tests/test_capture_crop.py && git commit -m "WS-C: capture_active_window — KWin geometry, fullscreen + crop via _finish seam"`
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_capture_crop.py -q` — expect 4 passed.
+- [x] Full suite: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q` — all green.
+- [x] Commit: `git add wondershot/capture.py tests/test_capture_crop.py && git commit -m "WS-C: capture_active_window — KWin geometry, fullscreen + crop via _finish seam"`
 
 ---
 
