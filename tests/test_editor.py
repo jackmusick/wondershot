@@ -267,6 +267,7 @@ def test_flatten_applies_effects(qapp):
         effect_fade_height = 60
 
     ed.settings = _Fx()
+    ed._refresh_effect_preview()  # the app routes every effect change here
     flat = ed.flattened()
     assert flat.pixelColor(0, 0).alpha() == 0, "rounded corner transparent"
     assert flat.pixelColor(200, 299).alpha() < 20, "bottom faded"

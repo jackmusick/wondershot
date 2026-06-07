@@ -50,6 +50,24 @@ from .items import (
 )
 
 
+_checker_cache = None
+
+
+def _checker_brush():
+    """16px light/dark checkerboard — the universal 'transparent' backdrop."""
+    global _checker_cache
+    if _checker_cache is None:
+        from PySide6.QtGui import QBrush
+        tile = QPixmap(16, 16)
+        tile.fill(QColor(70, 70, 76))
+        p = QPainter(tile)
+        p.fillRect(0, 0, 8, 8, QColor(54, 54, 60))
+        p.fillRect(8, 8, 8, 8, QColor(54, 54, 60))
+        p.end()
+        _checker_cache = QBrush(tile)
+    return _checker_cache
+
+
 class Tool(enum.Enum):
     SELECT = "select"
     ARROW = "arrow"
@@ -237,6 +255,14 @@ class EditorWindow(QMainWindow):
             image.fill(QColor("white"))
 
         self.scene = QGraphicsScene(self)
+        # Checkerboard mat behind the image: padding lets the rounded
+        # corners / bottom fade read as transparency instead of vanishing
+        # into the dark canvas. Hidden during flatten so it never bakes in.
+        self.mat_item = QGraphicsRectItem()
+        self.mat_item.setZValue(-2000)
+        self.mat_item.setPen(QPen(Qt.NoPen))
+        self.mat_item.setBrush(_checker_brush())
+        self.scene.addItem(self.mat_item)
         self.base_item = QGraphicsPixmapItem()
         self.base_item.setZValue(-1000)
         self.scene.addItem(self.base_item)
@@ -318,11 +344,27 @@ class EditorWindow(QMainWindow):
             return self.undo_stack.isClean()
         return ret == QMessageBox.Discard
 
+    # Padding around the image so rounded corners / fade are visible
+    # against the mat (proportional, capped).
+    def _mat_margin(self) -> int:
+        if not (self.settings and (getattr(self.settings, "effect_rounded",
+                                            False)
+                 or getattr(self.settings, "effect_fade", False))):
+            return 0
+        return max(24, min(80, self.base_image.width() // 12))
+
     def set_base_image(self, image: QImage) -> None:
         self.base_image = image
         self.base_item.setPixmap(QPixmap.fromImage(self.apply_effects(image)))
-        self.scene.setSceneRect(QRectF(0, 0, image.width(), image.height()))
+        self._reflow_scene()
         self._update_status()
+
+    def _reflow_scene(self) -> None:
+        w, h = self.base_image.width(), self.base_image.height()
+        m = self._mat_margin()
+        self.mat_item.setVisible(m > 0)
+        self.mat_item.setRect(QRectF(-m, -m, w + 2 * m, h + 2 * m))
+        self.scene.setSceneRect(QRectF(-m, -m, w + 2 * m, h + 2 * m))
 
     def apply_effects(self, img: QImage) -> QImage:
         """Output effects (rounded corners, bottom fade) — persisted
@@ -339,6 +381,7 @@ class EditorWindow(QMainWindow):
     def _refresh_effect_preview(self) -> None:
         self.base_item.setPixmap(
             QPixmap.fromImage(self.apply_effects(self.base_image)))
+        self._reflow_scene()  # margin appears/disappears with the effects
 
     def _fit_if_large(self) -> None:
         screen = QGuiApplication.primaryScreen()
@@ -821,7 +864,8 @@ class EditorWindow(QMainWindow):
     def _band_rect(self, pos: QPointF) -> QRectF:
         """Selection rect; cut-out tools span the full image across the band."""
         r = QRectF(self._draw_origin, pos).normalized()
-        sr = self.scene.sceneRect()
+        # Image bounds (not sceneRect — that now includes the effect mat).
+        sr = QRectF(0, 0, self.base_image.width(), self.base_image.height())
         if self.tool == Tool.CUTOUT_V:  # vertical band, full height
             r = QRectF(r.left(), sr.top(), r.width(), sr.height())
         elif self.tool == Tool.CUTOUT_H:  # horizontal band, full width
@@ -988,10 +1032,16 @@ class EditorWindow(QMainWindow):
         img.fill(Qt.transparent)
         p = QPainter(img)
         p.setRenderHint(QPainter.Antialiasing)
+        # Render only the image rect (exclude the mat/padding), and hide
+        # the checkerboard so transparent corners stay transparent. The
+        # base pixmap already carries the effects, so don't re-apply.
+        mat_was = self.mat_item.isVisible()
+        self.mat_item.setVisible(False)
         self.scene.render(p, QRectF(0, 0, size.width(), size.height()),
-                          self.scene.sceneRect())
+                          QRectF(0, 0, size.width(), size.height()))
+        self.mat_item.setVisible(mat_was)
         p.end()
-        return self.apply_effects(img)
+        return img
 
     def _apply_pixelate(self, rect: QRect) -> None:
         img = self.base_image

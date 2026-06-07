@@ -340,14 +340,18 @@ class SettingsDialog(QDialog):
         self.graph_client.setPlaceholderText("your Azure app client ID")
         self.graph_client.setVisible(not is_default)
         self.client_label.setVisible(is_default)
-        client_row = QHBoxLayout()
-        client_row.addWidget(self.client_label, 1)
-        client_row.addWidget(self.graph_client, 1)
         self.client_change_btn = QPushButton(
             "Change" if is_default else "Use default")
+        self.client_change_btn.setFlat(True)
+        self.client_change_btn.setStyleSheet("color: palette(link);")
         self.client_change_btn.clicked.connect(self._toggle_client)
-        client_row.addWidget(self.client_change_btn)
-        odf.addRow("App:", self._wrap(client_row))
+        self._client_row = QHBoxLayout()
+        self._client_row.addWidget(self.client_label)   # 0: natural width
+        self._client_row.addWidget(self.graph_client)   # 1: stretch only when editing
+        self._client_row.addWidget(self.client_change_btn)  # 2
+        self._client_row.addStretch(0)                  # 3: eats slack in label mode
+        self._sync_client_stretch()
+        odf.addRow("App:", self._wrap(self._client_row))
         self._sites_cache = []
         self._drives_cache = []
         return od
@@ -360,10 +364,17 @@ class SettingsDialog(QDialog):
         w.setLayout(layout)
         return w
 
+    def _sync_client_stretch(self) -> None:
+        # Only the visible element expands: field when editing, else the
+        # trailing spacer (keeps the label + Change link packed left).
+        self._client_row.setStretch(1, 1 if self._client_custom else 0)
+        self._client_row.setStretch(3, 0 if self._client_custom else 1)
+
     def _toggle_client(self) -> None:
         self._client_custom = not self._client_custom
         self.client_label.setVisible(not self._client_custom)
         self.graph_client.setVisible(self._client_custom)
+        self._sync_client_stretch()
         if self._client_custom:
             self.graph_client.setFocus()
             self.client_change_btn.setText("Use default")
