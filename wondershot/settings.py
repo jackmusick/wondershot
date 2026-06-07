@@ -277,6 +277,26 @@ class Settings:
     def pin_on_top(self, value: bool) -> None:
         self._s.setValue("pin_on_top", "true" if value else "false")
 
+    # -- post-capture quick-action bar ---------------------------------------
+
+    @property
+    def quick_bar_enabled(self) -> bool:
+        """Show the quick-action bar after a capture lands."""
+        return self._s.value("quick_bar_enabled", "true") in (True, "true")
+
+    @quick_bar_enabled.setter
+    def quick_bar_enabled(self, value: bool) -> None:
+        self._s.setValue("quick_bar_enabled", "true" if value else "false")
+
+    @property
+    def quick_bar_timeout(self) -> int:
+        """Seconds before the quick-action bar auto-dismisses."""
+        return int(self._s.value("quick_bar_timeout", 8))
+
+    @quick_bar_timeout.setter
+    def quick_bar_timeout(self, value: int) -> None:
+        self._s.setValue("quick_bar_timeout", int(value))
+
     # -- AI (OpenAI-compatible chat endpoint) -------------------------------
     # NOTE: the API key is stored in plaintext QSettings, same as the
     # S3/Azure credentials; the AI tab warns about this.

@@ -64,7 +64,7 @@ Plain venv suffices — the optional extras (`spike`, `ai-local`) and `--system-
 - Modify: `wondershot/settings.py` (insert after the `pin_on_top` setter, line 278, before the `# -- AI` comment block)
 - Create: `tests/test_settings_quickbar.py`
 
-- [ ] Write the failing test:
+- [x] Write the failing test:
 
 ```python
 # tests/test_settings_quickbar.py
@@ -96,8 +96,8 @@ def test_quick_bar_roundtrip(tmp_path):
     assert s.quick_bar_timeout == 15
 ```
 
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_settings_quickbar.py -q` — expect `AttributeError: 'Settings' object has no attribute 'quick_bar_enabled'`.
-- [ ] Implement — in `wondershot/settings.py`, insert after line 278 (`self._s.setValue("pin_on_top", ...)` setter body), before the `# -- AI (OpenAI-compatible chat endpoint)` comment:
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_settings_quickbar.py -q` — expect `AttributeError: 'Settings' object has no attribute 'quick_bar_enabled'`.
+- [x] Implement — in `wondershot/settings.py`, insert after line 278 (`self._s.setValue("pin_on_top", ...)` setter body), before the `# -- AI (OpenAI-compatible chat endpoint)` comment:
 
 ```python
     # -- post-capture quick-action bar ---------------------------------------
@@ -121,8 +121,8 @@ def test_quick_bar_roundtrip(tmp_path):
         self._s.setValue("quick_bar_timeout", int(value))
 ```
 
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_settings_quickbar.py -q` — expect 2 passed.
-- [ ] Commit: `git add wondershot/settings.py tests/test_settings_quickbar.py && git commit -m "WS-C: quick-bar settings (enabled + timeout)"`
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_settings_quickbar.py -q` — expect 2 passed.
+- [x] Commit: `git add wondershot/settings.py tests/test_settings_quickbar.py && git commit -m "WS-C: quick-bar settings (enabled + timeout)"`
 
 ---
 
