@@ -169,7 +169,16 @@ after Linux is feature-complete.
   *which* text is sensitive → PixelateItems, non-destructive
 - Background remover (M): local ONNX (rembg) as `wondershot[ai-local]`
   extra — chat endpoints can't return alpha mattes, so never the LLM
-- Image simplifier (L): later; reuses redaction's vision→regions pipeline
+- Image simplifier (L): SHIPPED (batch 4) — vision LLM → editable
+  RectItems (Snagit-better: objects, not flattened); reuses redaction's
+  vision→regions pipeline
+- AI robustness (2026-06-07, from Jack's Simplify failures): reply
+  parsing survives prose-wrapped, object-wrapped (`{"regions":[...]}`),
+  and markdown-list-of-objects replies (scrape every balanced `{...}`);
+  `max_tokens` raised 1024->4096 (full-screen lists were truncating);
+  honest "reply was cut off" error when a model still overflows; AI
+  actions show an inline busy bar (toolbar<->canvas) instead of a delayed
+  modal — instant, non-modal feedback
 
 **WS-C — Capture UX** _(done 2026-06-07)_
 - Post-capture quick-action toolbar: DONE — frameless always-on-top bar
