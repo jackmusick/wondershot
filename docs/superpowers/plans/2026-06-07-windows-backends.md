@@ -697,7 +697,7 @@ Frameless fullscreen overlay showing the frozen grab; rubber-band selection; `se
 - Modify: `wondershot/wincapture.py` (append `RegionOverlay` + `_do_region`)
 - Test: `tests/test_winoverlay.py` (create)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/test_winoverlay.py
@@ -827,7 +827,7 @@ def test_region_cancel_is_silent(qapp, tmp_path):
     assert m._overlay is None
 ```
 
-- [ ] **Step 2: Run — verify failure**
+- [x] **Step 2: Run — verify failure**
 
 ```bash
 /home/jack/GitHub/grabbit/.venv/bin/python -m pytest tests/test_winoverlay.py -v
@@ -835,7 +835,7 @@ def test_region_cancel_is_silent(qapp, tmp_path):
 
 Expected: FAIL with `ImportError: cannot import name 'RegionOverlay'`.
 
-- [ ] **Step 3: Implement** (append to `wondershot/wincapture.py`)
+- [x] **Step 3: Implement** (append to `wondershot/wincapture.py`)
 
 ```python
 MIN_SELECTION_PX = 4  # smaller than this is a click/slip, not a region
@@ -974,7 +974,7 @@ Then append the region path to `WinCaptureManager`:
         self._overlay = None
 ```
 
-- [ ] **Step 4: Run tests + suite**
+- [x] **Step 4: Run tests + suite**
 
 ```bash
 /home/jack/GitHub/grabbit/.venv/bin/python -m pytest tests/test_winoverlay.py tests/test_wincapture.py -v && /home/jack/GitHub/grabbit/.venv/bin/python -m pytest tests/ -q
@@ -982,7 +982,7 @@ Then append the region path to `WinCaptureManager`:
 
 Expected: all PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add wondershot/wincapture.py tests/test_winoverlay.py && git commit -m "feat: owned region overlay + region capture path for Windows"

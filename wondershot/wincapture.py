@@ -187,3 +187,133 @@ class WinCaptureManager(QObject):
                 # False = unusable rect; degrade to the full shot
                 crop_file_to_global_rect(path, crop, virtual)
         self.captured.emit(path)
+
+    # -- region mode (the owned picker) --------------------------------------
+
+    def _do_region(self) -> None:
+        img = self._grab_or_fail()
+        if img is None:
+            return
+        ov = RegionOverlay(img)
+        ov.selected.connect(
+            lambda rect: self._region_selected(img, rect))
+        ov.cancelled.connect(self._region_cancelled)
+        self._overlay = ov
+        ov.show_on_desktop()
+
+    def _region_selected(self, img: QImage, rect: QRect) -> None:
+        self._overlay = None
+        if rect.isEmpty():
+            return  # degenerate mapping; treat as cancel
+        out = img.copy(rect)
+        path = unique_path(self.settings.library_dir, timestamp_name())
+        if not out.save(path):
+            self.failed.emit("could not save screenshot")
+            return
+        self.captured.emit(path)
+
+    def _region_cancelled(self) -> None:
+        # Cancelled picker: stay silent, exactly like a cancelled
+        # spectacle region pick (capture.py _spectacle_done, code 0).
+        self._overlay = None
+
+
+MIN_SELECTION_PX = 4  # smaller than this is a click/slip, not a region
+
+
+class RegionOverlay(QWidget):
+    """Frameless fullscreen rubber-band picker over a frozen grab.
+
+    We own the screen on Windows (no Wayland positioning bans), so the
+    overlay covers the desktop, paints the grabbed frame, dims the
+    unselected area, and emits selected(QRect) in IMAGE pixel
+    coordinates (the grab is physical pixels; the widget is logical —
+    map_global_rect does the scaling).
+    """
+
+    selected = Signal(QRect)
+    cancelled = Signal()
+
+    def __init__(self, image: QImage, parent=None):
+        super().__init__(parent, Qt.FramelessWindowHint
+                         | Qt.WindowStaysOnTopHint)
+        self._image = image
+        self._press: QPoint | None = None
+        self._current: QPoint | None = None
+        self._fired = False
+        self.setCursor(Qt.CrossCursor)
+        self.setAttribute(Qt.WA_DeleteOnClose, True)
+
+    def show_on_desktop(self) -> None:
+        """Cover the whole virtual desktop (all monitors)."""
+        from PySide6.QtGui import QGuiApplication
+        screen = QGuiApplication.primaryScreen()
+        if screen is not None:
+            self.setGeometry(screen.virtualGeometry())
+        self.show()
+        self.raise_()
+        self.activateWindow()
+
+    # -- painting ----------------------------------------------------------
+
+    def paintEvent(self, _ev) -> None:
+        p = QPainter(self)
+        p.drawImage(self.rect(), self._image)
+        dim = QColor(0, 0, 0, 110)
+        if self._press is None or self._current is None:
+            p.fillRect(self.rect(), dim)
+        else:
+            sel = selection_rect(self._press, self._current, self.rect())
+            for shade in (QRect(0, 0, self.width(), sel.top()),
+                          QRect(0, sel.bottom() + 1, self.width(),
+                                self.height() - sel.bottom() - 1),
+                          QRect(0, sel.top(), sel.left(), sel.height()),
+                          QRect(sel.right() + 1, sel.top(),
+                                self.width() - sel.right() - 1,
+                                sel.height())):
+                p.fillRect(shade, dim)
+            p.setPen(QPen(QColor("#26a69a"), 2))
+            p.drawRect(sel)
+        p.end()
+
+    # -- input ----------------------------------------------------------------
+
+    def mousePressEvent(self, ev) -> None:
+        if ev.button() == Qt.LeftButton:
+            self._press = self._current = ev.position().toPoint()
+            self.update()
+
+    def mouseMoveEvent(self, ev) -> None:
+        if self._press is not None:
+            self._current = ev.position().toPoint()
+            self.update()
+
+    def mouseReleaseEvent(self, ev) -> None:
+        if ev.button() != Qt.LeftButton or self._press is None:
+            return
+        sel = selection_rect(self._press, ev.position().toPoint(),
+                             self.rect())
+        self._press = self._current = None
+        if (sel.width() < MIN_SELECTION_PX
+                or sel.height() < MIN_SELECTION_PX):
+            self._cancel()
+            return
+        img_rect = map_global_rect(
+            sel, QRect(0, 0, self.width(), self.height()),
+            self._image.width(), self._image.height())
+        self._fired = True
+        self.close()
+        self.selected.emit(img_rect)
+
+    def keyPressEvent(self, ev) -> None:
+        if ev.key() == Qt.Key_Escape:
+            self._cancel()
+        else:
+            super().keyPressEvent(ev)
+
+    def _cancel(self) -> None:
+        if self._fired:
+            return
+        self._fired = True
+        self.close()
+        self.cancelled.emit()
