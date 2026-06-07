@@ -51,6 +51,13 @@ def make_app(qapp, tmp_path, monkeypatch):
                         lambda: _Settings(str(tmp_path)))
     monkeypatch.setattr(appmod, "create_hotkey_backend",
                         lambda parent=None: NullHotkeyBackend())
+    # These are app-WIRING tests against the reference (Linux) recorder;
+    # fake_recording pokes its internals (FakePipeline). Pin it so the
+    # suite is identical on Windows, where the factory would otherwise
+    # hand back WinScreenRecorder (tested in test_winrecord.py).
+    import wondershot.record as recordmod
+    monkeypatch.setattr(recordmod, "create_screen_recorder",
+                        lambda s, p=None: recordmod.ScreenRecorder(s, p))
     return appmod.GrabbitApp(qapp)
 
 

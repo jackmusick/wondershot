@@ -1,6 +1,8 @@
 """Pure-function unit tests for the in-process recorder.
 
-No Gst, no portal, no I/O — these run on every platform.
+No Gst, no portal, no I/O — these run on every platform. Exception:
+the SelectSources-options tests drive ScreenRecorder._created, which
+builds real GLib.Variants, so they skip where gi is absent (Windows).
 """
 import os
 
@@ -9,9 +11,12 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import pytest
 
 from wondershot.record import (
-    build_pipeline_description, elapsed_seconds, format_elapsed,
+    _HAVE_GIO, build_pipeline_description, elapsed_seconds, format_elapsed,
     pts_offset_ns, crop_props, halo_geometry,
 )
+
+requires_gi = pytest.mark.skipif(
+    not _HAVE_GIO, reason="needs gi (GLib.Variant) — absent on Windows")
 
 
 # -- build_pipeline_description ------------------------------------------------
@@ -97,6 +102,7 @@ def test_description_with_halo_inserts_cairooverlay():
     assert desc.index("cairooverlay") < desc.index("x264enc")
 
 
+@requires_gi
 def test_cursor_mode_stays_embedded_while_halo_parked():
     """spa_meta_cursor is unreachable via PyGObject, so the halo draw is a
     no-op. SelectSources must therefore ALWAYS request cursor_mode=2
@@ -120,6 +126,7 @@ def test_cursor_mode_stays_embedded_while_halo_parked():
     assert captured["cursor_mode"] == 2
 
 
+@requires_gi
 def test_no_halo_keeps_cursor_mode_embedded():
     from tests.test_record import FakeSettings
     from wondershot.record import ScreenRecorder
@@ -162,6 +169,7 @@ def test_pts_offset_ns():
     assert pts_offset_ns(2.5) == 2_500_000_000
 
 
+@requires_gi
 def test_recording_always_shows_picker_never_replays_token():
     """Bug (Jack 2026-06-07): recording reused a saved restore_token, so
     the portal picker appeared only on the first-ever recording and you

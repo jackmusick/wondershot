@@ -54,3 +54,18 @@ def test_pause_controls_reset_on_finish(qapp, tmp_path, monkeypatch):
     a.recorder.finished.emit("/x.mp4")  # simulate finalize
     assert not a.pause_action.isEnabled()
     assert not a.gallery.pause_action.isEnabled()
+
+
+def test_pause_controls_hidden_when_recorder_cannot_pause(
+        qapp, tmp_path, monkeypatch):
+    """A recorder with supports_pause=False (Windows/ffmpeg) must never
+    show Pause controls — a visible button that does nothing is worse
+    than no button."""
+    import wondershot.record as recordmod
+    monkeypatch.setattr(recordmod.ScreenRecorder, "supports_pause", False,
+                        raising=False)
+    a = make_app(qapp, tmp_path, monkeypatch)
+    fake_recording(a, tmp_path)
+    assert not a.pause_action.isEnabled()
+    assert not a.pause_action.isVisible()
+    assert not a.gallery.pause_action.isEnabled()

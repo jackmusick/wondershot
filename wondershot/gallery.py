@@ -981,6 +981,8 @@ class GalleryWindow(QMainWindow):
             self.recorder.pause()
 
     def set_pause_enabled(self, on: bool) -> None:
+        # Windows/ffmpeg can't pause: hide the control, don't no-op it.
+        on = on and self.recorder is not None and self.recorder.supports_pause
         self.pause_action.setEnabled(on)
         self.pause_action.setVisible(on)
         if not on:

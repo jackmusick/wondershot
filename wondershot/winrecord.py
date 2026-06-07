@@ -127,6 +127,15 @@ class WinScreenRecorder(QObject):
     finished = Signal(str)  # final file path
     failed = Signal(str)
     tick = Signal(str)  # elapsed time ("1:05"), once a second
+    # Contract parity: app.py connects paused_changed unconditionally at
+    # construction (Windows crashed at launch when the Linux recorder grew
+    # pause/resume and this class didn't, 2026-06-07). ffmpeg argv
+    # subprocesses can't pause — no runtime control channel, same landmine
+    # as gst-launch — so supports_pause=False hides the Pause UI and
+    # pause()/resume() are safe no-ops. Real pause lands with a native
+    # capture rewrite (WS-E parity backlog).
+    paused_changed = Signal(bool)
+    supports_pause = False
 
     # Escalation ladder, mirroring record.py: 'q' (graceful mp4
     # finalize) -> terminate() -> kill(). A killed pipeline's partial
@@ -145,6 +154,7 @@ class WinScreenRecorder(QObject):
         super().__init__(parent)
         self.settings = settings
         self.recording = False
+        self.paused = False  # always False: supports_pause is False
         self._busy = False
         self._proc: QProcess | None = None
         self._tmp = self._out = None
@@ -164,6 +174,12 @@ class WinScreenRecorder(QObject):
     def available(self) -> bool:
         from .ffmpegutil import have_ffmpeg
         return have_ffmpeg()
+
+    def pause(self) -> None:
+        """No-op: see supports_pause comment above."""
+
+    def resume(self) -> None:
+        """No-op: see supports_pause comment above."""
 
     def start(self) -> None:
         if self.recording or self._busy:

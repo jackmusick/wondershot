@@ -419,6 +419,7 @@ class GrabbitApp(QObject):
         self.gallery.set_paused(paused)
 
     def _set_pause_enabled(self, on: bool) -> None:
+        on = on and self.recorder.supports_pause  # Windows/ffmpeg: hide
         self.pause_action.setEnabled(on)
         self.pause_action.setVisible(on)
         if not on:

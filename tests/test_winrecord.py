@@ -376,3 +376,23 @@ def test_late_death_does_not_fall_back(qapp, tmp_path):
     rec.failed.connect(failures.append)
     assert wait_until(qapp, lambda: failures, 6), "late death is a real failure"
     assert rec._cand_idx == 0  # never fell back
+
+
+# -- recorder contract: pause surface -------------------------------------------
+
+def test_pause_contract_surface(qapp):
+    """app.py connects paused_changed unconditionally at construction —
+    EVERY recorder must expose the pause surface (Windows broke at launch
+    when the Linux recorder grew pause/resume, 2026-06-07). ffmpeg argv
+    subprocesses can't pause (same landmine as gst-launch), so Windows
+    advertises supports_pause=False and the calls are safe no-ops."""
+    from wondershot.winrecord import WinScreenRecorder
+    rec = WinScreenRecorder(object())
+    assert rec.supports_pause is False
+    assert rec.paused is False
+    fired = []
+    rec.paused_changed.connect(fired.append)
+    rec.pause()
+    rec.resume()
+    assert rec.paused is False
+    assert fired == []  # no-ops never emit state changes

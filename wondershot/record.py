@@ -301,6 +301,9 @@ class ScreenRecorder(QObject):
     failed = Signal(str)
     tick = Signal(str)  # elapsed time ("1:05"), once a second while recording
     paused_changed = Signal(bool)  # C1: pause/resume state
+    # Capability flag: app.py gates the Pause UI on this (Windows' ffmpeg
+    # recorder can't pause, so its controls must hide, not no-op).
+    supports_pause = True
 
     # Finalize escalation ladder. An in-process pipeline can wedge waiting
     # for EOS indefinitely (observed 2026-06-06: still draining-failing 3+
