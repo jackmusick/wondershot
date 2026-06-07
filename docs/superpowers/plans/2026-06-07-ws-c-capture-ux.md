@@ -619,7 +619,7 @@ def test_apply_writes_quick_bar_settings(qapp, tmp_path):
 **Files**
 - Modify: `wondershot/app.py` (`_on_captured`, lines 164–175; new methods after `show_gallery`, line 185)
 
-- [ ] Replace `_on_captured` (app.py lines 164–175) with:
+- [x] Replace `_on_captured` (app.py lines 164–175) with:
 
 ```python
     def _on_captured(self, path: str) -> None:
@@ -641,7 +641,7 @@ def test_apply_writes_quick_bar_settings(qapp, tmp_path):
 
 (Behavioral decision, documented: the bar appears only when the gallery is *not* being brought forward — when the gallery shows, every bar action is already one click away in its toolbar. The spec Addendum's phrasing "after a capture lands (and preview is enabled)" is ambiguous about which "preview"; this plan reads it as the bar's own `quick_bar_enabled` setting plus the gallery-not-shown condition. If review disagrees, the gate is this one `elif` — trivial to flip.)
 
-- [ ] Add after `show_gallery` (line 185):
+- [x] Add after `show_gallery` (line 185):
 
 ```python
     # -- post-capture quick-action bar ---------------------------------------
@@ -679,9 +679,9 @@ def test_apply_writes_quick_bar_settings(qapp, tmp_path):
         self.gallery.editor.share_path(path, provider)
 ```
 
-- [ ] Sanity-run the suite (app.py is imported by tests indirectly): `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q` — all green.
-- [ ] Smoke-import: `QT_QPA_PLATFORM=offscreen .venv/bin/python -c "import wondershot.app"` — no traceback.
-- [ ] Commit: `git add wondershot/app.py && git commit -m "WS-C: show quick-action bar after capture; wire edit/share/trash"`
+- [x] Sanity-run the suite (app.py is imported by tests indirectly): `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q` — all green.
+- [x] Smoke-import: `QT_QPA_PLATFORM=offscreen .venv/bin/python -c "import wondershot.app"` — no traceback.
+- [x] Commit: `git add wondershot/app.py && git commit -m "WS-C: show quick-action bar after capture; wire edit/share/trash"`
 
 ---
 

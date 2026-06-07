@@ -26,6 +26,8 @@ class _FakeSettings:
         self.noise_suppression = True
         self.copy_after_capture = True
         self.show_gallery_after_capture = True
+        self.quick_bar_enabled = True
+        self.quick_bar_timeout = 8
         self.share_provider = ""
         self.share_expiry_days = 7
         self.s3_endpoint = self.s3_region = self.s3_bucket = ""

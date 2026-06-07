@@ -170,6 +170,9 @@ class GrabbitApp(QObject):
         self.gallery.select_path(path)
         if self.settings.show_gallery_after_capture or self._gallery_was_visible:
             self.show_gallery()
+        elif self.settings.quick_bar_enabled:
+            # gallery isn't coming forward — offer quick actions instead
+            self._show_quick_bar(path)
         note = " · copied to clipboard" if self.settings.copy_after_capture else ""
         self.tray.showMessage("Wondershot", os.path.basename(path) + note,
                               self.icon, 2500)
@@ -183,6 +186,40 @@ class GrabbitApp(QObject):
         self.gallery.show()
         self.gallery.raise_()
         self.gallery.activateWindow()
+
+    # -- post-capture quick-action bar ---------------------------------------
+
+    def _show_quick_bar(self, path: str) -> None:
+        from .capture_window import QuickActionBar, ensure_quickbar_rule
+        old = getattr(self, "quick_bar", None)
+        if old is not None:
+            try:
+                old.dismiss()
+            except RuntimeError:
+                pass  # already deleted (WA_DeleteOnClose)
+        bar = QuickActionBar(self.settings, path)
+        bar.setAttribute(Qt.WA_DeleteOnClose, True)
+        bar.edit_requested.connect(self.gallery.open_editor)
+        bar.share_requested.connect(self._share_from_bar)
+        bar.trash_requested.connect(
+            lambda p: self.gallery._trash_paths([p], confirm=False))
+        self.quick_bar = bar
+        ensure_quickbar_rule()
+        # let KWin pick up the freshly-written position rule first
+        # (same 300 ms dance as toggle_bubble, app.py line 241)
+        QTimer.singleShot(300, bar.show)
+
+    def _share_from_bar(self, path: str) -> None:
+        from .share import default_provider
+        provider = default_provider(self.settings)
+        if not provider:
+            self.tray.showMessage(
+                "Wondershot", "Set up sharing in Settings → Sharing",
+                self.icon, 3000)
+            return
+        # reuses the editor's async upload + clipboard flow; outcome toasts
+        # arrive via the existing share_status → tray connection (line 90)
+        self.gallery.editor.share_path(path, provider)
 
     # -- recording / camera bubble -----------------------------------------
 
