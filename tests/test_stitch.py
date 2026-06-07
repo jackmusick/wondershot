@@ -1,7 +1,10 @@
 import os
 
-import numpy as np
 import pytest
+
+# Scroll-stitch is gated on numpy at runtime (scroll_capture_available);
+# bare CI runners don't have the spike extra — skip, don't error.
+np = pytest.importorskip("numpy")
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
