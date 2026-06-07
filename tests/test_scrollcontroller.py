@@ -7,6 +7,11 @@ import os
 
 import pytest
 
+# The controller stitches via wondershot.stitch (numpy at module level);
+# scroll capture is feature-gated on numpy at runtime, so bare CI
+# runners skip these rather than erroring.
+pytest.importorskip("numpy")
+
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QObject, Signal
