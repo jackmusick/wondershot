@@ -227,6 +227,43 @@ class GripCommand(QUndoCommand):
         self.editor.apply_snapshot(self.item, self.before)
 
 
+class StyleCommand(QUndoCommand):
+    """Undo entry for a properties-panel restyle (color / stroke / font
+    size / alignment). The before-state per item comes from get_style,
+    whose keys are exactly apply_style's kwargs. Consecutive changes to
+    the same items with the same kwarg shape merge (spinbox arrow-hold)."""
+
+    _ID = 0xE57         # arbitrary, shared by all StyleCommands
+
+    def __init__(self, editor: "EditorWindow", items, kwargs: dict):
+        super().__init__("restyle")
+        from .items import get_style
+        self.editor = editor
+        self.items = list(items)
+        self.kwargs = dict(kwargs)
+        self.before = [dict(get_style(i)) for i in self.items]
+
+    def id(self) -> int:  # noqa: A003
+        return self._ID
+
+    def mergeWith(self, other) -> bool:  # noqa: N802
+        if (other.items == self.items
+                and set(other.kwargs) == set(self.kwargs)):
+            self.kwargs = dict(other.kwargs)
+            return True
+        return False
+
+    def redo(self):
+        from .items import apply_style
+        for it in self.items:
+            apply_style(it, **self.kwargs)
+
+    def undo(self):
+        from .items import apply_style
+        for it, b in zip(self.items, self.before):
+            apply_style(it, **b)
+
+
 class CanvasView(QGraphicsView):
     def __init__(self, editor: "EditorWindow"):
         super().__init__(editor.scene)
@@ -1014,13 +1051,10 @@ class EditorWindow(QMainWindow):
             self._syncing_panel = False
 
     def _apply_to_selection(self, **kwargs) -> None:
-        from .items import apply_style
         items = self._selected_annotations()
         if not items:
             return
-        for item in items:
-            apply_style(item, **kwargs)
-        self.undo_stack.resetClean()  # restyling counts as an edit
+        self.undo_stack.push(StyleCommand(self, items, kwargs))
 
     def _pick_color(self) -> None:
         c = QColorDialog.getColor(self.color, self, "Annotation color")

@@ -630,7 +630,7 @@ Today `_apply_to_selection` mutates items directly and calls `undo_stack.resetCl
 - Modify: `wondershot/editor.py` (`StyleCommand` next to `GripCommand` ~line 209; `_apply_to_selection` ~line 956)
 - Create: `tests/test_editor_backlog.py`
 
-- [ ] **Step 1: Write the failing tests** — create `tests/test_editor_backlog.py`:
+- [x] **Step 1: Write the failing tests** — create `tests/test_editor_backlog.py`:
 
 ```python
 """Editor backlog: style undo, text alignment, blur tool, step renumbering."""
@@ -706,12 +706,12 @@ def test_text_font_size_change_is_undoable(qapp):
     assert t.font().pointSize() == 18
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `QT_QPA_PLATFORM=offscreen .venv/bin/pytest tests/test_editor_backlog.py -v`
 Expected: FAIL — undo() does not restore the old style (current code mutates directly), and the merge test fails on stack count
 
-- [ ] **Step 3: Implement** — in `wondershot/editor.py`:
+- [x] **Step 3: Implement** — in `wondershot/editor.py`:
 
 (a) Add after `GripCommand`:
 
@@ -767,12 +767,12 @@ class StyleCommand(QUndoCommand):
 
 **Pitfall to verify while implementing:** `get_style` for a `TextItem` returns `{"color", "font_size"}` and for shapes `{"color", "width"}` — every key is a valid `apply_style` kwarg, so `apply_style(it, **b)` restores cleanly. When Task 6 adds `"align"`, it joins both dicts symmetrically; do not special-case.
 
-- [ ] **Step 4: Run to verify pass** (plus the editor suites — `_apply_to_selection` callers unchanged)
+- [x] **Step 4: Run to verify pass** (plus the editor suites — `_apply_to_selection` callers unchanged)
 
 Run: `QT_QPA_PLATFORM=offscreen .venv/bin/pytest tests/test_editor_backlog.py tests/test_editor.py tests/test_editor_sidecar.py -v`
 Expected: ALL PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add wondershot/editor.py tests/test_editor_backlog.py
