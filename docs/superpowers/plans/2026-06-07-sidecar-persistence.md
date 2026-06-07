@@ -372,7 +372,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - `tests/test_items_serialize.py` (extend)
 - `wondershot/items.py` (modify)
 
-- [ ] **Step 2.1 — failing tests.** Append to `tests/test_items_serialize.py`:
+- [x] **Step 2.1 — failing tests.** Append to `tests/test_items_serialize.py`:
 
 ```python
 def test_text_roundtrip_fonts_and_width(qapp):
@@ -467,7 +467,7 @@ def test_arrow_rotation_roundtrip_exactly(qapp):
         == item.mapToScene(item.endpoints()[1])
 ```
 
-- [ ] **Step 2.2 — run, expect failure:**
+- [x] **Step 2.2 — run, expect failure:**
 
 ```bash
 QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_items_serialize.py -x -q
@@ -475,7 +475,7 @@ QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_items_serialize.
 
 Expected: `AttributeError: 'TextItem' object has no attribute 'to_dict'`.
 
-- [ ] **Step 2.3 — implement.** In `wondershot/items.py`:
+- [x] **Step 2.3 — implement.** In `wondershot/items.py`:
 
 (a) `TextItem` (after `mouseDoubleClickEvent`):
 
@@ -551,13 +551,13 @@ _ITEM_TYPES = {
 }
 ```
 
-- [ ] **Step 2.4 — run, expect pass** (same command). Also run the full suite to catch regressions:
+- [x] **Step 2.4 — run, expect pass** (same command). Also run the full suite to catch regressions:
 
 ```bash
 QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q
 ```
 
-- [ ] **Step 2.5 — commit:**
+- [x] **Step 2.5 — commit:**
 
 ```bash
 git add wondershot/items.py tests/test_items_serialize.py

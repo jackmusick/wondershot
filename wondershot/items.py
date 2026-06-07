@@ -321,6 +321,32 @@ class TextItem(QGraphicsTextItem):
         self.start_editing()
         super().mouseDoubleClickEvent(event)
 
+    def to_dict(self) -> dict:
+        f = self.font()
+        return {"type": "text", "text": self.toPlainText(),
+                "color": _color_str(self.defaultTextColor()),
+                "family": f.family(), "point_size": f.pointSize(),
+                "bold": f.bold(), "text_width": self.textWidth(),
+                **_transform_dict(self)}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "TextItem":
+        item = cls(QPointF(0, 0), QColor(d["color"]),
+                   int(d.get("point_size", 18)))
+        f = item.font()
+        if d.get("family"):
+            f.setFamily(d["family"])
+        f.setBold(bool(d.get("bold", True)))
+        item.setFont(f)
+        item.setPlainText(d.get("text", ""))
+        tw = d.get("text_width", -1.0)
+        if tw is not None and tw > 0:
+            item.setTextWidth(tw)
+        # restored items are not mid-edit; double-click re-enables editing
+        item.setTextInteractionFlags(Qt.NoTextInteraction)
+        _apply_transform(item, d)
+        return item
+
 
 class StepItem(QGraphicsItem):
     """Numbered circle stamp, Snagit-style step tool."""
@@ -338,6 +364,18 @@ class StepItem(QGraphicsItem):
         self.prepareGeometryChange()
         self.radius = max(8.0, min(80.0, r))
         self.update()
+
+    def to_dict(self) -> dict:
+        return {"type": "step", "number": self.number,
+                "color": _color_str(self._color), "radius": self.radius,
+                **_transform_dict(self)}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "StepItem":
+        item = cls(QPointF(0, 0), int(d["number"]), QColor(d["color"]),
+                   radius=float(d.get("radius", 16.0)))
+        _apply_transform(item, d)
+        return item
 
     def boundingRect(self) -> QRectF:  # noqa: N802
         r = self.radius
@@ -583,6 +621,20 @@ class PixelateItem(QGraphicsItem):
         self._regen()
         self.update()
 
+    def to_dict(self) -> dict:
+        r = self._rect
+        return {"type": "pixelate",
+                "rect": [r.x(), r.y(), r.width(), r.height()],
+                "block": self._block, **_transform_dict(self)}
+
+    @classmethod
+    def from_dict(cls, d: dict, base_provider) -> "PixelateItem":
+        r = d["rect"]
+        item = cls(base_provider, QRectF(r[0], r[1], r[2], r[3]),
+                   block=int(d.get("block", 14)))
+        _apply_transform(item, d)
+        return item
+
     def _regen(self) -> None:
         from . import imageops
         base = self._base_provider()
@@ -633,5 +685,5 @@ def item_from_dict(d: dict, base_provider=None):
 _ITEM_TYPES = {
     "arrow": ArrowItem, "line": LineItem, "rect": RectItem,
     "ellipse": EllipseItem, "highlight": HighlightItem,
-    "freehand": FreehandItem,
+    "freehand": FreehandItem, "text": TextItem, "step": StepItem,
 }

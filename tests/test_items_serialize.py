@@ -106,3 +106,95 @@ def test_dispatcher_unknown_type_returns_none(qapp):
     from wondershot.items import item_from_dict
     assert item_from_dict({"type": "hologram"}) is None
     assert item_from_dict({}) is None
+
+
+def test_text_roundtrip_fonts_and_width(qapp):
+    from wondershot.items import TextItem
+    from PySide6.QtCore import Qt
+    item = TextItem(QPointF(40.0, 30.0), QColor("#112233"), point_size=21)
+    f = item.font()
+    f.setFamily("DejaVu Sans")
+    f.setBold(False)          # non-default: constructor forces bold
+    item.setFont(f)
+    item.setPlainText("hello\nworld")
+    item.setTextWidth(123.5)
+    out = roundtrip(item)
+    assert isinstance(out, TextItem)
+    assert out.toPlainText() == "hello\nworld"
+    assert out.defaultTextColor() == QColor("#112233")
+    assert out.font().pointSize() == 21
+    assert out.font().family() == "DejaVu Sans"
+    assert out.font().bold() is False
+    assert out.textWidth() == 123.5
+    assert out.pos() == QPointF(40.0, 30.0)
+    # a freshly loaded text item is NOT in editing mode
+    assert out.textInteractionFlags() == Qt.NoTextInteraction
+
+
+def test_text_default_width_stays_auto(qapp):
+    from wondershot.items import TextItem
+    item = TextItem(QPointF(0, 0), QColor("red"))
+    assert item.textWidth() == -1.0
+    out = roundtrip(item)
+    assert out.textWidth() == -1.0
+
+
+def test_step_roundtrip(qapp):
+    from wondershot.items import StepItem
+    item = StepItem(QPointF(77.0, 88.0), 12, QColor("#aa00aa"), radius=22.5)
+    out = roundtrip(item)
+    assert isinstance(out, StepItem)
+    assert out.number == 12
+    assert out.radius == 22.5
+    assert out._color == QColor("#aa00aa")
+    assert out.pos() == QPointF(77.0, 88.0)
+
+
+def test_pixelate_roundtrip_uses_base_provider(qapp):
+    from PySide6.QtGui import QImage
+    from wondershot.items import PixelateItem
+    base = QImage(200, 150, QImage.Format_ARGB32_Premultiplied)
+    base.fill(QColor("orange"))
+    item = PixelateItem(lambda: base, QRectF(10.0, 12.0, 80.0, 40.0),
+                        block=9)
+    out = roundtrip(item, base_provider=lambda: base)
+    assert isinstance(out, PixelateItem)
+    assert out.rect() == QRectF(10.0, 12.0, 80.0, 40.0)
+    assert out._block == 9
+    assert out._patch is not None, "patch must regenerate from the provider"
+
+
+def test_pixelate_without_provider_is_skipped(qapp):
+    from wondershot.items import item_from_dict
+    d = {"type": "pixelate", "rect": [0, 0, 10, 10], "block": 14,
+         "pos": [0, 0], "rotation": 0.0, "origin": [0, 0]}
+    assert item_from_dict(d) is None  # no provider -> can't rebuild
+
+
+def test_rotation_and_geometry_roundtrip_exactly(qapp):
+    """Jack's bar: revisit an image and nothing has shifted. Doubles must
+    survive JSON bit-for-bit (Python json round-trips floats exactly)."""
+    from wondershot.items import RectItem
+    item = RectItem(QRectF(3.1, 4.7, 99.9, 33.3), QColor("red"), 2)
+    item.setTransformOriginPoint(QPointF(53.05, 21.35))
+    item.setRotation(33.7)
+    item.setPos(QPointF(-12.625, 7.0625))
+    out = roundtrip(item)
+    assert out.rotation() == 33.7
+    assert out.pos() == QPointF(-12.625, 7.0625)
+    assert out.transformOriginPoint() == QPointF(53.05, 21.35)
+    assert out.rect() == QRectF(3.1, 4.7, 99.9, 33.3)
+    # scene-space corner identical => no visible shift on revisit
+    assert out.mapToScene(out.rect().topLeft()) \
+        == item.mapToScene(item.rect().topLeft())
+
+
+def test_arrow_rotation_roundtrip_exactly(qapp):
+    from wondershot.items import ArrowItem
+    item = ArrowItem(QPointF(5, 5), QPointF(120, 60), QColor("red"), 6)
+    item.setTransformOriginPoint(QPointF(62.5, 32.5))
+    item.setRotation(287.123456789)
+    out = roundtrip(item)
+    assert out.rotation() == 287.123456789
+    assert out.mapToScene(out.endpoints()[1]) \
+        == item.mapToScene(item.endpoints()[1])
