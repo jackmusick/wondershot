@@ -543,7 +543,7 @@ Import notes for `capture_window.py`: the only new top-level import is `import o
 - Modify: `wondershot/settings_dialog.py` (General tab, after `form.addRow("", self.show_check)` at line 145; `apply()` after the `show_gallery_after_capture` line at line 672)
 - Create: `tests/test_settings_dialog_quickbar.py`
 
-- [ ] Write the failing test (mirror the fixture shape of `tests/test_settings_dialog_ai.py` — read it first and reuse its `make_settings`/`qapp` idiom verbatim; the version below assumes the `test_settings_ai.py` injection pattern):
+- [x] Write the failing test (mirror the fixture shape of `tests/test_settings_dialog_ai.py` — read it first and reuse its `make_settings`/`qapp` idiom verbatim; the version below assumes the `test_settings_ai.py` injection pattern):
 
 ```python
 # tests/test_settings_dialog_quickbar.py
@@ -583,8 +583,8 @@ def test_apply_writes_quick_bar_settings(qapp, tmp_path):
     assert s.quick_bar_timeout == 20
 ```
 
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_settings_dialog_quickbar.py -q` — expect `AttributeError: ... no attribute 'quickbar_check'`.
-- [ ] Implement — in `settings_dialog.py`, insert after line 145 (`form.addRow("", self.show_check)`):
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_settings_dialog_quickbar.py -q` — expect `AttributeError: ... no attribute 'quickbar_check'`.
+- [x] Implement — in `settings_dialog.py`, insert after line 145 (`form.addRow("", self.show_check)`):
 
 ```python
         self.quickbar_check = QCheckBox("Quick-action bar after capture")
@@ -607,8 +607,8 @@ def test_apply_writes_quick_bar_settings(qapp, tmp_path):
         self.settings.quick_bar_timeout = self.quickbar_timeout.value()
 ```
 
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_settings_dialog_quickbar.py -q` — expect 1 passed.
-- [ ] Commit: `git add wondershot/settings_dialog.py tests/test_settings_dialog_quickbar.py && git commit -m "WS-C: quick-bar settings in the General tab"`
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_settings_dialog_quickbar.py -q` — expect 1 passed.
+- [x] Commit: `git add wondershot/settings_dialog.py tests/test_settings_dialog_quickbar.py && git commit -m "WS-C: quick-bar settings in the General tab"`
 
 ---
 

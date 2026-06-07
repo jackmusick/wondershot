@@ -144,6 +144,18 @@ class SettingsDialog(QDialog):
         self.show_check.setChecked(settings.show_gallery_after_capture)
         form.addRow("", self.show_check)
 
+        self.quickbar_check = QCheckBox("Quick-action bar after capture")
+        self.quickbar_check.setChecked(settings.quick_bar_enabled)
+        form.addRow("", self.quickbar_check)
+
+        self.quickbar_timeout = QSpinBox()
+        self.quickbar_timeout.setRange(2, 60)
+        self.quickbar_timeout.setSuffix(" s")
+        self.quickbar_timeout.setValue(settings.quick_bar_timeout)
+        self.quickbar_timeout.setToolTip(
+            "Auto-dismiss the quick-action bar after this many seconds")
+        form.addRow("Bar timeout:", self.quickbar_timeout)
+
         # camera for the recording bubble
         self.camera_combo = QComboBox()
         self.camera_combo.addItem("System default", "")
@@ -670,6 +682,8 @@ class SettingsDialog(QDialog):
         self.settings.noise_suppression = self.noise_check.isChecked()
         self.settings.copy_after_capture = self.copy_check.isChecked()
         self.settings.show_gallery_after_capture = self.show_check.isChecked()
+        self.settings.quick_bar_enabled = self.quickbar_check.isChecked()
+        self.settings.quick_bar_timeout = self.quickbar_timeout.value()
         self.settings.share_provider = self.share_default.currentData()
         self.settings.graph_client_id = self._client_id()
         self.settings.share_expiry_days = self.share_expiry.value()
