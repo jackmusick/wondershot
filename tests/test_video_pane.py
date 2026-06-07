@@ -103,3 +103,86 @@ def test_apply_blurs_passes_strength_to_filter(qapp, tmp_path, monkeypatch):
     assert captured["blur"] == 27
     assert FakeProc.last is not None          # render was started
     assert FakeProc.last[0] == "/usr/bin/ffmpeg"  # via ffmpegutil seam
+
+
+def test_gif_mode_creates_full_range_span(qapp, tmp_path):
+    pane, _ = make_pane(qapp, tmp_path)
+    assert pane.gif_fps_spin.isHidden()
+    pane.gif_btn.setChecked(True)
+    assert pane.gif_range is not None
+    assert pane.gif_range.start == 0.0
+    assert pane.gif_range.end >= 0.1
+    assert pane.spans() == [pane.gif_range]
+    assert pane.single_span() is pane.gif_range
+    assert not pane.gif_fps_spin.isHidden()
+    assert not pane.gif_width_spin.isHidden()
+    assert not pane.gif_apply_btn.isHidden()
+    pane.gif_btn.setChecked(False)
+    assert pane.gif_range is None
+    assert pane.gif_fps_spin.isHidden()
+
+
+def test_single_span_prefers_trim_and_preserves_trim_behavior(qapp, tmp_path):
+    pane, _ = make_pane(qapp, tmp_path)
+    assert pane.single_span() is None
+    pane.trim_btn.setChecked(True)
+    assert pane.single_span() is pane.trim
+    assert pane.spans() == [pane.trim]          # shipped trim contract
+    assert pane.active_redaction() is pane.trim
+
+
+def test_gif_and_trim_modes_are_mutually_exclusive(qapp, tmp_path):
+    pane, _ = make_pane(qapp, tmp_path)
+    pane.gif_btn.setChecked(True)
+    pane.trim_btn.setChecked(True)
+    assert pane.gif_range is None and pane.trim is not None
+    assert not pane.gif_btn.isChecked()
+    pane.gif_btn.setChecked(True)
+    assert pane.trim is None and pane.gif_range is not None
+    assert not pane.trim_btn.isChecked()
+
+
+def test_gif_mode_blocked_by_pending_blurs(qapp, tmp_path):
+    import wondershot.video as video
+    pane, _ = make_pane(qapp, tmp_path)
+    pane.redactions.append(video.Redaction(QRect(0, 0, 50, 50), 0.0, 2.0))
+    pane.gif_btn.setChecked(True)
+    assert pane.gif_range is None
+    assert not pane.gif_btn.isChecked()
+
+
+def test_gif_option_spins_default_and_persist(qapp, tmp_path):
+    pane, settings = make_pane(qapp, tmp_path, gif_fps=18, gif_max_width=960)
+    assert pane.gif_fps_spin.value() == 18
+    assert pane.gif_width_spin.value() == 960
+    pane.gif_fps_spin.setValue(15)
+    pane.gif_width_spin.setValue(640)
+    assert settings.gif_fps == 15
+    assert settings.gif_max_width == 640
+
+
+def test_convert_gif_uses_options_and_range(qapp, tmp_path, monkeypatch):
+    patch_proc(monkeypatch)
+    pane, _ = make_pane(qapp, tmp_path)
+    pane.path = "/tmp/fake.mp4"
+    pane.gif_btn.setChecked(True)
+    pane.gif_fps_spin.setValue(20)
+    pane.gif_width_spin.setValue(480)
+    pane.gif_range.start, pane.gif_range.end = 1.0, 3.5
+    pane._convert_gif()
+    prog, args = FakeProc.last
+    assert prog == "/usr/bin/ffmpeg"            # via ffmpegutil seam
+    assert args[args.index("-ss") + 1] == "1.000"
+    assert args[args.index("-to") + 1] == "3.500"
+    vf = args[args.index("-vf") + 1]
+    assert "fps=20," in vf and "min(480,iw)" in vf
+
+
+def test_convert_gif_full_range_omits_seek(qapp, tmp_path, monkeypatch):
+    patch_proc(monkeypatch)
+    pane, _ = make_pane(qapp, tmp_path)
+    pane.path = "/tmp/fake.mp4"
+    pane.gif_btn.setChecked(True)   # untouched span == whole video
+    pane._convert_gif()
+    _, args = FakeProc.last
+    assert "-ss" not in args and "-to" not in args

@@ -598,7 +598,7 @@ This task contains the one refactor of shipped code: generalizing the trim-only 
 - Modify: `wondershot/video.py` (`VideoPane.__init__` lines 451–452 & 516–519 & layout line 539; `load` line 575–582; `frozen_mode` line 624; `active_redaction` line 664; `set_active` line 671; `spans` line 679; `_blur_mode` line 684; `_trim_mode` line 696; `_clear_redactions` line 734; `refresh_overlays` line 745; `sync_active_row` line 765; `_position_changed` line 644; `RangeBar._hit` line 330; `RangeBar.paintEvent` lines 418 & 422; `_convert_gif`/`_gif_done` lines 945–976)
 - Modify: `tests/test_video_pane.py` (append)
 
-- [ ] **Write the failing tests** — append to `tests/test_video_pane.py`:
+- [x] **Write the failing tests** — append to `tests/test_video_pane.py`:
 
 ```python
 def test_gif_mode_creates_full_range_span(qapp, tmp_path):
@@ -684,9 +684,9 @@ def test_convert_gif_full_range_omits_seek(qapp, tmp_path, monkeypatch):
     assert "-ss" not in args and "-to" not in args
 ```
 
-- [ ] **Run, expect failure:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_video_pane.py -q` → the 7 new tests fail (`AttributeError: ... no attribute 'gif_fps_spin'` / `'single_span'`); the Task-2 tests still pass.
+- [x] **Run, expect failure:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_video_pane.py -q` → the 7 new tests fail (`AttributeError: ... no attribute 'gif_fps_spin'` / `'single_span'`); the Task-2 tests still pass.
 
-- [ ] **Implement** — edits in `wondershot/video.py`:
+- [x] **Implement** — edits in `wondershot/video.py`:
 
   1. **State field** — in `VideoPane.__init__`, after `self.trim: Redaction | None = None` (line 451) add:
 
@@ -853,9 +853,9 @@ def test_convert_gif_full_range_omits_seek(qapp, tmp_path, monkeypatch):
 
   Note: `load()` (line 582) already hides `gif_btn` for GIF sources; the option widgets stay hidden because the mode is unchecked by `_clear_redactions`. Validation that `end > start` is enforced structurally by `RangeBar` (it clamps `start <= end - 0.1` during drags, lines 389–392) plus the full-range fallback — no extra guard needed.
 
-- [ ] **Run:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_video_pane.py -q` → 12 passed.
-- [ ] **Regression check (mandatory — this task touched shipped trim/blur paths):** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q` → 212 passed, zero failures.
-- [ ] **Commit:** `git add wondershot/video.py tests/test_video_pane.py && git commit -m "Video: GIF fps/width/range options reusing the trim span timeline"`
+- [x] **Run:** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_video_pane.py -q` → 12 passed.
+- [x] **Regression check (mandatory — this task touched shipped trim/blur paths):** `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q` → 212 passed, zero failures.
+- [x] **Commit:** `git add wondershot/video.py tests/test_video_pane.py && git commit -m "Video: GIF fps/width/range options reusing the trim span timeline"`
 
 ---
 
