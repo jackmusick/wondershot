@@ -15,13 +15,11 @@ keywords = ["screenshot", "wayland", "kde", "snagit", "annotation"]
 
 [project.optional-dependencies]
 spike = ["numpy"]  # WS-D scroll-stitch spike only; not a runtime dep
+ai-local = ["rembg>=2.0", "onnxruntime>=1.16"]
 
 [project.scripts]
 wondershot = "wondershot.cli:main"
 grabbit = "wondershot.cli:main"  # legacy alias (existing hotkeys)
-
-[project.optional-dependencies]
-ai-local = ["rembg>=2.0", "onnxruntime>=1.16"]
 
 [tool.setuptools.packages.find]
 include = ["wondershot*"]
