@@ -169,3 +169,21 @@ def test_gif_args_no_partial_range():
     from wondershot.video import build_gif_args
     args = build_gif_args("/l/in.mp4", "/l/o.gif", start_s=1.0, end_s=None)
     assert "-ss" not in args and "-to" not in args
+
+
+def test_bundled_ffmpeg_wins_over_path(monkeypatch, tmp_path):
+    """Frozen builds must use the shipped ffmpeg, not whatever PATH has."""
+    from wondershot import ffmpegutil
+    import sys as _sys
+    name = "ffmpeg.exe" if _sys.platform == "win32" else "ffmpeg"
+    exe_dir = tmp_path / "app"
+    exe_dir.mkdir()
+    (exe_dir / name).write_bytes(b"")
+    monkeypatch.setattr(ffmpegutil.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(ffmpegutil.sys, "executable",
+                        str(exe_dir / "Wondershot"))
+    ffmpegutil.reset_cache()
+    try:
+        assert ffmpegutil.ffmpeg_path() == str(exe_dir / name)
+    finally:
+        ffmpegutil.reset_cache()

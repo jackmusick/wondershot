@@ -7,17 +7,42 @@ binary at this one seam and every caller gets it for free.
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
+import sys
 
 
 class FfmpegMissing(RuntimeError):
     """ffmpeg is not installed / not on PATH."""
 
     def __init__(self):
-        super().__init__(
-            "ffmpeg was not found on PATH. Install it (e.g. "
-            "`sudo dnf install ffmpeg`) and restart Wondershot.")
+        # User-facing: platform-appropriate hint, never our toolchain.
+        # Bundled builds ship ffmpeg, so this should only fire on
+        # from-source installs.
+        hint = (" Install it (e.g. `sudo dnf install ffmpeg`) and restart"
+                " Wondershot." if sys.platform.startswith("linux")
+                else " Reinstalling Wondershot should restore it.")
+        super().__init__("Wondershot couldn't find its video engine"
+                         " (ffmpeg)." + hint)
+
+
+def _bundled_ffmpeg() -> str | None:
+    """ffmpeg shipped inside a frozen (PyInstaller) build, if any.
+
+    One-dir layout puts payloads either next to the exe or under
+    _internal (PyInstaller >= 6). Source checkouts return None and fall
+    through to PATH discovery.
+    """
+    if not getattr(sys, "frozen", False):
+        return None
+    name = "ffmpeg.exe" if sys.platform == "win32" else "ffmpeg"
+    base = os.path.dirname(sys.executable)
+    for cand in (os.path.join(base, name),
+                 os.path.join(base, "_internal", name)):
+        if os.path.exists(cand):
+            return cand
+    return None
 
 
 _path_cache: str | None = None
@@ -37,7 +62,7 @@ def ffmpeg_path() -> str:
     """
     global _path_cache
     if _path_cache is None:
-        found = shutil.which("ffmpeg")
+        found = _bundled_ffmpeg() or shutil.which("ffmpeg")
         if not found:
             raise FfmpegMissing()
         _path_cache = found
