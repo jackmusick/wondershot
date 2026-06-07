@@ -1509,13 +1509,13 @@ GLib.Variant types, finite timeouts, GLib.Error caught per step.
 
 ### Step 8.1: Full suite
 
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q`
-- [ ] Expected: everything green (main had 277 tests; this plan adds ~25).
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q`
+- [x] Expected: everything green (main had 277 tests; this plan adds ~25).
 
 ### Step 8.2: Shared settings-stub audit (mandatory — crashed the batch-3 merge)
 
-- [ ] Run: `grep -rln "class _Settings\|class _FakeSettings\|class FakeSettings" tests/`
-- [ ] For EVERY file that grep lists — on main today that is 13 files
+- [x] Run: `grep -rln "class _Settings\|class _FakeSettings\|class FakeSettings" tests/`
+- [x] For EVERY file that grep lists — on main today that is 13 files
   (`test_capture_crop`, `test_capture_window_mode`, `test_scrollsource`,
   `test_quickbar`, `test_gallery_sidecar`, `test_editor_sidecar`,
   `test_tray_tooltip`, `test_settings_dialog_ai`, `test_record`,
@@ -1535,7 +1535,7 @@ existing line** (append-only confinement; same rule batch 3 used). Append a
 new dated subsection at the END of the file instead of rewriting the
 existing WS-D findings prose.
 
-- [ ] Append to the end of `ROADMAP.md` (substitute the actual run date
+- [x] Append to the end of `ROADMAP.md` (substitute the actual run date
   for the dates below):
 
 ```
@@ -1566,7 +1566,7 @@ existing WS-D findings prose.
 
 ### Step 8.4: Manual checklist additions
 
-- [ ] Append to `docs/superpowers/plans/2026-06-07-desktop-checklist.md`
+- [x] Append to `docs/superpowers/plans/2026-06-07-desktop-checklist.md`
   (keep its numbering style):
 
 ```
@@ -1608,6 +1608,6 @@ existing WS-D findings prose.
 
 ### Step 8.5: Final verification + commit
 
-- [ ] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q` — green.
-- [ ] Run: `.venv/bin/python -c "import wondershot.ei, wondershot.scrollsource, wondershot.app"` — imports clean.
-- [ ] Commit: `git add -A && git commit -m "Track 4b: ROADMAP EI/scroll verdicts + manual checklist items"`
+- [x] Run: `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/ -q` — green.
+- [x] Run: `.venv/bin/python -c "import wondershot.ei, wondershot.scrollsource, wondershot.app"` — imports clean.
+- [x] Commit: `git add -A && git commit -m "Track 4b: ROADMAP EI/scroll verdicts + manual checklist items"`

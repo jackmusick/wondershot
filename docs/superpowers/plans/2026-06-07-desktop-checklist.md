@@ -44,3 +44,38 @@
     + drop-on-low-confidence replaced the single-band matcher).
 12. One deliberately fast flick-scroll mid-run: should just report
     dropped frames at exit (pre-review this could crash the stitcher).
+
+## Scroll capture UI (Track 4b)
+
+- Tray menu shows "Scrolling capture" (box has gi+GStreamer+numpy);
+  capture panel shows a "Scrolling" secondary button.
+- Trigger from the tray with the gallery open: all Wondershot windows
+  vanish BEFORE the portal picker appears.
+- The portal picker MUST appear every time (fresh pick — no restore
+  token reuse), and a normal recording afterwards must NOT re-ask
+  (scroll didn't clobber the recorder's token).
+- While scrolling, a small "Scrolling — click to finish" pill is
+  visible on top; clicking it (or Esc with focus) finishes.
+- Alternate finish path: while scrolling, the tray "Scrolling capture"
+  entry finishes the session instead of starting a new one.
+- The stitched PNG lands in the library; with preview off the
+  quick-action bar appears and Edit/Copy/Share/Trash act on it.
+- Pick a MONITOR (not a window) once: note whether the stop pill
+  appears in the stitched output (window picks exclude it; monitor
+  picks may not — record what KWin does).
+- Scroll-fail path: cancel the portal picker — tray shows a capture
+  failed toast, windows restore, no stuck pill.
+
+## InputCapture probe — FINAL RUN (interception semantics)
+
+- Run: python3 spikes/inputcapture_probe.py
+  Expect FINDING lines for: portal version/caps, CreateSession,
+  GetZones, SetPointerBarriers OK, ConnectToEIS fd, Enable OK,
+  Activated after shoving the pointer against the LEFT screen edge,
+  then "pointer BUTTON event: button=0x110 press=True t=...us" lines
+  while clicking.
+- THE question: while the probe prints button events, do the apps
+  under the pointer still receive the clicks (observe) or not
+  (intercept)? Click on a text editor and watch whether the caret
+  moves. Record the verdict in ROADMAP WS-D findings — step capture's
+  design is gated on it.

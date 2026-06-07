@@ -361,3 +361,27 @@ KWin directly; worst case is a failed portal request. Copy the
   (EI protocol library) plus the interception-semantics question
   above, not platform capability. Keep Windows-first as fallback only
   if the semantics check fails.
+
+### Track 4b findings (scroll UI + EI client)
+
+- Scroll capture: PRODUCTIZED — "Scrolling capture" in the
+  tray menu + capture panel, gated on gi/GStreamer/numpy availability
+  (NOT KDE; portal ScreenCast is desktop-neutral). Fresh portal pick
+  per session (stitch-v2 token hooks), frameless stop pill
+  (compositor-placed), stitched PNG lands through the normal captured
+  path (quick bar / preview / clipboard). ScrollCaptureController
+  relays frames through a QObject slot, so Gst-streaming-thread
+  delivery is queued — the spike's direct-connection caveat is
+  retired for the product path. --scroll-spike kept as the debug
+  harness (pinned by test). Tray entry doubles as the finish control
+  while a scroll session runs.
+- EI client: snegg is NOT on PyPI ("No matching distribution found
+  for snegg", re-checked 2026-06-07 at execution time per Task 5), so no
+  [stepcapture] extra;
+  wondershot/ei.py is a stdlib-ctypes binding against the system
+  libei.so.1 (RECEIVE path only: handshake + pointer-button events,
+  values verified against libei 1.5.0). inputcapture_probe.py now
+  does SetPointerBarriers + Enable and prints button events with
+  timestamps via that binding. Interception semantics (do apps still
+  get clicks while we observe?) = pending the final manual probe run;
+  step-capture UI stays blocked on that verdict.
