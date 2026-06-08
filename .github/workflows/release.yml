@@ -54,7 +54,10 @@ jobs:
         with:
           bundle: wondershot.flatpak
           manifest-path: packaging/flatpak/io.github.jackmusick.wondershot.yml
-          cache-key: flatpak-${{ github.sha }}
+          # Stable key: x264/ffmpeg compile ONCE and stay cached across
+          # releases (a per-sha key forced the ~25-min ffmpeg build every
+          # tag). Bump the suffix to force a clean rebuild.
+          cache-key: flatpak-builder-v1
       - name: Attach to release
         uses: softprops/action-gh-release@v2
         with:
