@@ -28,18 +28,23 @@ missing=""
 python3 -c "import gi" >/dev/null 2>&1 || missing="$missing gobject"
 command -v ffmpeg >/dev/null 2>&1 || missing="$missing ffmpeg"
 gst-inspect-1.0 pipewiresrc >/dev/null 2>&1 || missing="$missing gst-pipewire"
+# Wayland-only: wl-copy holds the image selection without a focused window,
+# which Qt cannot do — without it, copy-to-clipboard after a capture fails.
+if [ -n "${WAYLAND_DISPLAY:-}" ] && ! command -v wl-copy >/dev/null 2>&1; then
+    missing="$missing wl-clipboard"
+fi
 
 if [ -n "$missing" ]; then
     say "missing system packages:$missing"
     if command -v dnf >/dev/null 2>&1; then
         say "install them with:"
-        say "  sudo dnf install python3-gobject ffmpeg gstreamer1-plugin-pipewire"
+        say "  sudo dnf install python3-gobject ffmpeg gstreamer1-plugin-pipewire wl-clipboard"
     elif command -v apt-get >/dev/null 2>&1; then
         say "install them with:"
-        say "  sudo apt install python3-gi ffmpeg gstreamer1.0-pipewire"
+        say "  sudo apt install python3-gi ffmpeg gstreamer1.0-pipewire wl-clipboard"
     else
-        say "install python3-gobject (gi), ffmpeg, and the GStreamer"
-        say "PipeWire plugin with your distro's package manager."
+        say "install python3-gobject (gi), ffmpeg, the GStreamer PipeWire"
+        say "plugin, and wl-clipboard with your distro's package manager."
     fi
     fail "re-run this script once they're installed"
 fi
