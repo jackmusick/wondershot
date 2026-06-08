@@ -55,7 +55,12 @@ def test_signals_carry_path_and_dismiss(qapp, shot):
     assert got["trash"] == shot
 
 
-def test_copy_puts_image_on_clipboard(qapp, shot):
+def test_copy_puts_image_on_clipboard(qapp, shot, monkeypatch):
+    # Force the Qt backend so the outcome is observable regardless of host:
+    # on Wayland copy_image routes to wl-copy, which sets the real system
+    # clipboard, not this in-process QClipboard.
+    from wondershot import clipboard
+    monkeypatch.setattr(clipboard, "_on_wayland", lambda: False)
     QGuiApplication.clipboard().clear()
     bar = _bar(shot)
     bar.copy_btn.click()

@@ -13,6 +13,7 @@ from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
 from . import icons
 from .capture import create_capture_manager, unique_path, timestamp_name, window_capture_available
+from .clipboard import copy_image
 from .editor import EditorWindow
 from .gallery import GalleryWindow
 from .hotkey import create_hotkey_backend
@@ -204,10 +205,9 @@ class GrabbitApp(QObject):
 
     def _on_captured(self, path: str) -> None:
         self.gallery.restore_after_capture()
+        copied = False
         if self.settings.copy_after_capture:
-            img = QImage(path)
-            if not img.isNull():
-                QGuiApplication.clipboard().setImage(img)
+            copied = copy_image(QImage(path))
         self.gallery.rescan()
         self.gallery.select_path(path)
         if self.settings.show_gallery_after_capture or self._gallery_was_visible:
@@ -215,7 +215,7 @@ class GrabbitApp(QObject):
         elif self.settings.quick_bar_enabled:
             # gallery isn't coming forward — offer quick actions instead
             self._show_quick_bar(path)
-        note = " · copied to clipboard" if self.settings.copy_after_capture else ""
+        note = " · copied to clipboard" if copied else ""
         self.tray.showMessage("Wondershot", os.path.basename(path) + note,
                               self.icon, 2500)
 

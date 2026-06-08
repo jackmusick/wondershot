@@ -943,9 +943,8 @@ class GalleryWindow(QMainWindow):
             QGuiApplication.clipboard().setText(paths[0])
             self.editor.statusBar().showMessage("Copied video path", 2500)
             return
-        img = QImage(paths[0])
-        if not img.isNull():
-            QGuiApplication.clipboard().setImage(img)
+        from .clipboard import copy_image
+        if copy_image(QImage(paths[0])):
             self.editor.statusBar().showMessage("Copied to clipboard", 2500)
 
     def _open_folder(self) -> None:

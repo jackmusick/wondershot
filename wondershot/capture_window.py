@@ -326,10 +326,9 @@ class QuickActionBar(QWidget):
         self.dismiss()
 
     def _copy(self) -> None:
-        from PySide6.QtGui import QGuiApplication, QImage
-        img = QImage(self.path)
-        if not img.isNull():
-            QGuiApplication.clipboard().setImage(img)
+        from PySide6.QtGui import QImage
+        from .clipboard import copy_image
+        copy_image(QImage(self.path))
         self.dismiss()
 
     def _save_as(self) -> None:  # GUI glue — file dialog, not unit tested

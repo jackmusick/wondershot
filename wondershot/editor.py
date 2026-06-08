@@ -1643,7 +1643,8 @@ class EditorWindow(QMainWindow):
             SwapStepNumbersCommand(self, item, target, start))
 
     def copy_to_clipboard(self) -> None:
-        QGuiApplication.clipboard().setImage(self.flattened())
+        from .clipboard import copy_image
+        copy_image(self.flattened())
         self.statusBar().showMessage("Copied to clipboard", 2500)
 
     def save(self) -> None:
