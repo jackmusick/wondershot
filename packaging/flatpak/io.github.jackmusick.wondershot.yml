@@ -34,6 +34,17 @@ finish-args:
   - --talk-name=org.freedesktop.portal.OpenURI
 
 modules:
+  # libx264: not in the KDE SDK; ffmpeg below (and the video render
+  # path) needs it. Commit-pinned tarball (stable branch head).
+  - name: x264
+    config-opts:
+      - --enable-shared
+      - --disable-cli
+    sources:
+      - type: archive
+        url: https://code.videolan.org/videolan/x264/-/archive/b35605ace3ddf7c1a5d67a2eb553f034aef41d55/x264-b35605ace3ddf7c1a5d67a2eb553f034aef41d55.tar.bz2
+        sha256: 6eeb82934e69fd51e043bd8c5b0d152839638d1ce7aa4eea65a3fedcf83ff224
+
   # ffmpeg CLI: the runtime ships the libs, we shell out to the binary.
   - name: ffmpeg
     config-opts:
