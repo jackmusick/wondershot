@@ -9,6 +9,8 @@ serde_json = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 image = "0.25"
 dirs = "5"
+ashpd = { version = "0.9", default-features = false, features = ["tokio"] }
+zbus = "4"
 
 [dev-dependencies]
 tempfile = "3"
