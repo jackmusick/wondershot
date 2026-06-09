@@ -11,7 +11,33 @@
   },
   "app": {
     "windows": [
-      { "label": "main", "title": "Wondershot", "width": 1100, "height": 720 }
+      { "label": "main", "title": "Wondershot", "width": 1100, "height": 720 },
+      {
+        "label": "countdown",
+        "url": "/countdown",
+        "title": "wondershot countdown",
+        "fullscreen": true,
+        "transparent": true,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "shadow": false,
+        "visible": false
+      },
+      {
+        "label": "bubble",
+        "url": "/bubble",
+        "title": "wondershot camera",
+        "width": 220,
+        "height": 220,
+        "resizable": false,
+        "transparent": true,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "shadow": false,
+        "visible": false
+      }
     ],
     "security": { "csp": null }
   },
