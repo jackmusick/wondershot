@@ -765,3 +765,22 @@ pub fn import_files(paths: Vec<String>) -> Result<Vec<String>, String> {
     }
     Ok(out)
 }
+
+/// Show/hide the frameless camera-bubble window (header "Camera" toggle). The
+/// window is declared in tauri.conf (label "bubble", visible:false at startup).
+#[tauri::command]
+pub fn toggle_camera_bubble(app: tauri::AppHandle) -> Result<bool, String> {
+    use tauri::Manager;
+    let Some(w) = app.get_webview_window("bubble") else {
+        return Err("camera bubble window not found".into());
+    };
+    let visible = w.is_visible().unwrap_or(false);
+    if visible {
+        w.hide().map_err(|e| e.to_string())?;
+        Ok(false)
+    } else {
+        w.show().map_err(|e| e.to_string())?;
+        let _ = w.set_focus();
+        Ok(true)
+    }
+}

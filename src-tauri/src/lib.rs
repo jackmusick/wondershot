@@ -138,6 +138,7 @@ pub fn run() {
             commands::trim_video,
             commands::install_desktop,
             commands::import_files,
+            commands::toggle_camera_bubble,
         ])
         .run(tauri::generate_context!())
         .expect("error while running wondershot");

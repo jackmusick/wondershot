@@ -1,5 +1,6 @@
 <script lang="ts">
   import { recording, takeCapture, view, activeItem, settingsOpen } from '$lib/stores';
+  import { ipcInvoke } from '$lib/ipc';
   import {
     startRecording,
     stopRecording,
@@ -7,48 +8,66 @@
     resumeRecording
   } from '$lib/recorder/control';
   import EditorToolbar from '$lib/editor/EditorToolbar.svelte';
-  const modes: { label: string; mode?: 'region' | 'fullscreen' | 'window' }[] = [
-    { label: 'Region', mode: 'region' },
-    { label: 'Full screen', mode: 'fullscreen' },
-    { label: 'Window', mode: 'window' },
-    { label: 'Scrolling' } // no backend in M2
-  ];
+
   function fmt(ms: number) {
     const s = Math.floor(ms / 1000);
     return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
   }
+
+  let cameraOn = $state(false);
+  async function toggleCamera() {
+    try {
+      cameraOn = await ipcInvoke<boolean>('toggle_camera_bubble');
+    } catch (e) {
+      console.error('camera toggle failed', e);
+    }
+  }
 </script>
 
 <header class="header">
-  <div class="modes">
-    {#each modes as m}
-      <button
-        class="mode"
-        disabled={!m.mode}
-        onclick={() => m.mode && takeCapture(m.mode)}>{m.label}</button>
-    {/each}
-  </div>
-  <span class="sep"></span>
+  <button class="hbtn" title="Capture a region (Spectacle / portal)" onclick={() => takeCapture('region')}>
+    <svg viewBox="0 0 16 16"><path d="M2 5.5A1.5 1.5 0 0 1 3.5 4h1l1-1.5h3L9.5 4h3A1.5 1.5 0 0 1 14 5.5V12a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 12z"/><circle cx="8" cy="8.5" r="2.5"/></svg>
+    Capture
+  </button>
+
   {#if $recording.status === 'recording'}
     <div class="rec-controls">
-      <button class="record active" onclick={() => stopRecording()} title="Stop recording">
-        <span class="dot"></span>
-        <span class="timer">{fmt($recording.elapsedMs)}</span>
+      <button class="hbtn rec" onclick={() => stopRecording()} title="Stop recording">
+        <span class="dot"></span><span class="timer">{fmt($recording.elapsedMs)}</span>
       </button>
       {#if $recording.paused}
-        <button class="rec-btn" onclick={() => resumeRecording()}>Resume</button>
+        <button class="hbtn" onclick={() => resumeRecording()}>Resume</button>
       {:else}
-        <button class="rec-btn" onclick={() => pauseRecording()}>Pause</button>
+        <button class="hbtn" onclick={() => pauseRecording()}>Pause</button>
       {/if}
-      <button class="rec-btn" onclick={() => stopRecording()}>Stop</button>
+      <button class="hbtn" onclick={() => stopRecording()}>Stop</button>
     </div>
   {:else}
-    <button class="mode rec-inline" onclick={() => startRecording()}>● Record</button>
-    <button class="mode" disabled title="Region-scoped recording — coming with the recorder UI">Record region</button>
+    <button class="hbtn" title="Record the screen" onclick={() => startRecording()}>
+      <svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="5" class="fill-red"/></svg>
+      Record
+    </button>
+    <button class="hbtn" title="Record a region / window (choose in the picker)" onclick={() => startRecording()}>
+      <svg viewBox="0 0 16 16"><rect x="2" y="2.5" width="12" height="11" rx="1.5" stroke-dasharray="2.5 2"/><circle cx="8" cy="8" r="3" class="fill-red"/></svg>
+      Record Region
+    </button>
   {/if}
-  <button class="mode" onclick={() => settingsOpen.set(true)}>⚙ Settings</button>
+
+  <button class="hbtn" class:active={cameraOn} title="Toggle the camera bubble" onclick={toggleCamera}>
+    <svg viewBox="0 0 16 16"><rect x="1.5" y="4" width="9" height="8" rx="1.5"/><path d="M10.5 7l4-2.5v7L10.5 9z"/></svg>
+    Camera
+  </button>
+
+  <button class="hbtn" title="Settings" onclick={() => settingsOpen.set(true)}>
+    <svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M12.6 3.4l-1.4 1.4M4.8 11.2l-1.4 1.4"/></svg>
+    Settings
+  </button>
+
   <div class="spacer"></div>
-  <button class="mode" disabled={!$activeItem} title="Sharing targets aren't bundled in this build">↗ Share</button>
+  <button class="hbtn" disabled={!$activeItem} title="Sharing targets aren't bundled in this build">
+    <svg viewBox="0 0 16 16"><path d="M3 9v4h10V9M8 11V2M5 5l3-3 3 3"/></svg>
+    Share
+  </button>
 </header>
 {#if $view === 'editor' && $activeItem}
   <EditorToolbar />
@@ -56,36 +75,26 @@
 
 <style>
   .header {
-    height: 44px; display: flex; align-items: center; gap: 8px; padding: 0 10px;
+    height: 46px; display: flex; align-items: center; gap: 4px; padding: 0 10px;
     border-bottom: 1px solid var(--border); background: var(--bg-content); flex-shrink: 0;
   }
-  .modes { display: flex; gap: 2px; }
-  .sep { width: 1px; height: 18px; background: var(--border); margin: 0 4px; }
-  .rec-inline { color: var(--fg-primary); }
-  .mode {
-    height: 28px; padding: 0 12px; border: none; background: transparent;
-    color: var(--fg-primary); border-radius: var(--radius); font-size: var(--text-base); cursor: pointer;
+  .hbtn {
+    display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px;
+    border: none; background: transparent; color: var(--fg-primary);
+    border-radius: var(--radius); font-size: var(--text-base); cursor: pointer; white-space: nowrap;
   }
-  .mode:hover:not(:disabled) { background: var(--bg-hover); }
-  .mode:disabled { opacity: 0.4; cursor: default; }
+  .hbtn:hover:not(:disabled) { background: var(--bg-hover); }
+  .hbtn:disabled { opacity: 0.4; cursor: default; }
+  .hbtn.active { background: var(--bg-selected); }
+  .hbtn svg {
+    width: 17px; height: 17px; fill: none; stroke: currentColor;
+    stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0;
+  }
+  .hbtn svg .fill-red { fill: var(--danger); stroke: none; }
   .spacer { flex: 1; }
-  .rec-controls { display: inline-flex; align-items: center; gap: 6px; }
-  .record {
-    height: 28px; padding: 0 14px; border: none; border-radius: var(--radius);
-    background: var(--accent); color: #fff; font-size: var(--text-base); cursor: pointer;
-    display: inline-flex; align-items: center; gap: 8px;
-  }
-  .record:hover { filter: brightness(1.08); }
-  .record.active { background: var(--danger); }
-  .dot {
-    width: 8px; height: 8px; border-radius: 50%; background: #fff;
-    animation: rec-pulse 1.4s ease-in-out infinite;
-  }
+  .rec-controls { display: inline-flex; align-items: center; gap: 4px; }
+  .rec .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); margin-right: 6px;
+    animation: rec-pulse 1.4s ease-in-out infinite; }
+  .rec .timer { font-variant-numeric: tabular-nums; }
   @keyframes rec-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
-  .rec-btn {
-    height: 28px; padding: 0 12px; border: 1px solid var(--border); border-radius: var(--radius);
-    background: var(--bg-content); color: var(--fg-primary); font-size: var(--text-base); cursor: pointer;
-  }
-  .rec-btn:hover { background: var(--bg-hover); }
-  .timer { font-variant-numeric: tabular-nums; }
 </style>
