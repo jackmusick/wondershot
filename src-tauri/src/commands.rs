@@ -1,5 +1,7 @@
 use std::path::Path;
+use std::sync::Mutex;
 use wondershot_core::{capture, clipboard, library, paths, settings::Settings, sidecar};
+use wondershot_core::record::{files, pipeline, portal, recorder};
 
 #[tauri::command]
 pub fn health() -> String {
@@ -218,6 +220,177 @@ pub fn read_base(path: String, n: u32) -> Result<Option<String>, String> {
     }
     let bytes = std::fs::read(&base).map_err(|e| e.to_string())?;
     Ok(Some(base64::engine::general_purpose::STANDARD.encode(&bytes)))
+}
+
+// --- screen recording (M4 T6) ----------------------------------------------
+
+/// Managed Tauri state holding the live recorder. `Recorder` is not `Clone`
+/// and `stop(self)` consumes it, so we store an `Option` and `.take()` on stop.
+pub struct RecState(pub Mutex<Option<recorder::Recorder>>);
+
+impl Default for RecState {
+    fn default() -> Self {
+        RecState(Mutex::new(None))
+    }
+}
+
+/// Map a `RecEvent` to a `recording://` webview event.
+///
+/// Payloads:
+///   - `recording://state`  { status: "recording"|"stopping"|"idle", paused: bool }
+///   - `recording://tick`   "M:SS" elapsed string
+///   - `recording://done`   the finished file path
+///   - `recording://failed` the error message
+fn emit_rec_event(app: &tauri::AppHandle, ev: recorder::RecEvent) {
+    use recorder::RecEvent;
+    use tauri::Emitter;
+    match ev {
+        RecEvent::Started => {
+            let _ = app.emit(
+                "recording://state",
+                serde_json::json!({ "status": "recording", "paused": false }),
+            );
+        }
+        RecEvent::Stopping => {
+            let _ = app.emit(
+                "recording://state",
+                serde_json::json!({ "status": "stopping", "paused": false }),
+            );
+        }
+        RecEvent::PausedChanged(paused) => {
+            let _ = app.emit(
+                "recording://state",
+                serde_json::json!({ "status": "recording", "paused": paused }),
+            );
+        }
+        RecEvent::Tick(elapsed) => {
+            let _ = app.emit("recording://tick", elapsed);
+        }
+        RecEvent::Finished(path) => {
+            let _ = app.emit("recording://done", path.to_string_lossy().to_string());
+            let _ = app.emit(
+                "recording://state",
+                serde_json::json!({ "status": "idle", "paused": false }),
+            );
+        }
+        RecEvent::Failed(msg) => {
+            let _ = app.emit("recording://failed", msg);
+            let _ = app.emit(
+                "recording://state",
+                serde_json::json!({ "status": "idle", "paused": false }),
+            );
+        }
+    }
+}
+
+/// Remove `.rendering` tmp files older than 1h (orphaned by a crash).
+/// Ports the effect of record.py's `sweep_stale_tmp`.
+fn sweep_stale_tmp(rendering: &Path) {
+    let _ = std::fs::create_dir_all(rendering);
+    let Ok(entries) = std::fs::read_dir(rendering) else { return };
+    for entry in entries.flatten() {
+        let Ok(meta) = entry.metadata() else { continue };
+        if !meta.is_file() {
+            continue;
+        }
+        let age = meta
+            .modified()
+            .ok()
+            .and_then(|m| m.elapsed().ok())
+            .map(|d| d.as_secs_f64())
+            .unwrap_or(0.0);
+        if files::is_stale(age, 3600) {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+}
+
+/// Start a screen recording: open the portal, build the gstreamer pipeline,
+/// launch the recorder, and store it in managed state. Events flow back to the
+/// webview via `recording://` topics.
+#[tauri::command]
+pub async fn start_recording(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, RecState>,
+) -> Result<(), String> {
+    use std::os::fd::AsRawFd;
+
+    let s = Settings::load();
+    let library_dir = Path::new(&s.library_dir);
+
+    // Sweep stale tmp renders (>1h old) before starting a fresh one.
+    let rendering = files::rendering_dir(library_dir);
+    sweep_stale_tmp(&rendering);
+
+    // Portal: pick a screen/window and obtain the PipeWire fd + node id. KEEP
+    // `fd` (OwnedFd) alive across launch — pipewiresrc dups it during launch.
+    let (fd, node) = portal::open_screencast().await?;
+
+    // Same base name for tmp and out; the out path is uniquified.
+    let name = files::recording_name();
+    let tmp = rendering.join(&name);
+    let out = paths::unique_path(library_dir, &name);
+
+    // NOTE: have_webrtcdsp is hardcoded false for M4 — src-tauri has no
+    // gstreamer dependency to probe ElementFactory::find("webrtcdsp").
+    // NOTE: mic_device is passed through as the pulse device string. Resolving
+    // a human-readable description -> pulse name (Python does this via Qt) is
+    // deferred to a pipewire/pulse enumeration follow-up. Empty = default mic.
+    let opts = pipeline::PipelineOpts {
+        mic_enabled: s.mic_enabled,
+        mic_device: s.mic_device.clone(),
+        noise_suppression: s.noise_suppression,
+        have_webrtcdsp: false,
+        crop: None,
+        halo: s.record_cursor_halo,
+    };
+
+    let tmp_str = tmp
+        .to_str()
+        .ok_or("tmp path is not valid UTF-8")?
+        .to_string();
+    let desc = pipeline::build_pipeline_description(fd.as_raw_fd(), node, &tmp_str, &opts);
+
+    let app_for_cb = app.clone();
+    let rec = recorder::Recorder::launch(&desc, tmp, out, move |ev| {
+        emit_rec_event(&app_for_cb, ev)
+    })?;
+
+    // `fd` (OwnedFd) was kept alive through launch; pipewiresrc has dup'd it,
+    // so it may drop now.
+    drop(fd);
+
+    *state.0.lock().map_err(|e| e.to_string())? = Some(rec);
+    Ok(())
+}
+
+/// Stop the active recording. `stop()` consumes the recorder and emits
+/// `Finished`/`Failed` through the event callback.
+#[tauri::command]
+pub fn stop_recording(state: tauri::State<'_, RecState>) -> Result<(), String> {
+    let rec = state.0.lock().map_err(|e| e.to_string())?.take();
+    if let Some(rec) = rec {
+        rec.stop();
+    }
+    Ok(())
+}
+
+/// Pause the active recording (drops frames until resumed).
+#[tauri::command]
+pub fn pause_recording(state: tauri::State<'_, RecState>) -> Result<(), String> {
+    if let Some(rec) = state.0.lock().map_err(|e| e.to_string())?.as_ref() {
+        rec.pause();
+    }
+    Ok(())
+}
+
+/// Resume a paused recording.
+#[tauri::command]
+pub fn resume_recording(state: tauri::State<'_, RecState>) -> Result<(), String> {
+    if let Some(rec) = state.0.lock().map_err(|e| e.to_string())?.as_ref() {
+        rec.resume();
+    }
+    Ok(())
 }
 
 /// Write `img` as the next base file alongside `path` and return its path.

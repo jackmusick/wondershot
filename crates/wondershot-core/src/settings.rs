@@ -7,6 +7,10 @@ pub struct Settings {
     pub capture_cursor: bool,
     pub capture_delay: u32,
     pub extra_dirs: Vec<String>,
+    pub mic_enabled: bool,
+    pub mic_device: String,
+    pub noise_suppression: bool,
+    pub record_cursor_halo: bool,
 }
 
 impl Default for Settings {
@@ -22,6 +26,10 @@ impl Default for Settings {
             capture_cursor: false,
             capture_delay: 0,
             extra_dirs: Vec::new(),
+            mic_enabled: true,
+            mic_device: String::new(),
+            noise_suppression: true,
+            record_cursor_halo: false,
         }
     }
 }
@@ -55,6 +63,10 @@ impl Settings {
                 "backend" => s.backend = v.to_string(),
                 "capture_cursor" => s.capture_cursor = v == "true",
                 "capture_delay" => s.capture_delay = v.parse().unwrap_or(0),
+                "mic_enabled" => s.mic_enabled = v == "true",
+                "mic_device" => s.mic_device = v.to_string(),
+                "noise_suppression" => s.noise_suppression = v == "true",
+                "record_cursor_halo" => s.record_cursor_halo = v == "true",
                 "extra_dirs" => {
                     s.extra_dirs = v
                         .split(';')
