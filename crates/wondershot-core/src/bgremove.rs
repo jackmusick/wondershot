@@ -22,15 +22,67 @@ pub const INPUT_SIZE: u32 = 320;
 const MEAN: [f32; 3] = [0.485, 0.456, 0.406];
 const STD: [f32; 3] = [0.229, 0.224, 0.225];
 
-/// Path the editor/packaging expects the model at: `~/.cache/wondershot/u2net.onnx`.
+/// Canonical writable cache location for the model — the download target:
+/// `~/.cache/wondershot/u2net.onnx`.
 pub fn model_path() -> PathBuf {
     let base = dirs::cache_dir().unwrap_or_else(|| PathBuf::from("."));
     base.join("wondershot").join("u2net.onnx")
 }
 
-/// Whether the model file is present (gates the editor "Remove BG" button).
+/// First existing model across `WONDERSHOT_U2NET`, a bundled resource beside the
+/// executable, then the writable cache — i.e. what inference actually loads.
+/// Packaging sets `WONDERSHOT_U2NET` (Flatpak → `/app/share/wondershot`) or ships
+/// the model next to the binary (AppImage); curl|sh falls back to the cache after
+/// download-on-first-use.
+pub fn resolved_model_path() -> Option<PathBuf> {
+    if let Some(p) = std::env::var_os("WONDERSHOT_U2NET") {
+        let p = PathBuf::from(p);
+        if p.exists() {
+            return Some(p);
+        }
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            for cand in [dir.join("u2net.onnx"), dir.join("resources").join("u2net.onnx")] {
+                if cand.exists() {
+                    return Some(cand);
+                }
+            }
+        }
+    }
+    let cache = model_path();
+    if cache.exists() {
+        return Some(cache);
+    }
+    None
+}
+
+/// Whether a usable model file is present (gates the editor "Remove BG" button).
 pub fn model_available() -> bool {
-    model_path().exists()
+    resolved_model_path().is_some()
+}
+
+/// Resolve the onnxruntime shared library for `ort`'s load-dynamic backend:
+/// an explicit `ORT_DYLIB_PATH` wins, else a copy shipped beside the executable
+/// (Tauri resource / AppImage layout); otherwise leave it unset so `ort` dlopen()s
+/// `libonnxruntime.so` from the system loader path (Flatpak ships it in `/app/lib`,
+/// the rpm depends on the distro package).
+#[cfg(feature = "bgremove-onnx")]
+fn ensure_ort_dylib() {
+    if std::env::var_os("ORT_DYLIB_PATH").is_some() {
+        return;
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            for name in ["libonnxruntime.so", "libonnxruntime.so.1.16.3"] {
+                let cand = dir.join(name);
+                if cand.exists() {
+                    std::env::set_var("ORT_DYLIB_PATH", &cand);
+                    return;
+                }
+            }
+        }
+    }
 }
 
 /// Resize an RGBA image to the model's 320×320 input (Lanczos3).
@@ -110,6 +162,8 @@ pub fn remove_background(
     use ort::session::Session;
     use ort::value::Tensor;
 
+    ensure_ort_dylib();
+
     let (w, h) = img.dimensions();
 
     // Resize → normalize → (1,3,320,320) ndarray.
@@ -126,7 +180,7 @@ pub fn remove_background(
         .commit_from_file(model_path)
         .map_err(|e| format!("could not load model {}: {e}", model_path.display()))?;
 
-    let input_name = session.inputs[0].name.clone();
+    let input_name = session.inputs()[0].name().to_string();
     let tensor = Tensor::from_array(input).map_err(|e| format!("input tensor: {e}"))?;
     let outputs = session
         .run(ort::inputs![input_name => tensor])

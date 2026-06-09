@@ -13,13 +13,15 @@ ashpd = { version = "0.9", default-features = false, features = ["tokio"] }
 zbus = "4"
 gstreamer = "0.23"
 gstreamer-base = "0.23"
-ort = { version = "=2.0.0-rc.12", default-features = false, features = ["download-binaries"], optional = true }
-ndarray = { version = "0.16", optional = true }
+ort = { version = "=2.0.0-rc.12", default-features = false, features = ["load-dynamic", "ndarray", "api-24"], optional = true }
+ndarray = { version = "0.17", optional = true }
 
 [features]
-# AI background removal via ONNX Runtime (pulls a ~prebuilt onnxruntime binary).
-# Off by default so the core builds without network/native-link deps; the pure
-# preprocess/composite helpers compile and test regardless.
+# AI background removal via ONNX Runtime. `ort` is built with `load-dynamic`:
+# it dlopen()s libonnxruntime at runtime (resolved by `ensure_ort_dylib`), so the
+# build never fetches a binary (the rc `download-binaries` script is broken
+# upstream). Off by default; the pure preprocess/composite helpers compile and
+# test regardless.
 bgremove-onnx = ["dep:ort", "dep:ndarray"]
 
 [dev-dependencies]
