@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { existsSync, statSync } from 'node:fs';
 
-const SCREENS = ['shell', 'sidebar', 'header'];
+const SCREENS = ['shell', 'sidebar', 'header', 'editor'];
 const THEMES = ['dark', 'light'] as const;
 
 for (const screen of SCREENS) {
