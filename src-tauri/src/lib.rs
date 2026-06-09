@@ -66,19 +66,36 @@ pub fn run() {
             // (the menu handler has no access to the recorder's async start
             // path), so the item emits a `tray://record-toggle` event the
             // frontend listens for and dispatches the start/stop command.
-            let record_item = MenuItemBuilder::with_id("record-toggle", "Record / Stop")
-                .build(app)?;
-            let menu = MenuBuilder::new(app).item(&record_item).build()?;
-            TrayIconBuilder::new()
-                .tooltip("Wondershot")
-                .menu(&menu)
-                .on_menu_event(|app, event| {
-                    use tauri::Emitter;
-                    if event.id() == "record-toggle" {
-                        let _ = app.emit("tray://record-toggle", ());
-                    }
-                })
-                .build(app)?;
+            //
+            // libappindicator-sys panics (not Result-errors) if neither
+            // libayatana-appindicator3 nor libappindicator3 is present at
+            // runtime — e.g. a GNOME-runtime Flatpak that doesn't bundle it. A
+            // missing tray must not take the whole app down, so build it inside
+            // catch_unwind and degrade to "no tray" on failure.
+            let tray_handle = app.handle().clone();
+            let tray = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let record_item =
+                    MenuItemBuilder::with_id("record-toggle", "Record / Stop").build(&tray_handle)?;
+                let menu = MenuBuilder::new(&tray_handle).item(&record_item).build()?;
+                TrayIconBuilder::new()
+                    .tooltip("Wondershot")
+                    .menu(&menu)
+                    .on_menu_event(|app, event| {
+                        use tauri::Emitter;
+                        if event.id() == "record-toggle" {
+                            let _ = app.emit("tray://record-toggle", ());
+                        }
+                    })
+                    .build(&tray_handle)?;
+                Ok::<(), tauri::Error>(())
+            }));
+            match tray {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => eprintln!("tray icon unavailable: {e}"),
+                Err(_) => eprintln!(
+                    "tray icon unavailable: no appindicator library at runtime — continuing without a tray"
+                ),
+            }
 
             // Act on the launch args once the webview's cli:// listeners are
             // attached (it emits app://ready), so the event isn't dropped.
