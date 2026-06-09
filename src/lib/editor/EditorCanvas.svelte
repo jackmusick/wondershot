@@ -7,7 +7,7 @@
   import { History } from './history';
   import { drawStyle, type DrawStyle } from './style';
   import { drawTools, type DrawCtx } from './tools/index';
-  import { WS_NODE_NAME } from './tools/arrowLine';
+  import { WS_NODE_NAME, nodeToItemRef, tagNode } from './tools/arrowLine';
 
   let { path }: { path: string } = $props();
 
@@ -115,6 +115,33 @@
   }
 
   /**
+   * Persist a transformed Konva node back into the `items` model + history.
+   * Looks up the node's tagged item, asks its tool to read geometry back via
+   * `fromNode` (which bakes Transformer scale and resets the node), replaces the
+   * item in `items[]`, pushes a history snapshot, and re-tags the node so a
+   * subsequent drag/transform compounds from the new baseline. No-op if the
+   * node isn't tagged or its tool can't be resolved.
+   */
+  function persistNode(node: Konva.Node) {
+    if (!KonvaMod) return;
+    const prev = nodeToItemRef(node);
+    if (!prev) return;
+    const dt = drawTools[prev.type];
+    if (!dt) return;
+    const idx = items.indexOf(prev);
+    if (idx === -1) return;
+    const ctx = drawCtx(KonvaMod);
+    const updated = dt.fromNode(ctx, node, prev);
+    tagNode(node, updated);
+    const next = [...items];
+    next[idx] = updated;
+    items = next;
+    history.push([...items]);
+    annotationsLayer.batchDraw();
+    overlayLayer.batchDraw();
+  }
+
+  /**
    * Rebuild the annotations layer from the current `items` model. Destroys all
    * tool-created nodes (tagged with WS_NODE_NAME) and re-`render`s each item
    * via its tool module. Used after undo/redo. The transformer's selection is
@@ -156,8 +183,18 @@
     return { x: (p.x - stage.x()) / scale, y: (p.y - stage.y()) / scale };
   }
 
+  /** Item types edited by dragging the whole node, not a box transformer. */
+  const DRAG_ONLY_TYPES = new Set(['arrow', 'line']);
+
   function select(node: Konva.Node | null) {
     if (!transformer) return;
+    // Two-point items (arrow/line) are moved by dragging — they show no resize
+    // or rotate handles, matching the Python editor. Other items get the full
+    // box transformer. The node stays draggable either way.
+    const item = node ? nodeToItemRef(node) : undefined;
+    const dragOnly = !!item && DRAG_ONLY_TYPES.has(item.type);
+    transformer.resizeEnabled(!dragOnly);
+    transformer.rotateEnabled(!dragOnly);
     transformer.nodes(node ? [node] : []);
     overlayLayer.batchDraw();
   }
@@ -267,6 +304,19 @@
       if (currentTool === 'select') return;
       const pos = stagePointer();
       if (pos) dispatchToolEvent('up', pos, currentTool);
+    });
+
+    // --- Persist transforms back to the model + history ---
+    // Delegated on the annotations layer so it also covers nodes recreated by
+    // rebuildAnnotations(). A `dragend` fires when the user finishes moving a
+    // node; `transformend` when a box-transform (resize/rotate) completes.
+    annotationsLayer.on('dragend', (e) => {
+      if (e.target.hasName(WS_NODE_NAME)) persistNode(e.target);
+    });
+    transformer.on('transformend', () => {
+      transformer.nodes().forEach((n) => {
+        if (n.hasName(WS_NODE_NAME)) persistNode(n);
+      });
     });
 
     // --- Zoom: Ctrl+wheel about the pointer ---

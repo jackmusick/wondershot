@@ -25,6 +25,27 @@ export function arrowItem(p1: Vec2, p2: Vec2, style: DrawStyle): ArrowItem | nul
   };
 }
 
+/**
+ * Pure drag-translation readback for two-point items (arrow/line). Adds the
+ * drag delta (dx,dy) to both endpoints and returns an updated item with
+ * identity transform (pos/rotation/origin), matching how `arrowItem`/`lineItem`
+ * keep geometry in p1/p2. Unit-tested; `fromNode` delegates here.
+ */
+export function translateTwoPoint<T extends ArrowItem | LineItem>(
+  item: T,
+  dx: number,
+  dy: number,
+): T {
+  return {
+    ...item,
+    p1: [item.p1[0] + dx, item.p1[1] + dy],
+    p2: [item.p2[0] + dx, item.p2[1] + dy],
+    pos: [0, 0],
+    rotation: 0,
+    origin: [0, 0],
+  };
+}
+
 /** Pure geometry→Item mapping for lines. Returns null for a zero-length draw. */
 export function lineItem(p1: Vec2, p2: Vec2, style: DrawStyle): LineItem | null {
   if (isZeroLength(p1, p2)) return null;
@@ -139,6 +160,22 @@ function makeTwoPointTool(
       tagNode(n, item);
       ctx.layer.add(n);
       return n;
+    },
+    fromNode(_ctx, node, prev) {
+      // Two-point items are edited by dragging the whole node; bake the drag
+      // offset (node.x/y) into both endpoints, then reset the node position so
+      // its points stay in absolute image coords and subsequent drags compound
+      // from zero. Any stray Transformer scale is discarded (these nodes are
+      // not box-resizable — see EditorCanvas Transformer config).
+      const dx = node.x();
+      const dy = node.y();
+      const updated = translateTwoPoint(prev as ArrowItem | LineItem, dx, dy);
+      const shape = node as Konva.Arrow | Konva.Line;
+      shape.position({ x: 0, y: 0 });
+      shape.scale({ x: 1, y: 1 });
+      shape.rotation(0);
+      shape.points([updated.p1[0], updated.p1[1], updated.p2[0], updated.p2[1]]);
+      return updated;
     },
   };
 }

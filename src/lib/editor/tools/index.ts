@@ -17,6 +17,9 @@ export interface DrawTool {
   finish(ctx: DrawCtx, x: number, y: number): Item | null;
   /** Recreate a Konva node from a saved Item (for undo/redo + load). */
   render(ctx: DrawCtx, item: Item): Konva.Node;
+  /** Read a (possibly transformed) Konva node back into an updated model Item.
+   *  MUST bake any Transformer scale into real geometry and reset scale to 1. */
+  fromNode(ctx: DrawCtx, node: Konva.Node, prev: Item): Item;
 }
 
 export const drawTools: Partial<Record<string, DrawTool>> = {};
