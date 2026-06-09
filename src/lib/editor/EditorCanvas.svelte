@@ -1120,6 +1120,7 @@
                 .filter((n: any) => n.isVisible() && n.width() > 0).length
             : 0,
         scale: () => stage.scaleX(),
+        imageSize: () => ({ w: imgW, h: imgH }),
         ready: () => ready,
         // Effects are applied to the live scene (clip for rounded, a ws-fade
         // node for fade) — so they preview AND bake. Lets tests assert toggles.

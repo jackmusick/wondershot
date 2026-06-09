@@ -86,6 +86,25 @@ test('effects: toggling Rounded corners / Bottom fade applies to the live scene'
     .toBe(true);
 });
 
+test('cut (vertical band) removes a strip → image width shrinks', async ({ page }) => {
+  await gotoEditor(page);
+  const before = await hook(page, () => (window as any).__wsEditor.imageSize());
+  const box = await canvasBox(page);
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+
+  // Cut | drags a vertical band; committing should narrow the base image.
+  await pickTool(page, 'Cut |');
+  await page.mouse.move(cx - 30, cy - 100);
+  await page.mouse.down();
+  await page.mouse.move(cx + 30, cy + 100, { steps: 8 });
+  await page.mouse.up();
+
+  await expect
+    .poll(() => hook(page, () => (window as any).__wsEditor.imageSize().w))
+    .toBeLessThan(before.w);
+});
+
 test('step tool places exactly one badge per click (not drag-existing + add)', async ({ page }) => {
   await gotoEditor(page);
   const box = await canvasBox(page);
