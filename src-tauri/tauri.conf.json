@@ -43,7 +43,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["appimage", "rpm"],
+    "targets": ["appimage", "rpm", "deb"],
     "icon": ["icons/icon.png"],
     "category": "Utility",
     "shortDescription": "Screenshot & screen-recording with annotation",

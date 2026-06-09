@@ -1,18 +1,24 @@
-# Flatpak manifest — the Linux bundle (one install, zero distro deps).
+# Flatpak manifest — the Tauri Wondershot bundle (one install, real menu integration).
 #
-# Local build + run:
+# Local build + run (needs the .deb next to this file, named wondershot.deb):
+#   npm run tauri build -- --features bgremove
+#   cp src-tauri/target/release/bundle/deb/Wondershot_*_amd64.deb \
+#     packaging/flatpak/wondershot.deb
 #   flatpak-builder --user --install --force-clean build-dir \
 #     packaging/flatpak/io.github.jackmusick.wondershot.yml
 #   flatpak run io.github.jackmusick.wondershot
 #
-# NOTE for Flathub submission: Flathub builds are offline — the
-# pip module below must be converted with flatpak-pip-generator
-# (generated-sources.json). The network-using form is fine for CI
-# artifacts and local builds.
+# Like wonderblob's manifest, this does NOT compile Rust/JS in the sandbox —
+# it unpacks the prebuilt .deb and relies on org.gnome.Platform for
+# webkit2gtk-4.1. The KDE runtime ships GTK3+libsoup3 but NOT webkit, so the
+# GNOME runtime is the practical webview host; KWin scripting + portals still
+# work via the host D-Bus regardless of runtime. ffmpeg/x264/wl-clipboard/
+# onnxruntime/u2net are added as modules because the GNOME runtime doesn't
+# ship them and Wondershot shells out to / loads them at runtime.
 app-id: io.github.jackmusick.wondershot
-runtime: org.kde.Platform
-runtime-version: '6.9'
-sdk: org.kde.Sdk
+runtime: org.gnome.Platform
+runtime-version: '47'
+sdk: org.gnome.Sdk
 command: wondershot
 
 finish-args:
@@ -26,16 +32,17 @@ finish-args:
   # Library folders (watched dirs + sidecars)
   - --filesystem=xdg-pictures
   - --filesystem=xdg-videos
-  # KWin scripting (auto-size-to-window) + KGlobalAccel-adjacent calls
+  # KWin scripting (auto-size-to-window); host D-Bus, runtime-independent
   - --talk-name=org.kde.KWin
-  # Portals (screenshot/screencast/inputcapture) ride the session bus
+  # Portals (screenshot/screencast) ride the session bus
   - --talk-name=org.freedesktop.portal.Desktop
-  # OneDrive sign-in opens the browser + wondershot:// comes back
   - --talk-name=org.freedesktop.portal.OpenURI
+  # AI background removal loads the bundled u2net model from /app/share
+  - --env=WONDERSHOT_U2NET=/app/share/wondershot/u2net.onnx
 
 modules:
-  # libx264: not in the KDE SDK; ffmpeg below (and the video render
-  # path) needs it. Commit-pinned tarball (stable branch head).
+  # libx264: not in the GNOME SDK; ffmpeg below (and the video render path)
+  # needs it. Commit-pinned tarball (stable branch head).
   - name: x264
     config-opts:
       - --enable-shared
@@ -45,7 +52,7 @@ modules:
         url: https://code.videolan.org/videolan/x264/-/archive/b35605ace3ddf7c1a5d67a2eb553f034aef41d55/x264-b35605ace3ddf7c1a5d67a2eb553f034aef41d55.tar.bz2
         sha256: 6eeb82934e69fd51e043bd8c5b0d152839638d1ce7aa4eea65a3fedcf83ff224
 
-  # ffmpeg CLI: the runtime ships the libs, we shell out to the binary.
+  # ffmpeg CLI: Wondershot's video commands spawn the binary.
   - name: ffmpeg
     config-opts:
       - --disable-debug
@@ -60,9 +67,8 @@ modules:
         sha256: 40973d44970dbc83ef302b0609f2e74982be2d85916dd2ee7472d30678a7abe6
 
   # wl-clipboard: provides wl-copy. On Wayland the compositor grants the
-  # selection only to a focused client; our auto-copy runs with every window
-  # hidden, so Qt's setImage can't take it. wl-copy holds the selection via
-  # the data-control protocol, focus-independent. Not in the KDE runtime.
+  # selection only to a focused client; our auto-copy runs with the window
+  # hidden. wl-copy holds the selection via data-control, focus-independent.
   - name: wl-clipboard
     buildsystem: meson
     sources:
@@ -70,27 +76,51 @@ modules:
         url: https://github.com/bugaevc/wl-clipboard/archive/refs/tags/v2.2.1.tar.gz
         sha256: 6eb8081207fb5581d1d82c4bcd9587205a31a3d47bea3ebeb7f41aa1143783eb
 
-  - name: python3-pygobject
+  # onnxruntime: prebuilt shared lib for ort's load-dynamic backend. ort
+  # rc.12 targets ORT 1.24 (api-24); 1.26 is forward-compatible. The system
+  # loader finds libonnxruntime.so in /app/lib (ORT_DYLIB_PATH left unset).
+  - name: onnxruntime
     buildsystem: simple
     build-commands:
-      - pip3 install --prefix=${FLATPAK_DEST} --no-build-isolation pygobject
-    build-options:
-      build-args: [--share=network]
+      - install -Dm755 lib/libonnxruntime.so.1.26.0 /app/lib/libonnxruntime.so.1.26.0
+      - ln -s libonnxruntime.so.1.26.0 /app/lib/libonnxruntime.so
+    sources:
+      - type: archive
+        url: https://github.com/microsoft/onnxruntime/releases/download/v1.26.0/onnxruntime-linux-x64-1.26.0.tgz
+        sha256: 1254da24fb389cf39dc0ff3451ab48301740ffbfcbaf646849df92f80ee92c57
 
+  # u2net model (bundled; offline-safe). Resolved via WONDERSHOT_U2NET above.
+  - name: u2net-model
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 u2net.onnx /app/share/wondershot/u2net.onnx
+    sources:
+      - type: file
+        url: https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2net.onnx
+        sha256: 8d10d2f3bb75ae3b6d527c77944fc5e7dcd94b29809d47a739a7a728a912b491
+
+  # The Tauri app: unpack the prebuilt .deb (ar -> data.tar.* -> usr/ tree).
   - name: wondershot
     buildsystem: simple
     build-commands:
-      - pip3 install --prefix=${FLATPAK_DEST} PySide6
-      - pip3 install --prefix=${FLATPAK_DEST} --no-deps .
-      - install -Dm644 wondershot/data/wondershot.svg
-        ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg
-      # Icon= must match the flatpak app id or the icon won't resolve
-      - sed 's/^Icon=.*/Icon=io.github.jackmusick.wondershot/'
-        wondershot/data/wondershot.desktop > wondershot.desktop.flatpak
-      - install -Dm644 wondershot.desktop.flatpak
-        ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
-    build-options:
-      build-args: [--share=network]
+      - ar x wondershot.deb
+      - mkdir -p deb-root
+      - tar -xf data.tar.* -C deb-root
+      - install -Dm755 deb-root/usr/bin/wondershot ${FLATPAK_DEST}/bin/wondershot
+      # Desktop file, renamed to the app-id with Icon= pointed at the app-id.
+      - |
+        src_desktop=$(ls deb-root/usr/share/applications/*.desktop | head -n1)
+        sed 's/^Icon=.*/Icon=io.github.jackmusick.wondershot/' "$src_desktop" \
+          > ${FLATPAK_ID}.desktop
+        install -Dm644 ${FLATPAK_ID}.desktop \
+          ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      # Icons: copy every size/format the deb shipped, renamed to the app-id.
+      - |
+        for icon in $(find deb-root/usr/share/icons -type f); do
+          dir=$(dirname "$icon" | sed 's|deb-root/usr/share/icons|share/icons|')
+          ext="${icon##*.}"
+          install -Dm644 "$icon" "${FLATPAK_DEST}/${dir}/${FLATPAK_ID}.${ext}"
+        done
     sources:
-      - type: dir
-        path: ../..
+      - type: file
+        path: wondershot.deb
