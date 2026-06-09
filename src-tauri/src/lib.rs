@@ -26,6 +26,10 @@ pub fn run() {
             commands::capture_region,
             commands::capture_fullscreen,
             commands::capture_window,
+            commands::pixelate_patch,
+            commands::blur_patch,
+            commands::crop_base,
+            commands::cutout_base,
         ])
         .run(tauri::generate_context!())
         .expect("error while running wondershot");

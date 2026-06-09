@@ -128,3 +128,64 @@ pub async fn capture_fullscreen(app: tauri::AppHandle) -> Result<String, String>
 pub async fn capture_window(app: tauri::AppHandle) -> Result<String, String> {
     do_capture(app, capture::CaptureMode::Window).await
 }
+
+// --- imageops: raster pixel operations -------------------------------------
+
+/// PNG-encode an RGBA image and base64-encode the result.
+fn encode_png_b64(img: &image::RgbaImage) -> Result<String, String> {
+    use base64::Engine;
+    use std::io::Cursor;
+    let mut buf: Vec<u8> = Vec::new();
+    img.write_to(&mut Cursor::new(&mut buf), image::ImageFormat::Png)
+        .map_err(|e| e.to_string())?;
+    Ok(base64::engine::general_purpose::STANDARD.encode(&buf))
+}
+
+/// Pixelate the rect region of the base PNG; returns the patch as base64 PNG.
+#[tauri::command]
+pub fn pixelate_patch(path: String, rect: (u32, u32, u32, u32), block: u32) -> Result<String, String> {
+    let img = image::open(&path).map_err(|e| e.to_string())?.to_rgba8();
+    let patch = wondershot_core::imageops::pixelated_patch(&img, rect, block);
+    encode_png_b64(&patch)
+}
+
+/// Gaussian-blur the rect region of the base PNG; returns the patch as base64 PNG.
+#[tauri::command]
+pub fn blur_patch(path: String, rect: (u32, u32, u32, u32), radius: u32) -> Result<String, String> {
+    let img = image::open(&path).map_err(|e| e.to_string())?.to_rgba8();
+    let patch = wondershot_core::imageops::blurred_patch(&img, rect, radius);
+    encode_png_b64(&patch)
+}
+
+/// Crop the base PNG to `rect`, write the result as a NEW base file, and
+/// return the new base file's path. The next base index is derived from the
+/// sidecar's `bases` count (falling back to 0).
+#[tauri::command]
+pub fn crop_base(path: String, rect: (u32, u32, u32, u32)) -> Result<String, String> {
+    let img = image::open(&path).map_err(|e| e.to_string())?.to_rgba8();
+    let (x, y, w, h) = rect;
+    let out = wondershot_core::imageops::crop(&img, x, y, w, h);
+    write_new_base(&path, &out)
+}
+
+/// Remove a band from the base PNG (rows if `horizontal`, else columns),
+/// join the halves, write the result as a NEW base file, and return its path.
+#[tauri::command]
+pub fn cutout_base(path: String, a: u32, b: u32, horizontal: bool) -> Result<String, String> {
+    let img = image::open(&path).map_err(|e| e.to_string())?.to_rgba8();
+    let out = wondershot_core::imageops::cut_out(&img, a, b, horizontal);
+    write_new_base(&path, &out)
+}
+
+/// Write `img` as the next base file alongside `path` and return its path.
+fn write_new_base(path: &str, img: &image::RgbaImage) -> Result<String, String> {
+    let p = Path::new(path);
+    let next_n = sidecar::load(p).map(|d| d.bases).unwrap_or(0);
+    let base = sidecar::base_path(p, next_n);
+    if let Some(parent) = base.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    img.save_with_format(&base, image::ImageFormat::Png)
+        .map_err(|e| e.to_string())?;
+    Ok(base.to_string_lossy().into_owned())
+}
