@@ -8,6 +8,10 @@
   import { drawStyle, type DrawStyle } from './style';
   import { drawTools, type DrawCtx } from './tools/index';
   import { WS_NODE_NAME, nodeToItemRef, tagNode } from './tools/arrowLine';
+  // Side-effect import: registers the rect/ellipse/highlight box-shape tools
+  // into `drawTools`. Box tools are NOT in DRAG_ONLY_TYPES, so they get the
+  // full resize/rotate Transformer.
+  import './tools/boxShapes';
 
   let { path }: { path: string } = $props();
 
