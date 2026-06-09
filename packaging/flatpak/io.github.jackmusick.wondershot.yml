@@ -71,6 +71,12 @@ modules:
   # hidden. wl-copy holds the selection via data-control, focus-independent.
   - name: wl-clipboard
     buildsystem: meson
+    # The GNOME SDK's meson auto-detects fish/zsh and installs completions to
+    # absolute system dirs (/usr/share/fish/...) outside the build prefix, which
+    # is read-only in the flatpak sandbox. Disable them — wl-copy is all we need.
+    config-opts:
+      - -Dfishcompletiondir=no
+      - -Dzshcompletiondir=no
     sources:
       - type: archive
         url: https://github.com/bugaevc/wl-clipboard/archive/refs/tags/v2.2.1.tar.gz
