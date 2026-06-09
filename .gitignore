@@ -12,3 +12,11 @@ packaging/windows/ffmpeg.exe
 dist/
 build_pyi/
 .flatpak-builder/
+
+# Tauri / SvelteKit frontend
+node_modules/
+.svelte-kit/
+build/
+artifacts/
+src-tauri/target/
+test-results/
