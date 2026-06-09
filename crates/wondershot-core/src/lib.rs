@@ -6,3 +6,4 @@ pub mod clipboard;
 pub mod capture;
 pub mod editor;
 pub mod imageops;
+pub mod record;
