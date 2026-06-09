@@ -286,7 +286,9 @@ pub fn bg_model_available() -> bool {
 #[tauri::command]
 pub fn remove_background(path: String) -> Result<String, String> {
     let img = image::open(&path).map_err(|e| e.to_string())?.to_rgba8();
-    let out = bgremove::remove_background(&img, &bgremove::model_path())?;
+    let model = bgremove::resolved_model_path()
+        .ok_or_else(|| "background-removal model not installed".to_string())?;
+    let out = bgremove::remove_background(&img, &model)?;
     encode_png_b64(&out)
 }
 

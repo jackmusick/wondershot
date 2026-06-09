@@ -17,6 +17,12 @@ image = "0.25"
 base64 = "0.22"
 tokio = { version = "1", features = ["rt-multi-thread", "time", "process"] }
 
+[features]
+# Opt-in AI background removal — forwards to wondershot-core's ONNX inference
+# (load-dynamic; needs libonnxruntime + the u2net model at runtime). Release
+# builds pass --features bgremove; the default build omits it.
+bgremove = ["wondershot-core/bgremove-onnx"]
+
 [lib]
 name = "wondershot_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
