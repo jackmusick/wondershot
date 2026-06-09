@@ -7,3 +7,4 @@ pub mod capture;
 pub mod editor;
 pub mod imageops;
 pub mod record;
+pub mod video;
