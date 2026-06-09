@@ -6,11 +6,16 @@
 
 <div class="content-body" class:editor={$activeItem && $activeItem.kind !== 'video'} class:video={$activeItem?.kind === 'video'}>
   {#if $activeItem}
-    {#if $activeItem.kind === 'video'}
-      <VideoPlayer path={$activeItem.path} />
-    {:else}
-      <EditorCanvas path={$activeItem.path} />
-    {/if}
+    <!-- Key on path so switching captures remounts the player/editor and
+         reloads the new file (the editor builds its Konva stage in onMount and
+         doesn't otherwise react to a path-prop change → looked frozen). -->
+    {#key $activeItem.path}
+      {#if $activeItem.kind === 'video'}
+        <VideoPlayer path={$activeItem.path} />
+      {:else}
+        <EditorCanvas path={$activeItem.path} />
+      {/if}
+    {/key}
   {:else}
     <div class="placeholder">Select or take a capture</div>
   {/if}

@@ -1001,12 +1001,24 @@
       imageObj.src = src;
     })();
 
-    // --- Keep the stage sized to the container ---
+    // --- Keep the stage sized to the container AND re-center the image ---
+    // Resizing only the stage canvas left the image pinned at its old offset
+    // (looked frozen). Re-apply the current scale, which recenters; if the user
+    // hasn't zoomed (still at fit), re-fit so the image grows/shrinks with the
+    // window like the Qt editor.
+    let lastW = container.clientWidth;
+    let lastH = container.clientHeight;
     const ro = new ResizeObserver(() => {
       if (!stage) return;
-      stage.width(container.clientWidth);
-      stage.height(container.clientHeight);
-      stage.batchDraw();
+      const w = container.clientWidth;
+      const h = container.clientHeight;
+      if (w === lastW && h === lastH) return;
+      lastW = w;
+      lastH = h;
+      stage.width(w);
+      stage.height(h);
+      // Re-fit so the image expands/shrinks and stays centered with the window.
+      fitToView();
     });
     ro.observe(container);
 
