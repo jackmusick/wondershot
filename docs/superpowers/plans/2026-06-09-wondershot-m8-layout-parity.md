@@ -143,3 +143,30 @@ tests-ui/capture.spec.ts                       # update screen shots to the new 
 - **Reuse, not rewrite:** EditorCanvas/Konva, the recorder/video/settings commands, and the editor state are unchanged; M8 re-composes the shell and moves controls (effects → PropertiesPanel, library list → Filmstrip).
 - **No silent drops:** Record region, Share, and Sharing/AI settings tabs are rendered (disabled/stubbed with a reason) rather than omitted, so the surface matches the Qt app even where a backend is out of scope.
 - **Previews:** fixed already (assetProtocol scope) — T7 verifies it in the real app, the environment the bug actually manifests in.
+
+---
+
+## QA round (test-drive findings) — status + remaining
+
+The layout rebuild (T1–T3 + header/zoombar) landed; a real Flatpak test-drive then surfaced a
+batch of correctness/parity bugs. Key process change: **end-to-end Playwright interaction
+tests** now drive the live Konva canvas (mock IPC) via a `__wsEditor` hook — the interaction
+layer the M3 JSON/screenshot tests never exercised.
+
+**Fixed + verified (committed):**
+- ✅ Reads the user's real `~/.config/wondershot/wondershot.conf` in the Flatpak (`--filesystem=home`, host-config path, QSettings quote-strip); **unknown keys preserved on save** (no clobbering sharing/AI creds).
+- ✅ Preview/thumbnail images load (`assetProtocol` config **and** the `protocol-asset` Cargo feature).
+- ✅ Dark contrast / whiter text (chrome `#303034` over canvas `#161618`).
+- ✅ Header = Capture · Record · Record Region · Camera · Settings (icons), Share; tool rail icon+label + sparkle AI group.
+- ✅ Autosave (no Save button); window min-size; AI Redact/Simplify disabled (backend unwired).
+- ✅ Zoom moved to a bar below the canvas **with resolution**.
+- ✅ Canvas re-fits on resize + reloads on capture switch.
+- ✅ Effects (rounded corners + bottom fade) apply **live and bake** (E2E test).
+- ✅ **Transformer handles stay a usable screen size when zoomed out** — root cause of "no corners"; large screenshots fit-scale down and shrank anchors sub-pixel (E2E test).
+- ✅ **Steps no longer drag-existing + add** — annotations draggable only in Select mode (E2E test).
+
+**Remaining (this round):**
+- [ ] **T8 — Settings parity.** General tab still missing fields vs the Qt `settings_dialog.png`; **Sharing** and **AI** tabs absent. Match the Qt General fields (library/watch/hotkey/backend Spectacle/copy/show/quick-bar/bar-timeout/camera/mic/countdown/global-hotkey group) and add Sharing (S3/Azure/OneDrive) + AI (endpoint/model/key) tabs, bound to `get_settings`/`set_settings` (keys already preserved). On Linux capture offloads to Spectacle/portal; note the Windows/macOS gap.
+- [ ] **T9 — Capture flow.** "Capture is wrong": should open the compact Snagit-style capture panel and a Spectacle-style region **drag-selection**. In the Flatpak, Spectacle isn't in the sandbox → currently the portal Screenshot. Build the compact `CapturePanel` (toggles + big Capture + Full screen/Record) and make region capture reach Spectacle's drag UI (host Spectacle via `flatpak-spawn --host` with the right permission, or the portal interactive path) — verify in the real app.
+- [ ] **T10 — Blur.** "Translucent box, not blurred": the Rust `blurred_patch` is correct, so chase the patch round-trip in the real app (does `blur_patch` return / does the node swap fire); add a frontend E2E asserting the placeholder is replaced when the patch resolves.
+- [ ] **T11 — Filmstrip hover delete.** Add the hover (×)/pin affordance; needs a `trash_item` backend command (move to XDG trash) — not yet implemented.
