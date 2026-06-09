@@ -1,6 +1,6 @@
 <script lang="ts">
   import { activeTool, SHORTCUTS, type ToolId } from './tools';
-  import { zoomApi, saveApi, bgApi } from './zoom';
+  import { zoomApi, bgApi } from './zoom';
 
   // Tool metadata: id, human label, and an inline-SVG path/glyph. Icons are
   // simple monochrome strokes drawn in a 16x16 box; where an icon would be
@@ -59,10 +59,6 @@
 
   function zoom(fn: 'zoomIn' | 'zoomOut' | 'zoomActual' | 'zoomFit') {
     $zoomApi?.[fn]();
-  }
-
-  function save() {
-    void $saveApi?.();
   }
 
   // --- Remove BG: AI background removal (M5 T3) ---
@@ -144,10 +140,10 @@
     {#snippet sparkle()}
       <svg viewBox="0 0 16 16" class="ai-spark"><path d="M8 1.5l1.2 3.3L12.5 6 9.2 7.2 8 10.5 6.8 7.2 3.5 6l3.3-1.2z"/><path d="M12.8 10.2l.6 1.5 1.5.6-1.5.6-.6 1.5-.6-1.5-1.5-.6 1.5-.6z"/></svg>
     {/snippet}
-    <button class="tool ai" title="AI Redact — auto-detect & blur sensitive info" onclick={() => aiNotReady('AI Redact')}>
+    <button class="tool ai" disabled title="AI Redact — needs the AI backend (not wired yet)" onclick={() => aiNotReady('AI Redact')}>
       {@render sparkle()}<span class="tlabel">Redact</span>
     </button>
-    <button class="tool ai" title="AI Simplify — clean up the screenshot" onclick={() => aiNotReady('AI Simplify')}>
+    <button class="tool ai" disabled title="AI Simplify — needs the AI backend (not wired yet)" onclick={() => aiNotReady('AI Simplify')}>
       {@render sparkle()}<span class="tlabel">Simplify</span>
     </button>
     <button class="tool ai" title={bgTip} aria-label="Remove background" onclick={removeBg} disabled={!bgEnabled}>
@@ -165,9 +161,7 @@
     <button class="zbtn" title="Zoom in" aria-label="Zoom in" onclick={() => zoom('zoomIn')}>+</button>
   </div>
 
-  <span class="sep"></span>
-
-  <button class="save" title="Save (Ctrl+S)" aria-label="Save" onclick={save}>Save</button>
+  <span class="autosave" title="Edits save automatically">Auto-saved</span>
 </header>
 
 <style>
@@ -340,19 +334,12 @@
   .zbtn:hover,
   .ztext:hover { background: var(--bg-hover); }
 
-  .save {
-    height: 26px;
-    padding: 0 12px;
-    border: 1px solid var(--accent);
-    background: var(--accent);
-    color: #fff;
-    border-radius: var(--radius);
-    cursor: pointer;
+  .autosave {
     font-size: var(--text-small);
-    font-weight: 600;
+    color: var(--fg-secondary);
     flex-shrink: 0;
+    padding: 0 6px;
   }
-  .save:hover { filter: brightness(1.08); }
 
   .bgremove {
     height: 26px;

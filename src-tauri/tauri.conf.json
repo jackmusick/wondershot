@@ -11,7 +11,7 @@
   },
   "app": {
     "windows": [
-      { "label": "main", "title": "Wondershot", "width": 1100, "height": 720 },
+      { "label": "main", "title": "Wondershot", "width": 1100, "height": 720, "minWidth": 980, "minHeight": 620 },
       {
         "label": "countdown",
         "url": "/countdown",

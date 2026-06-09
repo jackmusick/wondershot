@@ -133,6 +133,19 @@
   /** Push the current base+items state onto the history stack. */
   function pushHistory() {
     history.push({ baseSrc: currentBaseSrc, items: [...items] });
+    scheduleAutosave();
+  }
+
+  // Autosave: the Qt editor had no Save button — edits persist automatically.
+  // Debounced so a burst of edits writes once; save() updates both the flattened
+  // library PNG (thumbnail/display) and the editable sidecar (base.0 + items).
+  let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
+  function scheduleAutosave() {
+    if (autosaveTimer) clearTimeout(autosaveTimer);
+    autosaveTimer = setTimeout(() => {
+      autosaveTimer = null;
+      if (!destroyed) void save();
+    }, 600);
   }
 
   /** Current draw style (color/width), kept in sync from the store. */
@@ -1048,6 +1061,14 @@
 
     return () => {
       cancelled = true;
+      // Flush a pending autosave before the stage is destroyed (flattenStage is
+      // synchronous, so the bake captures the live stage; the write completes
+      // after unmount). Prevents losing an edit made just before switching.
+      if (autosaveTimer) {
+        clearTimeout(autosaveTimer);
+        autosaveTimer = null;
+        void save();
+      }
       editTeardown?.();
       ro.disconnect();
       container.removeEventListener('wheel', onWheel);
@@ -1073,7 +1094,7 @@
     width: 100%;
     height: 100%;
     min-height: 0;
-    background: var(--bg-content);
+    background: var(--bg-app);
     overflow: hidden;
   }
 </style>
