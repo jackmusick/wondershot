@@ -100,6 +100,13 @@ export async function mockInvoke(cmd: string, _args?: unknown): Promise<unknown>
       const p = (_args as { path?: string } | undefined)?.path ?? '/mock/video.mp4';
       return p;
     }
+    case 'bg_model_available':
+      // No u2net model in browser dev → the Remove BG button stays disabled.
+      return false;
+    case 'remove_background':
+      // The button is disabled in the mock; if invoked anyway, mirror the real
+      // backend's "model/runtime unavailable" error.
+      throw new Error('background removal runtime not available');
     case 'pixelate_patch':
     case 'blur_patch':
       // The real backend reads the base image + processes the region; the mock

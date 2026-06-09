@@ -21,3 +21,16 @@ export const zoomApi = writable<ZoomApi | null>(null);
  * is mounted, so the button no-ops gracefully.
  */
 export const saveApi = writable<(() => Promise<void>) | null>(null);
+
+/**
+ * Background-removal bridge, mirroring saveApi. EditorCanvas registers its async
+ * `removeBackground()` here on mount; the EditorToolbar's "Remove BG" button
+ * calls it. `available` reflects whether the u2net model is installed (gates the
+ * button). Null when no canvas is mounted, so the button no-ops gracefully.
+ */
+export interface BgApi {
+  removeBackground: () => Promise<void>;
+  available: boolean;
+}
+
+export const bgApi = writable<BgApi | null>(null);

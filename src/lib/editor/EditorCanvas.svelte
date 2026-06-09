@@ -6,7 +6,7 @@
   import type { Item, Vec2 } from './model';
   import { History } from './history';
   import { drawStyle, textStyle, type DrawStyle, type TextStyle } from './style';
-  import { zoomApi, saveApi } from './zoom';
+  import { zoomApi, saveApi, bgApi } from './zoom';
   import { drawTools, type DrawCtx } from './tools/index';
   import { WS_NODE_NAME, nodeToItemRef, tagNode } from './tools/arrowLine';
   // Side-effect import: registers the rect/ellipse/highlight box-shape tools
@@ -427,6 +427,28 @@
       });
     };
     flatImg.src = flat;
+  }
+
+  /**
+   * AI background removal (M5 T3). Runs the u2net command on the ORIGINAL
+   * library image (`path`), which returns a base64 PNG with the background made
+   * transparent. Unlike the destructive ops, this swaps in the new base while
+   * KEEPING annotations (mirrors Python editor.py bg_done): the current base is
+   * recorded as a base push (so undo + the sidecar base stack work), then the
+   * new alpha'd base is loaded and history is pushed. Throws if the model /
+   * runtime is unavailable so the toolbar can surface the failure.
+   */
+  async function removeBackground(): Promise<void> {
+    if (!stage || imgW === 0 || imgH === 0) return;
+    const b64 = await ipcInvoke<string>('remove_background', { path });
+    if (!b64) throw new Error('background removal returned no image');
+    const newSrc = `data:image/png;base64,${b64}`;
+    // Record the current base for the sidecar base stack (KEEP annotations).
+    basePushes = [...basePushes, currentBaseSrc];
+    setBaseImage(newSrc, () => {
+      rebuildAnnotations();
+      pushHistory();
+    });
   }
 
   /** Crop the canvas to `rect` ([x, y, w, h]) in base-image coordinates. */
@@ -936,6 +958,18 @@
     });
     saveApi.set(save);
 
+    // Background-removal bridge: probe the model once on mount; the toolbar
+    // disables the button when the model is absent. Failures default to false.
+    (async () => {
+      let available = false;
+      try {
+        available = await ipcInvoke<boolean>('bg_model_available');
+      } catch {
+        available = false;
+      }
+      bgApi.set({ removeBackground, available });
+    })();
+
     window.addEventListener('keydown', onKeyDown);
 
     // --- Load the base image ---
@@ -984,6 +1018,7 @@
       window.removeEventListener('keydown', onKeyDown);
       zoomApi.set(null);
       saveApi.set(null);
+      bgApi.set(null);
       unsubTool();
       unsubStyle();
       unsubTextStyle();

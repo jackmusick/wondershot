@@ -2,7 +2,7 @@
   import { activeTool, SHORTCUTS, type ToolId } from './tools';
   import { drawStyle, textStyle, normalizeColor, type TextAlign } from './style';
   import { effects } from './effects';
-  import { zoomApi, saveApi } from './zoom';
+  import { zoomApi, saveApi, bgApi } from './zoom';
 
   // Tool metadata: id, human label, and an inline-SVG path/glyph. Icons are
   // simple monochrome strokes drawn in a 16x16 box; where an icon would be
@@ -88,6 +88,31 @@
 
   function save() {
     void $saveApi?.();
+  }
+
+  // --- Remove BG: AI background removal (M5 T3) ---
+  // The canvas registers a bgApi (removeBackground + model-available flag) on
+  // mount. The button is disabled until a canvas is mounted AND the model is
+  // installed. `bgBusy` guards against double-clicks during inference.
+  let bgBusy = $state(false);
+  let bgEnabled = $derived(!!$bgApi?.available && !bgBusy);
+  let bgTip = $derived(
+    !$bgApi
+      ? 'Remove background'
+      : $bgApi.available
+        ? 'Remove background (AI)'
+        : 'Background-removal model not installed'
+  );
+  async function removeBg() {
+    if (!$bgApi?.available || bgBusy) return;
+    bgBusy = true;
+    try {
+      await $bgApi.removeBackground();
+    } catch (e) {
+      console.error('remove background failed:', e);
+    } finally {
+      bgBusy = false;
+    }
   }
 </script>
 
@@ -212,6 +237,16 @@
   </div>
 
   <span class="sep"></span>
+
+  <button
+    class="bgremove"
+    title={bgTip}
+    aria-label="Remove background"
+    onclick={removeBg}
+    disabled={!bgEnabled}
+  >
+    {bgBusy ? 'Removing…' : 'Remove BG'}
+  </button>
 
   <button class="save" title="Save (Ctrl+S)" aria-label="Save" onclick={save}>Save</button>
 </header>
@@ -401,4 +436,20 @@
     flex-shrink: 0;
   }
   .save:hover { filter: brightness(1.08); }
+
+  .bgremove {
+    height: 26px;
+    padding: 0 10px;
+    border: 1px solid var(--border-strong);
+    background: var(--bg-field);
+    color: var(--fg-primary);
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-size: var(--text-small);
+    font-weight: 600;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .bgremove:hover:not(:disabled) { background: var(--bg-hover); }
+  .bgremove:disabled { opacity: 0.4; cursor: not-allowed; }
 </style>

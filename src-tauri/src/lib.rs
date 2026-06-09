@@ -46,6 +46,8 @@ pub fn run() {
             commands::blur_patch,
             commands::crop_base,
             commands::cutout_base,
+            commands::bg_model_available,
+            commands::remove_background,
             commands::flatten_save,
             commands::write_base,
             commands::read_base,

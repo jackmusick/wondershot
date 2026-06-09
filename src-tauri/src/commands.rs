@@ -1,6 +1,6 @@
 use std::path::Path;
 use std::sync::Mutex;
-use wondershot_core::{capture, clipboard, library, paths, settings::Settings, sidecar, video};
+use wondershot_core::{bgremove, capture, clipboard, library, paths, settings::Settings, sidecar, video};
 use wondershot_core::record::{files, pipeline, portal, recorder};
 
 #[tauri::command]
@@ -179,6 +179,28 @@ pub fn cutout_base(path: String, a: u32, b: u32, horizontal: bool) -> Result<Str
     let img = image::open(&path).map_err(|e| e.to_string())?.to_rgba8();
     let out = wondershot_core::imageops::cut_out(&img, a, b, horizontal);
     write_new_base(&path, &out)
+}
+
+// --- AI background removal (M5 T3) ------------------------------------------
+
+/// Whether the u2net model is installed (gates the editor "Remove BG" button).
+///
+/// The model is NOT downloaded by the app in M5 — packaging (M6) acquires it.
+/// Until a `u2net.onnx` lands at `~/.cache/wondershot/u2net.onnx`, the editor's
+/// Remove BG button stays disabled.
+#[tauri::command]
+pub fn bg_model_available() -> bool {
+    bgremove::model_available()
+}
+
+/// Run u2net background removal on the image at `path`, returning the result as
+/// a base64 PNG (RGBA with the background made transparent). Errors if the model
+/// is missing or the ONNX runtime was not compiled in (`bgremove-onnx` feature).
+#[tauri::command]
+pub fn remove_background(path: String) -> Result<String, String> {
+    let img = image::open(&path).map_err(|e| e.to_string())?.to_rgba8();
+    let out = bgremove::remove_background(&img, &bgremove::model_path())?;
+    encode_png_b64(&out)
 }
 
 // --- save / flatten / base persistence (T14) -------------------------------
