@@ -39,7 +39,13 @@
         "visible": false
       }
     ],
-    "security": { "csp": null }
+    "security": {
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["$HOME/**", "$PICTURE/**", "$VIDEO/**"]
+      }
+    }
   },
   "bundle": {
     "active": true,
