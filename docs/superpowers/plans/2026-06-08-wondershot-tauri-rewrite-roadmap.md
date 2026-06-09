@@ -57,7 +57,7 @@ Verified in tests: pure pipeline string + PTS/clock/escalation math; the gstream
 overlay + camera bubble as frameless windows. **Exit:** record→pause→resume→stop produces a
 valid mp4; finalize never strands a `.rendering` temp. Highest-risk milestone — single agent.
 
-### M5 — Video + settings + bg-removal
+### M5 — Video + settings + bg-removal  *(detailed plan written; building)*
 `video` (ffmpeg blur filter graph, GIF export, frame grab) + VideoPlayer UI; `settings`
 (serde to existing conf) + tabbed Settings modal; `bgremove` (`ort` + u2net ONNX) +
 Output-effects UI. Three independent subsystems → workflow pipeline. **Exit:** GIF export,
