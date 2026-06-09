@@ -21,6 +21,12 @@
   // Transformer, and fromNode bakes the scale into point_size.
   import './tools/text';
   import { textItem, makeTextNode } from './tools/text';
+  // Side-effect import: registers the step (numbered badge) tool. Step is
+  // click-placed by EditorCanvas (which derives the next number from items[]),
+  // like text. Step is NOT in DRAG_ONLY_TYPES — it gets the box Transformer, and
+  // fromNode bakes the scale into `radius`.
+  import './tools/step';
+  import { stepItem, nextStepNumber } from './tools/step';
   import type { TextItem } from './model';
 
   let { path }: { path: string } = $props();
@@ -321,6 +327,24 @@
     });
   }
 
+  /**
+   * Stamp a new numbered badge at image-space `pos`. The number is DERIVED from
+   * the current items[] (`nextStepNumber`) each time — no separate counter — so
+   * undo/redo and load reuse/continue numbering automatically. Renders the badge
+   * node, tags it, and appends to items + history.
+   */
+  function placeStep(pos: Vec2) {
+    if (!KonvaMod) return;
+    const n = nextStepNumber(items);
+    const item = stepItem(n, pos, currentStyle.color);
+    const node = drawTools.step?.render(drawCtx(KonvaMod), item);
+    if (!node) return;
+    tagNode(node, item);
+    items = [...items, item];
+    history.push([...items]);
+    annotationsLayer.batchDraw();
+  }
+
   /** Re-open the editor for an existing text node (double-click). On commit,
    *  update the tagged item in place (or remove it if emptied). */
   function editText(node: Konva.Text) {
@@ -486,6 +510,12 @@
         }
         const tp = stagePointer();
         if (tp) placeText([tp.x, tp.y]);
+        return;
+      }
+      // Step is click-placed (stamp the next badge), not dragged to size.
+      if (currentTool === 'step') {
+        const tp = stagePointer();
+        if (tp) placeStep([tp.x, tp.y]);
         return;
       }
       const pos = stagePointer();
