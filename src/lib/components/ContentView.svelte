@@ -1,19 +1,15 @@
 <script lang="ts">
-  import { activeItem, view } from '$lib/stores';
+  import { activeItem } from '$lib/stores';
   import EditorCanvas from '$lib/editor/EditorCanvas.svelte';
   import VideoPlayer from '$lib/video/VideoPlayer.svelte';
 </script>
 
-<div class="content-body" class:editor={$activeItem && $view === 'editor'} class:video={$activeItem?.kind === 'video'}>
+<div class="content-body" class:editor={$activeItem && $activeItem.kind !== 'video'} class:video={$activeItem?.kind === 'video'}>
   {#if $activeItem}
     {#if $activeItem.kind === 'video'}
       <VideoPlayer path={$activeItem.path} />
-    {:else if $view === 'gallery'}
-      <img class="preview" src={$activeItem.thumbnail} alt={$activeItem.title} />
-    {:else if $view === 'editor'}
-      <EditorCanvas path={$activeItem.path} />
     {:else}
-      <div class="placeholder">{$view} view — built in a later milestone</div>
+      <EditorCanvas path={$activeItem.path} />
     {/if}
   {:else}
     <div class="placeholder">Select or take a capture</div>

@@ -28,3 +28,9 @@ src-tauri/gen/
 # Flatpak build input (never commit the bundled deb)
 packaging/flatpak/*.deb
 packaging/flatpak/.flatpak-builder/
+
+# flatpak-builder output dirs
+build-flatpak/
+fp-build/
+fp-repo/
+.flatpak-builder/

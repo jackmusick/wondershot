@@ -3,9 +3,9 @@
   import { loadLibrary, takeCapture, openEditorByPath, importPaths } from '$lib/stores';
   import { ipcListen, ipcEmit } from '$lib/ipc';
   import { initRecordingEvents } from '$lib/recorder/control';
-  import LibrarySidebar from '$lib/components/LibrarySidebar.svelte';
   import CaptureHeader from '$lib/components/CaptureHeader.svelte';
   import ContentView from '$lib/components/ContentView.svelte';
+  import Filmstrip from '$lib/components/Filmstrip.svelte';
   import Settings from '$lib/components/Settings.svelte';
   onMount(() => {
     const uns: Array<() => void> = [];
@@ -32,15 +32,12 @@
 </script>
 
 <div class="shell">
-  <LibrarySidebar />
-  <main class="content">
-    <CaptureHeader />
-    <ContentView />
-  </main>
+  <CaptureHeader />
+  <ContentView />
+  <Filmstrip />
   <Settings />
 </div>
 
 <style>
-  .shell { display: flex; height: 100vh; }
-  .content { flex: 1; display: flex; flex-direction: column; background: var(--bg-content); min-width: 0; }
+  .shell { display: flex; flex-direction: column; height: 100vh; background: var(--bg-content); }
 </style>

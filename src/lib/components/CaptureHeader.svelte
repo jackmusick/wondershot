@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { recording, takeCapture, view, activeItem } from '$lib/stores';
+  import { recording, takeCapture, view, activeItem, settingsOpen } from '$lib/stores';
   import {
     startRecording,
     stopRecording,
@@ -19,9 +19,6 @@
   }
 </script>
 
-{#if $view === 'editor' && $activeItem}
-  <EditorToolbar />
-{:else}
 <header class="header">
   <div class="modes">
     {#each modes as m}
@@ -31,6 +28,7 @@
         onclick={() => m.mode && takeCapture(m.mode)}>{m.label}</button>
     {/each}
   </div>
+  <button class="mode" onclick={() => settingsOpen.set(true)}>⚙ Settings</button>
   <div class="spacer"></div>
   {#if $recording.status === 'recording'}
     <div class="rec-controls">
@@ -49,6 +47,8 @@
     <button class="record" onclick={() => startRecording()}>● Record</button>
   {/if}
 </header>
+{#if $view === 'editor' && $activeItem}
+  <EditorToolbar />
 {/if}
 
 <style>
