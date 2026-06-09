@@ -41,5 +41,17 @@
     ],
     "security": { "csp": null }
   },
-  "bundle": { "active": true, "targets": ["appimage", "rpm"], "icon": ["icons/icon.png"] }
+  "bundle": {
+    "active": true,
+    "targets": ["appimage", "rpm"],
+    "icon": ["icons/icon.png"],
+    "category": "Utility",
+    "shortDescription": "Screenshot & screen-recording with annotation",
+    "longDescription": "Capture, annotate, record, and redact your screen on Wayland/KDE.",
+    "linux": {
+      "rpm": {
+        "depends": ["ffmpeg", "wl-clipboard", "gstreamer1-plugin-pipewire", "onnxruntime"]
+      }
+    }
+  }
 }
