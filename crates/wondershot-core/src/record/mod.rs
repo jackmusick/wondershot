@@ -3,3 +3,4 @@
 pub mod clock;
 pub mod files;
 pub mod pipeline;
+pub mod recorder;
