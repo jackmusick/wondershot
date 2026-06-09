@@ -168,7 +168,20 @@ pub fn copy_image(path: String) -> Result<bool, String> {
     }
 }
 
+fn in_flatpak() -> bool {
+    std::env::var_os("FLATPAK_ID").is_some() || Path::new("/.flatpak-info").exists()
+}
+
+/// Whether the KDE Spectacle capture tool is reachable. In a Flatpak the sandbox
+/// PATH won't have it, but the HOST does — probe via `flatpak-spawn --host`.
 fn spectacle_on_path() -> bool {
+    if in_flatpak() {
+        return std::process::Command::new("flatpak-spawn")
+            .args(["--host", "which", "spectacle"])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+    }
     std::env::var_os("PATH").map_or(false, |paths| {
         std::env::split_paths(&paths).any(|p| p.join("spectacle").is_file())
     })
@@ -176,8 +189,19 @@ fn spectacle_on_path() -> bool {
 
 async fn run_spectacle(mode: capture::CaptureMode, out: &str, cursor: bool, delay: u32) -> Result<(), String> {
     let args = capture::spectacle::spectacle_args(mode, out, cursor, delay);
-    let status = tokio::process::Command::new("spectacle")
-        .args(&args)
+    // In a Flatpak, run the HOST spectacle (its rectangular drag-selection UI)
+    // via flatpak-spawn; the output path is under the user's home, which both the
+    // host and the sandbox (--filesystem=home) can see.
+    let mut cmd = if in_flatpak() {
+        let mut c = tokio::process::Command::new("flatpak-spawn");
+        c.arg("--host").arg("spectacle").args(&args);
+        c
+    } else {
+        let mut c = tokio::process::Command::new("spectacle");
+        c.args(&args);
+        c
+    };
+    let status = cmd
         .status()
         .await
         .map_err(|e| format!("could not start spectacle: {e}"))?;

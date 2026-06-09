@@ -1,20 +1,26 @@
 <script lang="ts">
   import { page } from '$app/state';
   import { onMount } from 'svelte';
-  import { loadLibrary } from '$lib/stores';
+  import { loadLibrary, capturePanelOpen } from '$lib/stores';
   import Filmstrip from '$lib/components/Filmstrip.svelte';
   import PropertiesPanel from '$lib/components/PropertiesPanel.svelte';
   import ZoomBar from '$lib/components/ZoomBar.svelte';
+  import CapturePanel from '$lib/components/CapturePanel.svelte';
   import CaptureHeader from '$lib/components/CaptureHeader.svelte';
   import EditorCanvas from '$lib/editor/EditorCanvas.svelte';
   import EditorToolbar from '$lib/editor/EditorToolbar.svelte';
   import VideoPlayer from '$lib/video/VideoPlayer.svelte';
   import Settings from '$lib/components/Settings.svelte';
   let screen = $derived(page.url.searchParams.get('screen') ?? 'shell');
-  onMount(loadLibrary);
+  onMount(() => {
+    loadLibrary();
+    if (screen === 'capture') capturePanelOpen.set(true);
+  });
 </script>
 
-{#if screen === 'filmstrip'}
+{#if screen === 'capture'}
+  <div style="height:100vh;background:var(--bg-content)"><CapturePanel /></div>
+{:else if screen === 'filmstrip'}
   <div style="background:var(--bg-content)"><Filmstrip /></div>
 {:else if screen === 'header'}
   <div style="background:var(--bg-content)"><CaptureHeader /></div>

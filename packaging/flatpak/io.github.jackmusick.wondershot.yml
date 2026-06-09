@@ -36,6 +36,9 @@ finish-args:
   - --filesystem=home
   # KWin scripting (auto-size-to-window); host D-Bus, runtime-independent
   - --talk-name=org.kde.KWin
+  # Run the HOST's Spectacle (its rectangular drag-selection UI) for captures via
+  # flatpak-spawn --host — the sandbox has no spectacle.
+  - --talk-name=org.freedesktop.Flatpak
   # Portals (screenshot/screencast) ride the session bus
   - --talk-name=org.freedesktop.portal.Desktop
   - --talk-name=org.freedesktop.portal.OpenURI

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { recording, takeCapture, view, activeItem, settingsOpen } from '$lib/stores';
+  import { recording, view, activeItem, settingsOpen, capturePanelOpen } from '$lib/stores';
   import { ipcInvoke } from '$lib/ipc';
   import {
     startRecording,
@@ -25,7 +25,7 @@
 </script>
 
 <header class="header">
-  <button class="hbtn" title="Capture a region (Spectacle / portal)" onclick={() => takeCapture('region')}>
+  <button class="hbtn" title="Capture (opens the capture panel)" onclick={() => capturePanelOpen.set(true)}>
     <svg viewBox="0 0 16 16"><path d="M2 5.5A1.5 1.5 0 0 1 3.5 4h1l1-1.5h3L9.5 4h3A1.5 1.5 0 0 1 14 5.5V12a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 12z"/><circle cx="8" cy="8.5" r="2.5"/></svg>
     Capture
   </button>

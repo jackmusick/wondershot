@@ -10,6 +10,7 @@
   import ZoomBar from '$lib/components/ZoomBar.svelte';
   import Filmstrip from '$lib/components/Filmstrip.svelte';
   import Settings from '$lib/components/Settings.svelte';
+  import CapturePanel from '$lib/components/CapturePanel.svelte';
   onMount(() => {
     const uns: Array<() => void> = [];
     let unRecording: (() => void) | undefined;
@@ -47,6 +48,7 @@
   {/if}
   <Filmstrip />
   <Settings />
+  <CapturePanel />
 </div>
 
 <style>
