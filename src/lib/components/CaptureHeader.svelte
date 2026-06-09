@@ -1,6 +1,11 @@
 <script lang="ts">
-  import { recording } from '$lib/stores';
-  const modes = ['Region', 'Full screen', 'Window', 'Scrolling'];
+  import { recording, takeCapture } from '$lib/stores';
+  const modes: { label: string; mode?: 'region' | 'fullscreen' | 'window' }[] = [
+    { label: 'Region', mode: 'region' },
+    { label: 'Full screen', mode: 'fullscreen' },
+    { label: 'Window', mode: 'window' },
+    { label: 'Scrolling' } // no backend in M2
+  ];
   function fmt(ms: number) {
     const s = Math.floor(ms / 1000);
     return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
@@ -10,7 +15,10 @@
 <header class="header">
   <div class="modes">
     {#each modes as m}
-      <button class="mode">{m}</button>
+      <button
+        class="mode"
+        disabled={!m.mode}
+        onclick={() => m.mode && takeCapture(m.mode)}>{m.label}</button>
     {/each}
   </div>
   <div class="spacer"></div>
@@ -30,9 +38,10 @@
   .modes { display: flex; gap: 2px; }
   .mode {
     height: 28px; padding: 0 12px; border: none; background: transparent;
-    color: var(--fg-primary); border-radius: var(--radius); font-size: var(--text-base); cursor: default;
+    color: var(--fg-primary); border-radius: var(--radius); font-size: var(--text-base); cursor: pointer;
   }
-  .mode:hover { background: var(--bg-hover); }
+  .mode:hover:not(:disabled) { background: var(--bg-hover); }
+  .mode:disabled { opacity: 0.4; cursor: default; }
   .spacer { flex: 1; }
   .record {
     height: 28px; padding: 0 14px; border: none; border-radius: var(--radius);

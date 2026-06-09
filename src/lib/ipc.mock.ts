@@ -38,12 +38,44 @@ export const MOCK_CAPTURES: Capture[] = [
   }
 ];
 
+let mockList: Capture[] = [...MOCK_CAPTURES];
+let counter = 0;
+
 export async function mockInvoke(cmd: string, _args?: unknown): Promise<unknown> {
   switch (cmd) {
     case 'health':
       return 'ok';
     case 'list_library':
-      return MOCK_CAPTURES;
+      return mockList;
+    case 'get_settings':
+      return {
+        library_dir: '/mock/Screenshots',
+        backend: 'auto',
+        capture_cursor: false,
+        capture_delay: 0,
+        extra_dirs: []
+      };
+    case 'load_sidecar':
+      return null;
+    case 'save_sidecar':
+      return true;
+    case 'copy_image':
+      return true;
+    case 'capture_region':
+    case 'capture_fullscreen':
+    case 'capture_window': {
+      counter += 1;
+      const cap: Capture = {
+        id: `new${counter}`,
+        path: `/mock/new${counter}.png`,
+        kind: 'image',
+        thumbnail: MOCK_CAPTURES[0].thumbnail,
+        createdAt: 1_760_000_000_000 + counter,
+        title: `Capture ${counter}`
+      };
+      mockList = [cap, ...mockList];
+      return cap.path;
+    }
     default:
       throw new Error(`mockInvoke: unhandled command ${cmd}`);
   }
