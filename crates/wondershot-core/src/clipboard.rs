@@ -30,7 +30,9 @@ pub fn copy_png(png: &[u8]) -> std::io::Result<bool> {
         .args(wl_copy_args())
         .stdin(std::process::Stdio::piped())
         .spawn()?;
-    child.stdin.as_mut().unwrap().write_all(png)?;
+    let mut stdin = child.stdin.take().expect("piped stdin");
+    stdin.write_all(png)?;
+    drop(stdin); // close the pipe so wl-copy sees EOF and exits (else wait() deadlocks)
     let status = child.wait()?;
     Ok(status.success())
 }
