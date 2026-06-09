@@ -3,7 +3,7 @@
   import type Konva from 'konva';
   import { assetSrc } from '$lib/ipc';
   import { activeTool, toolForKey, type ToolId } from './tools';
-  import type { Item } from './model';
+  import type { Item, Vec2 } from './model';
   import { History } from './history';
   import { drawStyle, type DrawStyle } from './style';
   import { drawTools, type DrawCtx } from './tools/index';
@@ -15,6 +15,13 @@
   // Side-effect import: registers the freehand (pen) tool into `drawTools`.
   // Freehand is a DRAG_ONLY_TYPE, like arrow/line.
   import './tools/freehand';
+  // Side-effect import: registers the text tool. Text placement + inline
+  // editing is driven by EditorCanvas (the textarea overlay below), since the
+  // tool can't own DOM. Text is NOT in DRAG_ONLY_TYPES — it gets the box
+  // Transformer, and fromNode bakes the scale into point_size.
+  import './tools/text';
+  import { textItem, makeTextNode } from './tools/text';
+  import type { TextItem } from './model';
 
   let { path }: { path: string } = $props();
 
@@ -193,6 +200,163 @@
   /** Item types edited by dragging the whole node, not a box transformer. */
   const DRAG_ONLY_TYPES = new Set(['arrow', 'line', 'freehand']);
 
+  // --- Inline text editor (HTML <textarea> overlay) ---
+  // A text annotation is edited via a real <textarea> positioned over the
+  // canvas at the node's screen location. Only one editor is open at a time.
+  // `editTeardown` removes the textarea + its listeners; it is called on
+  // commit, on opening a new editor, and on destroy.
+  let editTeardown: (() => void) | null = null;
+
+  /** Screen (container-local) position of an image-space point, via the stage
+   *  transform: screen = imagePos * scale + stagePosition. */
+  function imageToScreen(p: Vec2): { x: number; y: number } {
+    if (!stage) return { x: 0, y: 0 };
+    const scale = stage.scaleX();
+    return { x: p[0] * scale + stage.x(), y: p[1] * scale + stage.y() };
+  }
+
+  /**
+   * Open the inline text editor over `node` (a Konva.Text on the annotations
+   * layer). `onCommit(text)` receives the trimmed-or-raw working string when the
+   * user commits (blur, Escape, or Enter without Shift); the caller decides
+   * whether to keep, update, or discard the node based on emptiness.
+   */
+  function openTextEditor(node: Konva.Text, onCommit: (text: string) => void) {
+    if (!stage) return;
+    editTeardown?.(); // close any prior editor first
+
+    const scale = stage.scaleX();
+    const screen = imageToScreen([node.x(), node.y()]);
+    node.hide();
+    annotationsLayer.batchDraw();
+
+    const ta = document.createElement('textarea');
+    container.appendChild(ta);
+    ta.value = node.text();
+    ta.style.position = 'absolute';
+    ta.style.left = `${screen.x}px`;
+    ta.style.top = `${screen.y}px`;
+    ta.style.margin = '0';
+    ta.style.padding = '0';
+    ta.style.border = 'none';
+    ta.style.outline = 'none';
+    ta.style.background = 'transparent';
+    ta.style.overflow = 'hidden';
+    ta.style.resize = 'none';
+    ta.style.lineHeight = '1';
+    ta.style.whiteSpace = 'pre';
+    ta.style.fontSize = `${node.fontSize() * scale}px`;
+    ta.style.fontFamily = node.fontFamily();
+    ta.style.fontWeight = node.fontStyle().includes('bold') ? 'bold' : 'normal';
+    ta.style.color = node.fill() as string;
+    ta.style.transformOrigin = 'left top';
+    ta.style.zIndex = '10';
+    ta.style.minWidth = '1ch';
+
+    let committed = false;
+    const commit = () => {
+      if (committed) return;
+      committed = true;
+      const text = ta.value;
+      teardown();
+      onCommit(text);
+    };
+    const teardown = () => {
+      ta.removeEventListener('blur', commit);
+      ta.removeEventListener('keydown', onKey);
+      ta.remove();
+      node.show();
+      annotationsLayer.batchDraw();
+      if (editTeardown === teardown) editTeardown = null;
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' || (e.key === 'Enter' && !e.shiftKey)) {
+        e.preventDefault();
+        commit();
+      }
+    };
+    ta.addEventListener('blur', commit);
+    ta.addEventListener('keydown', onKey);
+    editTeardown = teardown;
+
+    ta.focus();
+    ta.select();
+  }
+
+  /**
+   * Place a new text annotation at image-space `pos` and open the editor. On
+   * commit: if the text is non-empty, build the item via textItem(), set it on
+   * the node, tag it, append to items + history; if empty, destroy the node.
+   */
+  function placeText(pos: Vec2) {
+    if (!KonvaMod) return;
+    const placeholder: TextItem = textItem('', pos, { color: currentStyle.color }) ?? {
+      type: 'text',
+      text: '',
+      color: currentStyle.color,
+      family: 'sans-serif',
+      point_size: 24,
+      bold: true,
+      text_width: -1,
+      align: 'left',
+      pos: [pos[0], pos[1]],
+      rotation: 0,
+      origin: [0, 0],
+    };
+    const node = makeTextNode(drawCtx(KonvaMod), placeholder);
+    annotationsLayer.add(node);
+    annotationsLayer.batchDraw();
+    openTextEditor(node, (text) => {
+      const item = textItem(text, pos, { color: currentStyle.color });
+      if (!item) {
+        node.destroy();
+        annotationsLayer.batchDraw();
+        return;
+      }
+      node.text(item.text);
+      tagNode(node, item);
+      items = [...items, item];
+      history.push([...items]);
+      annotationsLayer.batchDraw();
+    });
+  }
+
+  /** Re-open the editor for an existing text node (double-click). On commit,
+   *  update the tagged item in place (or remove it if emptied). */
+  function editText(node: Konva.Text) {
+    const prev = nodeToItemRef(node) as TextItem | undefined;
+    if (!prev) return;
+    openTextEditor(node, (text) => {
+      const idx = items.indexOf(prev);
+      const item = textItem(text, prev.pos, {
+        color: prev.color,
+        family: prev.family,
+        point_size: prev.point_size,
+        bold: prev.bold,
+        text_width: prev.text_width,
+        align: prev.align,
+      });
+      if (!item) {
+        if (idx !== -1) items = items.filter((i) => i !== prev);
+        node.destroy();
+        transformer.nodes([]);
+        annotationsLayer.batchDraw();
+        overlayLayer.batchDraw();
+        history.push([...items]);
+        return;
+      }
+      node.text(item.text);
+      tagNode(node, item);
+      if (idx !== -1) {
+        const next = [...items];
+        next[idx] = item;
+        items = next;
+      }
+      annotationsLayer.batchDraw();
+      history.push([...items]);
+    });
+  }
+
   function select(node: Konva.Node | null) {
     if (!transformer) return;
     // Two-point items (arrow/line) are moved by dragging — they show no resize
@@ -312,8 +476,27 @@
         }
         return;
       }
+      // Text is click-placed with an inline editor, not dragged to size.
+      if (currentTool === 'text') {
+        // Clicking an existing text node re-opens its editor instead of placing
+        // a new one stacked on top.
+        if (e.target.getLayer() === annotationsLayer && e.target.getClassName() === 'Text') {
+          editText(e.target as Konva.Text);
+          return;
+        }
+        const tp = stagePointer();
+        if (tp) placeText([tp.x, tp.y]);
+        return;
+      }
       const pos = stagePointer();
       if (pos) dispatchToolEvent('down', pos, currentTool);
+    });
+    // Double-clicking any text node re-opens its inline editor, regardless of
+    // the active tool (e.g. while in select mode).
+    stage.on('dblclick dbltap', (e) => {
+      if (e.target.getLayer() === annotationsLayer && e.target.getClassName() === 'Text') {
+        editText(e.target as Konva.Text);
+      }
     });
     stage.on('pointermove', () => {
       if (currentTool === 'select') return;
@@ -397,6 +580,7 @@
 
     return () => {
       cancelled = true;
+      editTeardown?.();
       ro.disconnect();
       container.removeEventListener('wheel', onWheel);
       window.removeEventListener('keydown', onKeyDown);
@@ -412,6 +596,7 @@
 
 <style>
   .editor-canvas {
+    position: relative;
     flex: 1;
     width: 100%;
     height: 100%;
