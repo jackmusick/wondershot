@@ -11,6 +11,7 @@ tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-single-instance = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+wondershot-core = { path = "../crates/wondershot-core" }
 
 [lib]
 name = "wondershot_lib"
