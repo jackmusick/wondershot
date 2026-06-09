@@ -6,6 +6,10 @@ export interface DrawCtx {
   layer: Konva.Layer; // annotations layer to draw onto
   Konva: typeof Konva; // the loaded Konva module
   style: DrawStyle; // current color/width
+  /** Fetch a processed patch PNG (data URL) for a region of the base image.
+   *  kind 'pixelate' uses `param` as block size; 'blur' uses it as radius.
+   *  Returns null if unavailable. Provided by the canvas (wraps the Tauri command). */
+  patch?(kind: 'pixelate' | 'blur', rect: [number, number, number, number], param: number): Promise<string | null>;
 }
 
 /** A drawing tool: begins on pointerdown, updates on move, finishes on up.

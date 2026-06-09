@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import type Konva from 'konva';
-  import { assetSrc } from '$lib/ipc';
+  import { assetSrc, ipcInvoke } from '$lib/ipc';
   import { activeTool, toolForKey, type ToolId } from './tools';
   import type { Item, Vec2 } from './model';
   import { History } from './history';
@@ -27,6 +27,10 @@
   // fromNode bakes the scale into `radius`.
   import './tools/step';
   import { stepItem, nextStepNumber } from './tools/step';
+  // Side-effect import: registers the pixelate + blur tools. These draw a box
+  // and display a Rust-computed processed patch of the base image (async fill
+  // via ctx.patch below). NOT in DRAG_ONLY_TYPES — they get the box Transformer.
+  import './tools/redact';
   import type { TextItem } from './model';
 
   let { path }: { path: string } = $props();
@@ -98,9 +102,32 @@
   let currentStyle: DrawStyle = { color: '#ff3b30ff', width: 4 };
   const unsubStyle = drawStyle.subscribe((s) => (currentStyle = s));
 
+  /**
+   * Fetch a Rust-computed processed patch (pixelate/blur) for a region of the
+   * base image and return it as a `data:image/png;base64,…` URL. The backend
+   * returns the bare base64 body; we add the prefix. Returns null on any error
+   * (or in the mock) so the redact tool keeps its gray placeholder.
+   */
+  async function fetchPatch(
+    kind: 'pixelate' | 'blur',
+    rect: [number, number, number, number],
+    param: number,
+  ): Promise<string | null> {
+    try {
+      const cmd = kind === 'pixelate' ? 'pixelate_patch' : 'blur_patch';
+      const args =
+        kind === 'pixelate' ? { path, rect, block: param } : { path, rect, radius: param };
+      const b64 = await ipcInvoke<string>(cmd, args);
+      if (!b64) return null;
+      return `data:image/png;base64,${b64}`;
+    } catch {
+      return null;
+    }
+  }
+
   /** Build the DrawCtx handed to every tool. */
   function drawCtx(Konva: typeof import('konva').default): DrawCtx {
-    return { layer: annotationsLayer, Konva, style: currentStyle };
+    return { layer: annotationsLayer, Konva, style: currentStyle, patch: fetchPatch };
   }
 
   let KonvaMod: typeof import('konva').default | null = null;

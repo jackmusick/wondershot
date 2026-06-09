@@ -3,6 +3,11 @@ import type { Capture } from '$lib/types';
 const PIXEL =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
+/** A 1×1 solid gray PNG, base64 body only (no `data:` prefix). The redact tool
+ *  stretches it to fill the region, giving dev/browser a visible placeholder. */
+const GRAY_PNG_B64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNgaGD4DwABBQEAwj2hKQAAAABJRU5ErkJggg==';
+
 export const MOCK_CAPTURES: Capture[] = [
   {
     id: 'c1',
@@ -61,6 +66,12 @@ export async function mockInvoke(cmd: string, _args?: unknown): Promise<unknown>
       return true;
     case 'copy_image':
       return true;
+    case 'pixelate_patch':
+    case 'blur_patch':
+      // The real backend reads the base image + processes the region; the mock
+      // just returns a solid gray PNG (base64 body, no prefix — the canvas adds
+      // it) so the redact tool can render a placeholder without a real backend.
+      return GRAY_PNG_B64;
     case 'capture_region':
     case 'capture_fullscreen':
     case 'capture_window': {
