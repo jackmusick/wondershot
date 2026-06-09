@@ -31,6 +31,15 @@
   // and display a Rust-computed processed patch of the base image (async fill
   // via ctx.patch below). NOT in DRAG_ONLY_TYPES — they get the box Transformer.
   import './tools/redact';
+  // Destructive base-image ops (crop, cutout V/H). These don't add items —
+  // they flatten the canvas, transform the base, clear annotations, and are
+  // undoable via the base-aware history snapshot below.
+  import {
+    cropCanvas,
+    cutoutVCanvas,
+    cutoutHCanvas,
+    type Rect4,
+  } from './tools/destructive';
   import type { TextItem } from './model';
 
   let { path }: { path: string } = $props();
@@ -95,8 +104,32 @@
   }
 
   // --- Annotation model + undo/redo history ---
+  // The editor's undoable state is BOTH the base image and the items[].
+  // Destructive ops (crop/cutout) change the base, so the history snapshots
+  // both. `baseSrc` is a data URL (or the original image src) of the current
+  // base image; `currentBaseSrc` tracks it and is folded into every push.
+  interface EditorSnapshot {
+    baseSrc: string;
+    items: Item[];
+  }
   let items: Item[] = $state([]);
-  const history = new History<Item[]>([]);
+  let currentBaseSrc = '';
+  const history = new History<EditorSnapshot>({ baseSrc: '', items: [] });
+
+  /**
+   * Pre-op flattened images (data URLs), one per destructive op, in order.
+   * T14 (save) persists these as the sidecar base stack. Exposed as a
+   * component variable so the save path can read it.
+   */
+  let basePushes: string[] = $state([]);
+  export function getBasePushes(): string[] {
+    return basePushes;
+  }
+
+  /** Push the current base+items state onto the history stack. */
+  function pushHistory() {
+    history.push({ baseSrc: currentBaseSrc, items: [...items] });
+  }
 
   /** Current draw style (color/width), kept in sync from the store. */
   let currentStyle: DrawStyle = { color: '#ff3b30ff', width: 4 };
@@ -156,7 +189,7 @@
       const item = dt.finish(ctx, pos.x, pos.y);
       if (item) {
         items = [...items, item];
-        history.push([...items]);
+        pushHistory();
       }
     }
   }
@@ -183,7 +216,7 @@
     const next = [...items];
     next[idx] = updated;
     items = next;
-    history.push([...items]);
+    pushHistory();
     annotationsLayer.batchDraw();
     overlayLayer.batchDraw();
   }
@@ -207,18 +240,203 @@
     overlayLayer.batchDraw();
   }
 
+  /**
+   * Set the base Konva.Image to `src`, loading it if it differs from the
+   * currently-displayed base. Updates imgW/imgH and re-fits the view only when
+   * the natural dimensions change (so an undo that doesn't resize the base
+   * leaves zoom/pan untouched). `onReady` fires after the new image is in place.
+   */
+  function setBaseImage(src: string, onReady?: () => void) {
+    if (!KonvaMod || !stage) return;
+    currentBaseSrc = src;
+    if (!src) {
+      onReady?.();
+      return;
+    }
+    // No-op fast path: the displayed base already matches.
+    if (imageNode && imageNode.image() && (imageNode.image() as HTMLImageElement).src === src) {
+      onReady?.();
+      return;
+    }
+    const img = new Image();
+    img.onload = () => {
+      if (!stage || !KonvaMod) return;
+      const dimsChanged = img.naturalWidth !== imgW || img.naturalHeight !== imgH;
+      imgW = img.naturalWidth;
+      imgH = img.naturalHeight;
+      if (imageNode) imageNode.destroy();
+      imageNode = new KonvaMod.Image({ image: img, x: 0, y: 0, width: imgW, height: imgH });
+      baseLayer.add(imageNode);
+      baseLayer.batchDraw();
+      if (dimsChanged) fitToView();
+      onReady?.();
+    };
+    img.src = src;
+  }
+
+  /** Restore an editor snapshot: base image + items + annotation nodes. */
+  function restoreSnapshot(snap: EditorSnapshot) {
+    items = [...snap.items];
+    setBaseImage(snap.baseSrc, () => rebuildAnnotations());
+  }
+
+  /**
+   * Flatten the base + annotations into a single PNG at the BASE image's
+   * natural pixel resolution (NOT the zoomed view). Temporarily resets the
+   * stage to scale 1 / position 0, hides the overlay (transformer handles),
+   * exports the base+annotation region [0,0,imgW,imgH] at pixelRatio 1, then
+   * restores the prior scale/position. Returns a data URL whose dimensions
+   * equal (imgW, imgH).
+   */
+  function flattenStage(): string {
+    if (!stage) return currentBaseSrc;
+    const prevScale = stage.scaleX();
+    const prevPos = stage.position();
+    const overlayVisible = overlayLayer.visible();
+    overlayLayer.visible(false);
+    stage.scale({ x: 1, y: 1 });
+    stage.position({ x: 0, y: 0 });
+    stage.batchDraw();
+    const url = stage.toDataURL({
+      x: 0,
+      y: 0,
+      width: imgW,
+      height: imgH,
+      pixelRatio: 1,
+    });
+    // Restore the view exactly as it was.
+    stage.scale({ x: prevScale, y: prevScale });
+    stage.position(prevPos);
+    overlayLayer.visible(overlayVisible);
+    stage.batchDraw();
+    return url;
+  }
+
+  /**
+   * Apply a destructive op: take the pre-op flattened image and a builder that
+   * produces the new base canvas. Records the base push, swaps in the new base,
+   * clears all annotations, re-fits the (resized) view, and pushes history.
+   */
+  function applyDestructive(buildNewBase: (flatImg: HTMLImageElement) => HTMLCanvasElement) {
+    if (!stage || imgW === 0 || imgH === 0) return;
+    const flat = flattenStage();
+    const flatImg = new Image();
+    flatImg.onload = () => {
+      const newCanvas = buildNewBase(flatImg);
+      const newSrc = newCanvas.toDataURL('image/png');
+      // The pre-op flattened image is the base push for the sidecar stack.
+      basePushes = [...basePushes, flat];
+      // Clear annotations — they are baked into the flattened base.
+      items = [];
+      rebuildAnnotations();
+      // Swap in the new base (dims change → setBaseImage re-fits).
+      setBaseImage(newSrc, () => {
+        rebuildAnnotations();
+        pushHistory();
+      });
+    };
+    flatImg.src = flat;
+  }
+
+  /** Crop the canvas to `rect` ([x, y, w, h]) in base-image coordinates. */
+  function doCrop(rect: Rect4) {
+    if (rect[2] <= 0 || rect[3] <= 0) return;
+    applyDestructive((flatImg) => cropCanvas(flatImg, rect));
+  }
+
+  /** Remove a full-height vertical band [x1, x2) (join left + right). */
+  function doCutoutV(x1: number, x2: number) {
+    const a = Math.min(x1, x2);
+    const b = Math.max(x1, x2);
+    if (b - a <= 0) return;
+    applyDestructive((flatImg) => cutoutVCanvas(flatImg, imgW, imgH, a, b));
+  }
+
+  /** Remove a full-width horizontal band [y1, y2) (join top + bottom). */
+  function doCutoutH(y1: number, y2: number) {
+    const a = Math.min(y1, y2);
+    const b = Math.max(y1, y2);
+    if (b - a <= 0) return;
+    applyDestructive((flatImg) => cutoutHCanvas(flatImg, imgW, imgH, a, b));
+  }
+
+  // --- Destructive drag state + preview rectangle ---
+  // crop drags a box; cutout-v drags an x-range (full-height band); cutout-h
+  // drags a y-range (full-width band). A temporary Konva.Rect on the overlay
+  // layer previews the region during the drag; it's removed on finish.
+  let destStart: { x: number; y: number } | null = null;
+  let destPreview: Konva.Rect | null = null;
+
+  function clamp(v: number, lo: number, hi: number): number {
+    return Math.max(lo, Math.min(hi, v));
+  }
+
+  /** Compute the destructive region [x, y, w, h] in base coords for the active
+   *  tool, given the drag start and current pointer. */
+  function destRect(cur: { x: number; y: number }, tool: ToolId): Rect4 {
+    if (!destStart) return [0, 0, 0, 0];
+    const sx = clamp(destStart.x, 0, imgW);
+    const sy = clamp(destStart.y, 0, imgH);
+    const cx = clamp(cur.x, 0, imgW);
+    const cy = clamp(cur.y, 0, imgH);
+    const x = Math.min(sx, cx);
+    const y = Math.min(sy, cy);
+    const w = Math.abs(cx - sx);
+    const h = Math.abs(cy - sy);
+    if (tool === 'cutout-v') return [x, 0, w, imgH]; // full-height band
+    if (tool === 'cutout-h') return [0, y, imgW, h]; // full-width band
+    return [x, y, w, h]; // crop box
+  }
+
+  function destBegin(pos: { x: number; y: number }, _tool: ToolId) {
+    if (!KonvaMod) return;
+    destStart = pos;
+    destPreview = new KonvaMod.Rect({
+      x: 0,
+      y: 0,
+      width: 0,
+      height: 0,
+      fill: 'rgba(0, 122, 255, 0.18)',
+      stroke: '#007aff',
+      strokeWidth: 1,
+      listening: false,
+      strokeScaleEnabled: false,
+    });
+    overlayLayer.add(destPreview);
+    overlayLayer.batchDraw();
+  }
+
+  function destUpdate(pos: { x: number; y: number }, tool: ToolId) {
+    if (!destStart || !destPreview) return;
+    const [x, y, w, h] = destRect(pos, tool);
+    destPreview.setAttrs({ x, y, width: w, height: h });
+    overlayLayer.batchDraw();
+  }
+
+  function destFinish(pos: { x: number; y: number }, tool: ToolId) {
+    if (!destStart) return;
+    const [x, y, w, h] = destRect(pos, tool);
+    destPreview?.destroy();
+    destPreview = null;
+    destStart = null;
+    overlayLayer.batchDraw();
+    if (tool === 'crop') doCrop([x, y, w, h]);
+    else if (tool === 'cutout-v') doCutoutV(x, x + w);
+    else if (tool === 'cutout-h') doCutoutH(y, y + h);
+  }
+
+  const DESTRUCTIVE_TOOLS = new Set<ToolId>(['crop', 'cutout-v', 'cutout-h']);
+
   function undo() {
     const snap = history.undo();
     if (snap === null) return;
-    items = [...snap];
-    rebuildAnnotations();
+    restoreSnapshot(snap);
   }
 
   function redo() {
     const snap = history.redo();
     if (snap === null) return;
-    items = [...snap];
-    rebuildAnnotations();
+    restoreSnapshot(snap);
   }
 
   /** Pointer position in stage (image) coordinates. */
@@ -349,7 +567,7 @@
       node.text(item.text);
       tagNode(node, item);
       items = [...items, item];
-      history.push([...items]);
+      pushHistory();
       annotationsLayer.batchDraw();
     });
   }
@@ -368,7 +586,7 @@
     if (!node) return;
     tagNode(node, item);
     items = [...items, item];
-    history.push([...items]);
+    pushHistory();
     annotationsLayer.batchDraw();
   }
 
@@ -393,7 +611,7 @@
         transformer.nodes([]);
         annotationsLayer.batchDraw();
         overlayLayer.batchDraw();
-        history.push([...items]);
+        pushHistory();
         return;
       }
       node.text(item.text);
@@ -404,7 +622,7 @@
         items = next;
       }
       annotationsLayer.batchDraw();
-      history.push([...items]);
+      pushHistory();
     });
   }
 
@@ -436,7 +654,7 @@
       });
       // If any items were removed, push a history snapshot.
       if (changed) {
-        history.push([...items]);
+        pushHistory();
       }
       transformer.nodes([]);
       annotationsLayer.batchDraw();
@@ -545,6 +763,12 @@
         if (tp) placeStep([tp.x, tp.y]);
         return;
       }
+      // Destructive ops (crop/cutout) drag a box/band on the overlay layer.
+      if (DESTRUCTIVE_TOOLS.has(currentTool)) {
+        const tp = stagePointer();
+        if (tp) destBegin(tp, currentTool);
+        return;
+      }
       const pos = stagePointer();
       if (pos) dispatchToolEvent('down', pos, currentTool);
     });
@@ -558,12 +782,22 @@
     stage.on('pointermove', () => {
       if (currentTool === 'select') return;
       const pos = stagePointer();
-      if (pos) dispatchToolEvent('move', pos, currentTool);
+      if (!pos) return;
+      if (DESTRUCTIVE_TOOLS.has(currentTool)) {
+        destUpdate(pos, currentTool);
+        return;
+      }
+      dispatchToolEvent('move', pos, currentTool);
     });
     stage.on('pointerup', () => {
       if (currentTool === 'select') return;
       const pos = stagePointer();
-      if (pos) dispatchToolEvent('up', pos, currentTool);
+      if (!pos) return;
+      if (DESTRUCTIVE_TOOLS.has(currentTool)) {
+        destFinish(pos, currentTool);
+        return;
+      }
+      dispatchToolEvent('up', pos, currentTool);
     });
 
     // --- Persist transforms back to the model + history ---
@@ -604,6 +838,11 @@
         imageNode = new Konva.Image({ image: imageObj, x: 0, y: 0, width: imgW, height: imgH });
         baseLayer.add(imageNode);
         baseLayer.batchDraw();
+
+        // Seed the base-aware history with the loaded base as the initial
+        // snapshot, so undo can restore the original (pre-destructive) base.
+        currentBaseSrc = src;
+        history.reset({ baseSrc: src, items: [] });
 
         // Demo annotation so selection + transformer are screenshot-able.
         const demo = new Konva.Rect({

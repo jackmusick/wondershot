@@ -20,6 +20,15 @@ export class History<T> {
     return this.stack[this.index];
   }
 
+  /** Re-seed the stack with a single initial snapshot, discarding all history.
+   *  Used once the editor's base image has loaded and the true initial
+   *  snapshot (base src + empty items) is known. */
+  reset(initial: T): void {
+    this.stack = [initial];
+    this.index = 0;
+    this.cleanIndex = 0;
+  }
+
   push(snapshot: T): void {
     // Drop any redo branch ahead of the current position before appending.
     this.stack = this.stack.slice(0, this.index + 1);
