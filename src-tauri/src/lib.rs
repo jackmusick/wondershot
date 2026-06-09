@@ -16,7 +16,17 @@ pub fn run() {
                 .build(app)?;
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![commands::health])
+        .invoke_handler(tauri::generate_handler![
+            commands::health,
+            commands::get_settings,
+            commands::list_library,
+            commands::load_sidecar,
+            commands::save_sidecar,
+            commands::copy_image,
+            commands::capture_region,
+            commands::capture_fullscreen,
+            commands::capture_window,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running wondershot");
 }
