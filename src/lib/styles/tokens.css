@@ -1,0 +1,74 @@
+:root {
+  /* Theme native form controls (<select>, number spinners, scrollbars) to
+     match the active scheme — WebKitGTK renders these as native widgets that
+     ignore CSS background, so without this they default to light even in dark
+     mode. Flipped to `dark` in the media query below. */
+  color-scheme: light;
+
+  /* type: platform-native stack, desktop density */
+  --font-ui: system-ui, -apple-system, "Segoe UI", Cantarell, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", monospace;
+  --text-base: 13px;
+  --text-small: 11.5px;
+  /* Row/label weight. Bumped in dark so white text reads a touch heavier
+     (1Password-style); light mode stays at the regular weight. */
+  --weight-label: 400;
+
+  /* spacing & rows */
+  --row-height: 30px;
+  --sidebar-width: 240px;
+
+  /* light theme (dark below) — neutral, one accent */
+  --bg-app: #f5f5f4;
+  --bg-sidebar: #ececeb;
+  --bg-content: #ffffff;
+  --bg-elevated: #ffffff;            /* menus, modal panels (above content) */
+  --bg-field: #f5f5f4;               /* inset inputs sitting on a panel */
+  --bg-hover: rgba(0, 0, 0, 0.045);
+  --bg-selected: rgba(47, 111, 237, 0.12);
+  --fg-primary: #1c1c1e;
+  --fg-secondary: #6e6e73;
+  --border: rgba(0, 0, 0, 0.08);
+  --border-strong: rgba(0, 0, 0, 0.14); /* brighter dividers (menu separators) */
+  --accent: #2f6fed;
+  --accent-strong: #2360df;
+  --danger: #d4504c;
+  --success: #2f9e62;
+  --radius: 6px;
+}
+
+/* Dark palette. Applied when the user FORCES dark (data-theme="dark"), or when
+   they follow the OS ("system" = no data-theme attribute) and the OS is dark.
+   A forced choice must beat the media query, so these are two rules; the values
+   are intentionally identical between them. The Settings page sets data-theme
+   via applyTheme() in stores/prefs.ts.
+
+   Surfaces are deliberately tiered (1Password-style): the sidebar and floating
+   surfaces (menus, modal panels) are the darkest plane, the content pane a
+   medium gray, and inset fields a lighter "card" that lifts off the dark panel.
+   The accent is 1Password's vivid blue, run a touch brighter than the neutrals
+   so colour reads as intentional, not muddy. */
+:root[data-theme="dark"], :root:not([data-theme="light"]) {
+  color-scheme: dark;
+  --weight-label: 500;
+  --bg-app: #19191b;
+  --bg-sidebar: #141416;             /* darkest plane — way below content */
+  --bg-content: #29292c;             /* medium gray (≈ the old value) */
+  --bg-elevated: #18181a;            /* menus + modal panels — dark, like sidebar */
+  --bg-field: #2a2a2e;               /* inset inputs — lighter card on the dark panel */
+  --bg-hover: rgba(255, 255, 255, 0.06);
+  --bg-selected: rgba(59, 130, 246, 0.22);
+  --fg-primary: #f4f4f7;             /* brighter white */
+  /* Muted text (column headers, size/date, rest-state icons, hints). Kept
+     near-white rather than a dim gray — these are active, not disabled, and
+     read far better bright (1Password-style). Disabled states dim via opacity,
+     not this token, so they stay distinct. */
+  --fg-secondary: #c4c4cc;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --accent: #3b82f6;                 /* 1Password vivid blue */
+  --accent-strong: #5b9bff;
+  --danger: #ff6b66;
+  --success: #32d74b;
+  --radius: 6px;
+}
