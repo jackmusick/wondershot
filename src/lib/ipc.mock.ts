@@ -46,6 +46,23 @@ export const MOCK_CAPTURES: Capture[] = [
 let mockList: Capture[] = [...MOCK_CAPTURES];
 let counter = 0;
 
+/** Prepend a fake new screen recording (used by the mock record simulation). */
+export function pushMockRecording(): void {
+  counter += 1;
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2, '0');
+  const mm = String(now.getMinutes()).padStart(2, '0');
+  const cap: Capture = {
+    id: `rec${counter}`,
+    path: `/mock/Recording_${counter}.mp4`,
+    kind: 'video',
+    thumbnail: MOCK_CAPTURES[0].thumbnail,
+    createdAt: Date.now() + counter,
+    title: `Recording ${hh}:${mm}`
+  };
+  mockList = [cap, ...mockList];
+}
+
 export async function mockInvoke(cmd: string, _args?: unknown): Promise<unknown> {
   switch (cmd) {
     case 'health':

@@ -2,11 +2,13 @@
   import { onMount } from 'svelte';
   import { loadLibrary } from '$lib/stores';
   import { ipcListen } from '$lib/ipc';
+  import { initRecordingEvents } from '$lib/recorder/control';
   import LibrarySidebar from '$lib/components/LibrarySidebar.svelte';
   import CaptureHeader from '$lib/components/CaptureHeader.svelte';
   import ContentView from '$lib/components/ContentView.svelte';
   onMount(() => {
     let unlisten: (() => void) | undefined;
+    let unRecording: (() => void) | undefined;
     loadLibrary().then(() =>
       ipcListen<string>('capture://done', async () => {
         await loadLibrary();
@@ -14,7 +16,13 @@
         unlisten = un;
       })
     );
-    return () => unlisten?.();
+    initRecordingEvents().then((un) => {
+      unRecording = un;
+    });
+    return () => {
+      unlisten?.();
+      unRecording?.();
+    };
   });
 </script>
 
