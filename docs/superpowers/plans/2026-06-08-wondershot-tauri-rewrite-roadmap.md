@@ -49,7 +49,7 @@ ellipse, pen, highlighter, text, step-numbers, pixelate, blur, crop, cutout V/H)
 tool built as a pipeline item (build → screenshot → visual-critique). **Exit:** every tool
 round-trips through `.sidecar` and matches the Python editor's output on a fixture set.
 
-### M4 — Native recorder
+### M4 — Native recorder  *(detailed plan written; building)*
 `wondershot-core/record`: `ashpd` ScreenCast → `pipewire-rs` fd → `gstreamer-rs` pipeline
 (x264+AAC → mp4); pause/resume PTS offset + EOS-finalize escalation ladder ported from
 `record.py`; `start_recording`/`stop`/`pause`/`resume` + `recording://` events; countdown
