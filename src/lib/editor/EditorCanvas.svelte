@@ -6,7 +6,7 @@
   import type { Item, Vec2 } from './model';
   import { History } from './history';
   import { drawStyle, textStyle, type DrawStyle, type TextStyle } from './style';
-  import { zoomApi } from './zoom';
+  import { zoomApi, saveApi } from './zoom';
   import { drawTools, type DrawCtx } from './tools/index';
   import { WS_NODE_NAME, nodeToItemRef, tagNode } from './tools/arrowLine';
   // Side-effect import: registers the rect/ellipse/highlight box-shape tools
@@ -42,6 +42,9 @@
     type Rect4,
   } from './tools/destructive';
   import type { TextItem } from './model';
+  import { serializeItem, deserializeItem } from './model';
+  import { effects, type Effects } from './effects';
+  import { get } from 'svelte/store';
 
   let { path }: { path: string } = $props();
 
@@ -315,6 +318,81 @@
     overlayLayer.visible(overlayVisible);
     stage.batchDraw();
     return url;
+  }
+
+  /** Strip the `data:image/png;base64,` prefix, leaving the bare base64 body
+   *  the Rust commands expect. A no-prefix string is returned unchanged. */
+  function bareBase64(dataUrl: string): string {
+    const comma = dataUrl.indexOf(',');
+    return comma === -1 ? dataUrl : dataUrl.slice(comma + 1);
+  }
+
+  /**
+   * Save (T14 parity guarantee). Writes three artifacts so the Python app reads
+   * the same `.wondershot` sidecar and the editor reopens losslessly:
+   *   1. the FLATTENED library PNG (annotations baked in) via `flatten_save`;
+   *   2. the sidecar JSON {version, bases, items, effects} via `save_sidecar`;
+   *   3. `base.0` = the current editable base via `write_base`, so reopen shows
+   *      base + editable annotations (NOT the flattened image).
+   * For M3 `bases:1` and only `base.0` is written — the multi-base re-edit stack
+   * (getBasePushes) is DEFERRED. Marks history clean so the dirty indicator clears.
+   */
+  export async function save(): Promise<void> {
+    const flat = flattenStage();
+    await ipcInvoke('flatten_save', { path, pngB64: bareBase64(flat) });
+    const doc = {
+      version: 1,
+      bases: 1,
+      items: items.map(serializeItem),
+      effects: get(effects),
+    };
+    await ipcInvoke('save_sidecar', { path, doc });
+    if (currentBaseSrc) {
+      await ipcInvoke('write_base', { path, n: 0, pngB64: bareBase64(currentBaseSrc) });
+    }
+    history.markClean();
+  }
+
+  /**
+   * Open flow: read the sidecar for `path`. If a doc exists, restore items
+   * (deserialize, skipping nulls), set the effects store from `doc.effects`,
+   * load `base.0` as the editor base if present (else keep the library PNG), and
+   * render the items on top. No sidecar → no-op (the library PNG base, loaded on
+   * mount, stays as-is). Re-seeds history clean to the restored state.
+   */
+  async function loadSidecar(): Promise<void> {
+    let doc: any = null;
+    try {
+      doc = await ipcInvoke<any>('load_sidecar', { path });
+    } catch {
+      return;
+    }
+    if (!doc) return;
+
+    items = (doc.items ?? [])
+      .map((j: any) => deserializeItem(j))
+      .filter((i: Item | null): i is Item => i !== null);
+
+    if (doc.effects && typeof doc.effects === 'object') {
+      effects.set(doc.effects as Effects);
+    }
+
+    let base64: string | null = null;
+    try {
+      base64 = await ipcInvoke<string | null>('read_base', { path, n: 0 });
+    } catch {
+      base64 = null;
+    }
+
+    const apply = () => {
+      rebuildAnnotations();
+      history.reset({ baseSrc: currentBaseSrc, items: [...items] });
+    };
+    if (base64) {
+      setBaseImage(`data:image/png;base64,${base64}`, apply);
+    } else {
+      apply();
+    }
   }
 
   /**
@@ -691,6 +769,7 @@
     }
     if (e.ctrlKey || e.metaKey) {
       const k = e.key.toLowerCase();
+      if (k === 's') { e.preventDefault(); void save(); return; }
       if (k === 'z' && e.shiftKey) { redo(); e.preventDefault(); return; }
       if (k === 'z') { undo(); e.preventDefault(); return; }
       if (k === 'y') { redo(); e.preventDefault(); return; }
@@ -847,6 +926,7 @@
       zoomActual: actualSize,
       zoomFit: fitToView,
     });
+    saveApi.set(save);
 
     window.addEventListener('keydown', onKeyDown);
 
@@ -871,6 +951,10 @@
         fitToView();
 
         if (!destroyed && !cancelled) ready = true;
+
+        // Restore any saved sidecar (items + effects + editable base.0) on top
+        // of the freshly-loaded library PNG. No sidecar → this is a no-op.
+        void loadSidecar();
       };
       imageObj.src = src;
     })();
@@ -891,6 +975,7 @@
       container.removeEventListener('wheel', onWheel);
       window.removeEventListener('keydown', onKeyDown);
       zoomApi.set(null);
+      saveApi.set(null);
       unsubTool();
       unsubStyle();
       unsubTextStyle();

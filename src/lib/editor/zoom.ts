@@ -14,3 +14,10 @@ export interface ZoomApi {
 }
 
 export const zoomApi = writable<ZoomApi | null>(null);
+
+/**
+ * Save bridge, mirroring zoomApi. EditorCanvas registers its async `save()`
+ * here on mount; the EditorToolbar's Save button calls it. Null when no canvas
+ * is mounted, so the button no-ops gracefully.
+ */
+export const saveApi = writable<(() => Promise<void>) | null>(null);

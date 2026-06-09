@@ -64,6 +64,14 @@ export async function mockInvoke(cmd: string, _args?: unknown): Promise<unknown>
       return null;
     case 'save_sidecar':
       return true;
+    case 'flatten_save':
+    case 'write_base':
+      // No-op in the mock: there is no real library image / sidecar dir to
+      // write. Return ok so save() in the editor resolves cleanly in browser dev.
+      return null;
+    case 'read_base':
+      // No persisted base in the mock; open falls back to the library PNG.
+      return null;
     case 'copy_image':
       return true;
     case 'pixelate_patch':

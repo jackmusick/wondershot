@@ -177,6 +177,49 @@ pub fn cutout_base(path: String, a: u32, b: u32, horizontal: bool) -> Result<Str
     write_new_base(&path, &out)
 }
 
+// --- save / flatten / base persistence (T14) -------------------------------
+
+/// Base64-decode `png_b64` and write the raw PNG bytes to the library image at
+/// `path` (the flattened, annotations-baked result). Overwrites in place.
+#[tauri::command]
+pub fn flatten_save(path: String, png_b64: String) -> Result<(), String> {
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(png_b64.as_bytes())
+        .map_err(|e| e.to_string())?;
+    std::fs::write(&path, bytes).map_err(|e| e.to_string())
+}
+
+/// Base64-decode `png_b64` and write it as base `n` in the sidecar dir,
+/// creating `.wondershot/` if needed. This is the editable base the editor
+/// reopens (base + items), distinct from the flattened library image.
+#[tauri::command]
+pub fn write_base(path: String, n: u32, png_b64: String) -> Result<(), String> {
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(png_b64.as_bytes())
+        .map_err(|e| e.to_string())?;
+    let p = Path::new(&path);
+    let base = sidecar::base_path(p, n);
+    if let Some(parent) = base.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(&base, bytes).map_err(|e| e.to_string())
+}
+
+/// Read base `n` from the sidecar dir, returning it as base64 PNG body (no
+/// `data:` prefix) if it exists, else `None`.
+#[tauri::command]
+pub fn read_base(path: String, n: u32) -> Result<Option<String>, String> {
+    use base64::Engine;
+    let base = sidecar::base_path(Path::new(&path), n);
+    if !base.exists() {
+        return Ok(None);
+    }
+    let bytes = std::fs::read(&base).map_err(|e| e.to_string())?;
+    Ok(Some(base64::engine::general_purpose::STANDARD.encode(&bytes)))
+}
+
 /// Write `img` as the next base file alongside `path` and return its path.
 fn write_new_base(path: &str, img: &image::RgbaImage) -> Result<String, String> {
     let p = Path::new(path);

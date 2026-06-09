@@ -2,7 +2,7 @@
   import { activeTool, SHORTCUTS, type ToolId } from './tools';
   import { drawStyle, textStyle, normalizeColor, type TextAlign } from './style';
   import { effects } from './effects';
-  import { zoomApi } from './zoom';
+  import { zoomApi, saveApi } from './zoom';
 
   // Tool metadata: id, human label, and an inline-SVG path/glyph. Icons are
   // simple monochrome strokes drawn in a 16x16 box; where an icon would be
@@ -84,6 +84,10 @@
 
   function zoom(fn: 'zoomIn' | 'zoomOut' | 'zoomActual' | 'zoomFit') {
     $zoomApi?.[fn]();
+  }
+
+  function save() {
+    void $saveApi?.();
   }
 </script>
 
@@ -206,6 +210,10 @@
     <button class="ztext" title="Actual size (100%)" onclick={() => zoom('zoomActual')}>100%</button>
     <button class="zbtn" title="Zoom in" aria-label="Zoom in" onclick={() => zoom('zoomIn')}>+</button>
   </div>
+
+  <span class="sep"></span>
+
+  <button class="save" title="Save (Ctrl+S)" aria-label="Save" onclick={save}>Save</button>
 </header>
 
 <style>
@@ -379,4 +387,18 @@
   .ztext { padding: 0 8px; }
   .zbtn:hover,
   .ztext:hover { background: var(--bg-hover); }
+
+  .save {
+    height: 26px;
+    padding: 0 12px;
+    border: 1px solid var(--accent);
+    background: var(--accent);
+    color: #fff;
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-size: var(--text-small);
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+  .save:hover { filter: brightness(1.08); }
 </style>

@@ -30,6 +30,9 @@ pub fn run() {
             commands::blur_patch,
             commands::crop_base,
             commands::cutout_base,
+            commands::flatten_save,
+            commands::write_base,
+            commands::read_base,
         ])
         .run(tauri::generate_context!())
         .expect("error while running wondershot");
