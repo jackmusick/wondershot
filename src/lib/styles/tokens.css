@@ -51,11 +51,11 @@
 :root[data-theme="dark"], :root:not([data-theme="light"]) {
   color-scheme: dark;
   --weight-label: 500;
-  --bg-app: #19191b;
-  --bg-sidebar: #141416;             /* darkest plane — way below content */
-  --bg-content: #29292c;             /* medium gray (≈ the old value) */
+  --bg-app: #161618;                 /* canvas/editor backdrop — darkest working plane */
+  --bg-sidebar: #141416;             /* filmstrip track */
+  --bg-content: #303034;             /* chrome: header, tool rail, properties — Qt window ≈#353535 */
   --bg-elevated: #18181a;            /* menus + modal panels — dark, like sidebar */
-  --bg-field: #2a2a2e;               /* inset inputs — lighter card on the dark panel */
+  --bg-field: #242427;               /* inset inputs — darker well on the lighter chrome (Qt base ≈#232323) */
   --bg-hover: rgba(255, 255, 255, 0.06);
   --bg-selected: rgba(59, 130, 246, 0.22);
   --fg-primary: #f4f4f7;             /* brighter white */
@@ -63,7 +63,7 @@
      near-white rather than a dim gray — these are active, not disabled, and
      read far better bright (1Password-style). Disabled states dim via opacity,
      not this token, so they stay distinct. */
-  --fg-secondary: #c4c4cc;
+  --fg-secondary: #d4d4db;
   --border: rgba(255, 255, 255, 0.08);
   --border-strong: rgba(255, 255, 255, 0.16);
   --accent: #3b82f6;                 /* 1Password vivid blue */

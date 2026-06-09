@@ -17,7 +17,7 @@
 </div>
 
 <style>
-  .content-body { flex: 1; display: flex; align-items: center; justify-content: center; overflow: auto; min-height: 0; }
+  .content-body { flex: 1; display: flex; align-items: center; justify-content: center; overflow: auto; min-height: 0; background: var(--bg-app); }
   /* Editor fills the body instead of centering a shrink-wrapped child. */
   .content-body.editor,
   .content-body.video { align-items: stretch; justify-content: stretch; overflow: hidden; }
