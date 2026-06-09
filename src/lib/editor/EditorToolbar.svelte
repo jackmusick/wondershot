@@ -13,7 +13,7 @@
     [
       { id: 'arrow', label: 'Arrow' },
       { id: 'line', label: 'Line' },
-      { id: 'rect', label: 'Rectangle' },
+      { id: 'rect', label: 'Box' },
       { id: 'ellipse', label: 'Ellipse' },
       { id: 'freehand', label: 'Pen' },
       { id: 'highlight', label: 'Highlight' },
@@ -28,10 +28,18 @@
     ],
     [
       { id: 'crop', label: 'Crop' },
-      { id: 'cutout-v', label: 'Cut out vertical' },
-      { id: 'cutout-h', label: 'Cut out horizontal' },
+      { id: 'cutout-v', label: 'Cut |' },
+      { id: 'cutout-h', label: 'Cut —' },
     ],
   ];
+
+  // AI actions (not editor tools): a sparkle group at the end of the rail.
+  function aiNotReady(name: string) {
+    // The AI client (ai_endpoint/ai_api_key from settings) isn't wired into the
+    // Tauri backend yet; surface that rather than silently no-op.
+    console.warn(`${name} is not implemented yet`);
+    alert(`${name} is coming soon — the AI backend isn't wired up yet.`);
+  }
 
   // Reverse-lookup the shortcut letter for a tool, for the tooltip.
   function shortcutFor(id: ToolId): string {
@@ -126,9 +134,25 @@
           {:else if t.id === 'cutout-h'}
             <svg viewBox="0 0 16 16"><path d="M2 5h12M2 11h12" stroke-dasharray="2 2" /><path d="M8 5V2M8 14v-3" /></svg>
           {/if}
+          <span class="tlabel">{t.label}</span>
         </button>
       {/each}
     {/each}
+
+    <!-- AI group: sparkle actions -->
+    <span class="sep"></span>
+    {#snippet sparkle()}
+      <svg viewBox="0 0 16 16" class="ai-spark"><path d="M8 1.5l1.2 3.3L12.5 6 9.2 7.2 8 10.5 6.8 7.2 3.5 6l3.3-1.2z"/><path d="M12.8 10.2l.6 1.5 1.5.6-1.5.6-.6 1.5-.6-1.5-1.5-.6 1.5-.6z"/></svg>
+    {/snippet}
+    <button class="tool ai" title="AI Redact — auto-detect & blur sensitive info" onclick={() => aiNotReady('AI Redact')}>
+      {@render sparkle()}<span class="tlabel">Redact</span>
+    </button>
+    <button class="tool ai" title="AI Simplify — clean up the screenshot" onclick={() => aiNotReady('AI Simplify')}>
+      {@render sparkle()}<span class="tlabel">Simplify</span>
+    </button>
+    <button class="tool ai" title={bgTip} aria-label="Remove background" onclick={removeBg} disabled={!bgEnabled}>
+      {@render sparkle()}<span class="tlabel">{bgBusy ? 'Removing…' : 'Remove BG'}</span>
+    </button>
   </div>
 
   <div class="spacer"></div>
@@ -143,22 +167,12 @@
 
   <span class="sep"></span>
 
-  <button
-    class="bgremove"
-    title={bgTip}
-    aria-label="Remove background"
-    onclick={removeBg}
-    disabled={!bgEnabled}
-  >
-    {bgBusy ? 'Removing…' : 'Remove BG'}
-  </button>
-
   <button class="save" title="Save (Ctrl+S)" aria-label="Save" onclick={save}>Save</button>
 </header>
 
 <style>
   .toolbar {
-    height: 44px;
+    height: 60px;
     display: flex;
     align-items: center;
     gap: 6px;
@@ -169,10 +183,7 @@
     overflow-x: auto;
   }
   .tools,
-  .style,
-  .effects,
-  .zoom,
-  .align {
+  .zoom {
     display: flex;
     align-items: center;
     gap: 2px;
@@ -187,38 +198,39 @@
     flex-shrink: 0;
   }
 
-  /* Icon buttons (tools + align). 28px square, accent BOTTOM border when active
-     (horizontal-toolbar variant of wonderblob's inset accent bar). */
-  .tool,
-  .align button {
-    width: 28px;
-    height: 28px;
+  /* Tool buttons: icon on top, small label beneath (Qt rail parity). Active =
+     accent bottom border + selected bg. */
+  .tool {
+    min-width: 46px;
+    height: 50px;
     display: inline-flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
+    gap: 3px;
     border: none;
     background: transparent;
     color: var(--fg-secondary);
     border-radius: var(--radius);
     cursor: pointer;
-    padding: 0;
+    padding: 0 6px;
     border-bottom: 2px solid transparent;
     flex-shrink: 0;
   }
-  .tool:hover,
-  .align button:hover { background: var(--bg-hover); color: var(--fg-primary); }
-  .tool.active,
-  .align button.active {
+  .tool:hover:not(:disabled) { background: var(--bg-hover); color: var(--fg-primary); }
+  .tool:disabled { opacity: 0.4; cursor: not-allowed; }
+  .tool.active {
     background: var(--bg-selected);
     color: var(--fg-primary);
     border-bottom-color: var(--accent);
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
   }
-  .tool svg,
-  .align button svg {
-    width: 16px;
-    height: 16px;
+  .tlabel { font-size: 10px; line-height: 1; color: inherit; }
+  .tool.ai .ai-spark { color: var(--accent-strong); fill: var(--accent-strong); stroke: none; }
+  .tool svg {
+    width: 18px;
+    height: 18px;
     fill: none;
     stroke: currentColor;
     stroke-width: 1.5;
