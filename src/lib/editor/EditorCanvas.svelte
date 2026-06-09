@@ -354,11 +354,12 @@
   }
 
   /**
-   * Open flow: read the sidecar for `path`. If a doc exists, restore items
-   * (deserialize, skipping nulls), set the effects store from `doc.effects`,
-   * load `base.0` as the editor base if present (else keep the library PNG), and
-   * render the items on top. No sidecar → no-op (the library PNG base, loaded on
-   * mount, stays as-is). Re-seeds history clean to the restored state.
+   * Open flow: read the sidecar for `path`. If a doc exists with bases>=1 and
+   * base.0 loads successfully, restore items + effects + the editable base.
+   * If bases is falsy OR base.0 is missing (null), mirror Python's fallback:
+   * drop items and keep the flattened library PNG as-is (annotations are baked
+   * in). No sidecar → no-op (the library PNG base, loaded on mount, stays as-is).
+   * Re-seeds history clean to the restored state.
    */
   async function loadSidecar(): Promise<void> {
     let doc: any = null;
@@ -369,10 +370,6 @@
     }
     if (!doc) return;
 
-    items = (doc.items ?? [])
-      .map((j: any) => deserializeItem(j))
-      .filter((i: Item | null): i is Item => i !== null);
-
     if (doc.effects && typeof doc.effects === 'object') {
       effects.set(doc.effects as Effects);
     }
@@ -382,6 +379,17 @@
       base64 = await ipcInvoke<string | null>('read_base', { path, n: 0 });
     } catch {
       base64 = null;
+    }
+
+    // Guard: only restore items if BOTH bases is truthy AND base.0 loaded.
+    // Mirrors Python (editor.py:516,519-520): missing/falsy bases or absent
+    // base image → drop items, keep the flattened library PNG (annotations
+    // already baked in). Normal path (base.0 present + bases>=1) unchanged.
+    const shouldRestoreItems = doc.bases && base64 !== null;
+    if (shouldRestoreItems) {
+      items = (doc.items ?? [])
+        .map((j: any) => deserializeItem(j))
+        .filter((i: Item | null): i is Item => i !== null);
     }
 
     const apply = () => {
