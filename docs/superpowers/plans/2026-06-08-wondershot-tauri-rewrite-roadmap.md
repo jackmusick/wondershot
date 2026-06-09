@@ -41,7 +41,7 @@ geometry via `zbus`), `clipboard` (`wl-clipboard-rs`), `library` (scan existing 
 flow into the library sidebar. **Exit:** region/full/window capture → thumbnail → clipboard,
 existing library loads unchanged. Oracle: port `tests/` capture/library assertions to `cargo test`.
 
-### M3 — Editor (Konva, 14 tools)  *(detailed plan written; building)*
+### M3 — Editor (Konva, 14 tools)  *(IN PROGRESS — backend done: T1 serde models + T2 imageops, both parity-tested; visual canvas T3+ pending)*
 Konva `Stage` in the content view; tool rail; 14 tools (select, arrow, line, rect,
 ellipse, pen, highlighter, text, step-numbers, pixelate, blur, crop, cutout V/H);
 `Transformer` handles; snapshot undo/redo; serialize to existing `.sidecar` JSON. Each
