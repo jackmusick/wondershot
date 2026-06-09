@@ -202,7 +202,20 @@
   function deleteSelected() {
     const nodes = transformer.nodes();
     if (nodes.length) {
-      nodes.forEach((n) => n.destroy());
+      // Look up each selected node's item and remove from model if found.
+      let changed = false;
+      nodes.forEach((n) => {
+        const ref = nodeToItemRef(n);
+        if (ref) {
+          items = items.filter((i) => i !== ref);
+          changed = true;
+        }
+        n.destroy();
+      });
+      // If any items were removed, push a history snapshot.
+      if (changed) {
+        history.push([...items]);
+      }
       transformer.nodes([]);
       annotationsLayer.batchDraw();
       overlayLayer.batchDraw();
