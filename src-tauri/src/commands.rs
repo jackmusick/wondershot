@@ -17,6 +17,8 @@ pub fn get_settings() -> serde_json::Value {
         "capture_cursor": s.capture_cursor,
         "capture_delay": s.capture_delay,
         "extra_dirs": s.extra_dirs,
+        "record_countdown": s.record_countdown,
+        "camera_device": s.camera_device,
     })
 }
 

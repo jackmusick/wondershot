@@ -11,6 +11,8 @@ pub struct Settings {
     pub mic_device: String,
     pub noise_suppression: bool,
     pub record_cursor_halo: bool,
+    pub record_countdown: u32,
+    pub camera_device: String,
 }
 
 impl Default for Settings {
@@ -30,6 +32,8 @@ impl Default for Settings {
             mic_device: String::new(),
             noise_suppression: true,
             record_cursor_halo: false,
+            record_countdown: 0,
+            camera_device: String::new(),
         }
     }
 }
@@ -67,6 +71,8 @@ impl Settings {
                 "mic_device" => s.mic_device = v.to_string(),
                 "noise_suppression" => s.noise_suppression = v == "true",
                 "record_cursor_halo" => s.record_cursor_halo = v == "true",
+                "record_countdown" => s.record_countdown = v.parse().unwrap_or(0),
+                "camera_device" => s.camera_device = v.to_string(),
                 "extra_dirs" => {
                     s.extra_dirs = v
                         .split(';')
@@ -115,5 +121,17 @@ mod tests {
     fn extra_dirs_split_on_semicolon_ignoring_empties() {
         let s = Settings::from_conf_str("[General]\nextra_dirs=/a;/b;;/c\n");
         assert_eq!(s.extra_dirs, vec!["/a", "/b", "/c"]);
+    }
+
+    #[test]
+    fn record_countdown_and_camera_device_parse_and_default() {
+        let s = Settings::default();
+        assert_eq!(s.record_countdown, 0);
+        assert_eq!(s.camera_device, "");
+
+        let conf = "[General]\nrecord_countdown=5\ncamera_device=/dev/video0\n";
+        let s = Settings::from_conf_str(conf);
+        assert_eq!(s.record_countdown, 5);
+        assert_eq!(s.camera_device, "/dev/video0");
     }
 }
