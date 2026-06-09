@@ -28,8 +28,7 @@
         onclick={() => m.mode && takeCapture(m.mode)}>{m.label}</button>
     {/each}
   </div>
-  <button class="mode" onclick={() => settingsOpen.set(true)}>⚙ Settings</button>
-  <div class="spacer"></div>
+  <span class="sep"></span>
   {#if $recording.status === 'recording'}
     <div class="rec-controls">
       <button class="record active" onclick={() => stopRecording()} title="Stop recording">
@@ -44,8 +43,12 @@
       <button class="rec-btn" onclick={() => stopRecording()}>Stop</button>
     </div>
   {:else}
-    <button class="record" onclick={() => startRecording()}>● Record</button>
+    <button class="mode rec-inline" onclick={() => startRecording()}>● Record</button>
+    <button class="mode" disabled title="Region-scoped recording — coming with the recorder UI">Record region</button>
   {/if}
+  <button class="mode" onclick={() => settingsOpen.set(true)}>⚙ Settings</button>
+  <div class="spacer"></div>
+  <button class="mode" disabled={!$activeItem} title="Sharing targets aren't bundled in this build">↗ Share</button>
 </header>
 {#if $view === 'editor' && $activeItem}
   <EditorToolbar />
@@ -57,6 +60,8 @@
     border-bottom: 1px solid var(--border); background: var(--bg-content); flex-shrink: 0;
   }
   .modes { display: flex; gap: 2px; }
+  .sep { width: 1px; height: 18px; background: var(--border); margin: 0 4px; }
+  .rec-inline { color: var(--fg-primary); }
   .mode {
     height: 28px; padding: 0 12px; border: none; background: transparent;
     color: var(--fg-primary); border-radius: var(--radius); font-size: var(--text-base); cursor: pointer;
