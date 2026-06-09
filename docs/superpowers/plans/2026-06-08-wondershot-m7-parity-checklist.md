@@ -47,8 +47,9 @@
 | Deliverable | Status | Command |
 |---|---|---|
 | Tauri release binary builds (`--features bgremove`) | ✅ | verified locally — webkit2gtk-4.1 linked, onnxruntime load-dynamic |
-| AppImage / rpm / deb bundling | ⏳ CI | needs `libayatana-appindicator3` on host; `release.yml` installs it on `v*` tag |
-| Flatpak build + launch | ⏳ | `flatpak-builder --user --install ... io.github.jackmusick.wondershot.yml` (compiles ffmpeg/x264, ~25 min; needs the prebuilt deb) |
+| deb bundling | ✅ | `Wondershot_0.1.0_amd64.deb` built locally (needs `libayatana-appindicator-gtk3[-devel]` on host for the tray probe) |
+| AppImage / rpm bundling | ⏳ CI | `release.yml` builds them on a `v*` tag (ubuntu-22.04 + appindicator dev) |
+| **Flatpak build + launch** | ✅ | **built + installed + launched live 2026-06-09** on `org.gnome.Platform//49`; permissions verified (wayland/x11, pulseaudio, pipewire, dri, xdg-pictures/videos, KWin + portal talk); ffmpeg/wl-copy/libonnxruntime/u2net bundled; start-menu entry + 512px icon exported. Tray **intentionally skipped** on GNOME (no appindicator in the runtime) — degrades gracefully (user-accepted). |
 | `curl \| sh` install + launch | ⏳ first release | `install.sh` logic verified; needs a published `.AppImage` release asset |
 
 ## Out of scope (never in the 7-milestone roadmap)
@@ -59,4 +60,4 @@
 
 ## Summary
 
-All feature subsystems have ✅ automated coverage (90 core + 68 frontend tests, all green); the remaining ⏳ items are live-hardware/display runs and the packaging builds, which are CI-gated or need a real desktop session — none are code gaps. Parity is met at the verifiable layer; the cutover invariants (app-id/.desktop/library) are preserved so the new build supersedes the old install with the library intact.
+All feature subsystems have ✅ automated coverage (90 core + 68 frontend tests, all green); the **Flatpak now builds, installs, and launches live** with correct permissions + start-menu icon (verified 2026-06-09). Remaining ⏳ items are the in-app live-hardware runs (capture/recorder/ffmpeg, now under user test-drive) and the AppImage/rpm/`curl|sh` paths (CI / first-release) — none are code gaps. Parity is met at the verifiable layer; the cutover invariants (app-id/.desktop/library) are preserved so the new build supersedes the old install with the library intact. The `tauri-rewrite` → `main` merge is held pending the user's test-drive verdict.
