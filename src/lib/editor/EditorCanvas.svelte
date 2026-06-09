@@ -137,6 +137,7 @@
   /** Push the current base+items state onto the history stack. */
   function pushHistory() {
     history.push({ baseSrc: currentBaseSrc, items: [...items] });
+    syncDraggable();
     scheduleAutosave();
   }
 
@@ -875,7 +876,19 @@
   }
 
   let currentTool: ToolId = 'select';
-  const unsubTool = activeTool.subscribe((t) => (currentTool = t));
+  const unsubTool = activeTool.subscribe((t) => {
+    currentTool = t;
+    syncDraggable();
+  });
+
+  /** Annotations are draggable ONLY in select mode. Otherwise clicking an
+   *  existing node with a draw/step tool would grab it (dragging the existing
+   *  AND placing a new one). Re-run on tool change and after each new node. */
+  function syncDraggable() {
+    if (!annotationsLayer) return;
+    const on = currentTool === 'select';
+    annotationsLayer.find(`.${WS_NODE_NAME}`).forEach((n) => n.draggable(on));
+  }
 
   function isEditableTarget(t: EventTarget | null): boolean {
     const el = t as HTMLElement | null;
@@ -1143,6 +1156,8 @@
         },
         scale: () => stage.scaleX(),
         imageSize: () => ({ w: imgW, h: imgH }),
+        draggableCount: () =>
+          annotationsLayer.find(`.${WS_NODE_NAME}`).filter((n: any) => n.draggable()).length,
         ready: () => ready,
         // Effects are applied to the live scene (clip for rounded, a ws-fade
         // node for fade) — so they preview AND bake. Lets tests assert toggles.
