@@ -8,6 +8,6 @@ test('reference: wonderblob shell', async ({ page }) => {
   await page.goto(REF_URL).catch(() => { up = false; });
   test.skip(!up, 'wonderblob dev server not running on ' + REF_URL);
   await page.waitForTimeout(300);
-  await page.screenshot({ path: 'artifacts/ui/ref/wonderblob-shell.png' });
-  expect(existsSync('artifacts/ui/ref/wonderblob-shell.png')).toBe(true);
+  await page.screenshot({ path: 'tests-ui/ref/wonderblob-shell.png' });
+  expect(existsSync('tests-ui/ref/wonderblob-shell.png')).toBe(true);
 });
