@@ -57,7 +57,8 @@ Verified in tests: pure pipeline string + PTS/clock/escalation math; the gstream
 overlay + camera bubble as frameless windows. **Exit:** record→pause→resume→stop produces a
 valid mp4; finalize never strands a `.rendering` temp. Highest-risk milestone — single agent.
 
-### M5 — Video + settings + bg-removal  *(detailed plan written; building)*
+### M5 — Video + settings + bg-removal  *(IN PROGRESS — T1 ffmpeg builders, T2 video player+commands, T3 bg-removal all done + reviewed; T4 settings modal + T5 exit remain)*
+M5 notes: bg-removal's `ort`/ONNX inference is **feature-gated `bgremove-onnx` (off)** — the `ort-sys` rc binary-download build script is currently broken upstream (ureq `_tls`); the pure preprocess/composite is tested and the UI disables gracefully. Resolving the ONNX runtime build + bundling the u2net model is folded into **M6 packaging**. Video blur/gif/frame and the redaction UI are built; live ffmpeg runs need a display-present manual check.
 `video` (ffmpeg blur filter graph, GIF export, frame grab) + VideoPlayer UI; `settings`
 (serde to existing conf) + tabbed Settings modal; `bgremove` (`ort` + u2net ONNX) +
 Output-effects UI. Three independent subsystems → workflow pipeline. **Exit:** GIF export,
