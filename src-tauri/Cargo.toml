@@ -16,6 +16,7 @@ arboard = "3"
 image = "0.25"
 base64 = "0.22"
 tokio = { version = "1", features = ["rt-multi-thread", "time", "process"] }
+trash = "5"
 
 [features]
 # Opt-in AI background removal — forwards to wondershot-core's ONNX inference

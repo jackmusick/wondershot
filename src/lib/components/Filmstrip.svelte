@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { captures, activeItem, view } from '$lib/stores';
+  import { captures, activeItem, view, trashItem } from '$lib/stores';
   import type { Capture } from '$lib/types';
 
   let now = $state(Date.now());
@@ -7,6 +7,11 @@
   function open(c: Capture) {
     activeItem.set(c);
     view.set(c.kind === 'video' ? 'video' : 'editor');
+  }
+
+  function del(e: MouseEvent, c: Capture) {
+    e.stopPropagation();
+    void trashItem(c);
   }
 
   // "Today" / "Yesterday" / M/D for the card's date band (bottom-left).
@@ -41,6 +46,8 @@
     >
       <img class="thumb" src={c.thumbnail} alt={c.title} />
       {#if c.kind === 'video'}<span class="play">▶</span>{/if}
+      <span class="del" role="button" tabindex="-1" title="Move to trash"
+        onclick={(e) => del(e, c)} onkeydown={() => {}}>×</span>
       <span class="band">
         <span class="date">{dateLabel(c.createdAt)}</span>
         <span class="time">{timeLabel(c.createdAt)}</span>
@@ -85,6 +92,14 @@
     position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
     font-size: 28px; color: #fff; text-shadow: 0 1px 4px rgba(0,0,0,0.6); pointer-events: none;
   }
+  .del {
+    position: absolute; top: 4px; right: 4px; width: 20px; height: 20px;
+    display: none; align-items: center; justify-content: center;
+    border-radius: 50%; background: rgba(0,0,0,0.6); color: #fff; font-size: 15px; line-height: 1;
+    cursor: pointer;
+  }
+  .card:hover .del { display: flex; }
+  .del:hover { background: var(--danger); }
   .band {
     position: absolute; left: 0; right: 0; bottom: 0;
     display: flex; justify-content: space-between;

@@ -139,6 +139,7 @@ pub fn run() {
             commands::install_desktop,
             commands::import_files,
             commands::toggle_camera_bubble,
+            commands::trash_item,
         ])
         .run(tauri::generate_context!())
         .expect("error while running wondershot");

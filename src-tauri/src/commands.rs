@@ -830,3 +830,17 @@ pub fn toggle_camera_bubble(app: tauri::AppHandle) -> Result<bool, String> {
         Ok(true)
     }
 }
+
+/// Move a library item to the desktop trash (filmstrip hover-delete). Best-effort
+/// also trashes the item's `.<stem>` sidecar dir (annotations/base stack).
+#[tauri::command]
+pub fn trash_item(path: String) -> Result<(), String> {
+    let p = Path::new(&path);
+    if let (Some(dir), Some(stem)) = (p.parent(), p.file_stem()) {
+        let sidecar = dir.join(format!(".{}", stem.to_string_lossy()));
+        if sidecar.is_dir() {
+            let _ = trash::delete(&sidecar);
+        }
+    }
+    trash::delete(p).map_err(|e| format!("could not trash {}: {e}", path))
+}

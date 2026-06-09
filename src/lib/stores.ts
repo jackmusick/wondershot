@@ -16,6 +16,17 @@ export async function loadLibrary(): Promise<void> {
   captures.set(await normalizeCaptures(caps));
 }
 
+/** Move a library item to the trash (filmstrip hover-delete) + refresh. */
+export async function trashItem(c: Capture): Promise<void> {
+  try {
+    await ipcInvoke('trash_item', { path: c.path });
+    if (get(activeItem)?.id === c.id) activeItem.set(null);
+    await loadLibrary();
+  } catch (e) {
+    console.error('trash failed', e);
+  }
+}
+
 /** Open the editor on a library item by path (CLI `--edit FILE`). */
 export async function openEditorByPath(path: string): Promise<void> {
   await loadLibrary();
