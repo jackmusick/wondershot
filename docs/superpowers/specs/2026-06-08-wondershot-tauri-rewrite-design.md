@@ -92,30 +92,41 @@ the `QLocalServer` socket and `QSystemTrayIcon`.
 
 ## UI shell
 
-Two-plane layout from wonderblob. **Sidebar** (`--bg-sidebar`): capture actions
-(Region / Full screen / Window / Scrolling), Record control with live timer, library
-navigation (recent / by date), settings gear pinned bottom. **Content** (`--bg-content`)
-behind a 44px toolbar: a view-switcher across Gallery / Editor / Video.
+Two-plane layout from wonderblob. The **sidebar** (`--bg-sidebar`) is the **capture
+library list** — the wonderblob bookmark-list analog — a vertical, date-grouped list of
+captures (this subsumes today's bottom filmstrip), with the settings gear pinned at the
+bottom. The **content** pane (`--bg-content`) sits behind a 44px **header** that holds
+capture/record actions and, when editing, the contextual annotation toolbar. The content
+body is a view-switcher across Gallery preview / Editor / Video.
+
+> Correction from the original mockup: capture/record actions are a **header**, not the
+> sidebar (they are a header in the current Python app). The sidebar is the library list.
 
 ```
 ┌────────────┬─────────────────────────────────────┐
-│ ▢ Region   │  [toolbar: tools · color · stroke]   │
-│ ▢ Full     ├─────────────────────────────────────┤
-│ ▢ Window   │                                     │
-│ ▢ Scroll   │     Gallery │ Editor │ Video         │
-│ ● Record   │     (Konva stage when editing)       │
-│  00:14     │                                     │
-│ ──────────  │                                     │
-│ Library     │                                     │
-│  Today      ├─────────────────────────────────────┤
-│ ⚙ Settings │  [filmstrip carousel]                │
+│ Library     │ ▢Region ▢Full ▢Window ▢Scroll ●Rec  │  ← header: capture/record
+│ ─ Today ─   ├─────────────────────────────────────┤     (annotation tools when editing)
+│ ▦ shot 14:02│                                     │
+│ ▦ shot 13:51│      selected capture               │
+│ ▦ rec  11:20│      (Gallery preview · Konva        │
+│ ─ Yesterday │       editor · Video player)         │
+│ ▦ shot 18:44│                                     │
+│ ▦ shot 18:09│                                     │
+│            │                                     │
+│ ⚙ Settings │                                     │
 └────────────┴─────────────────────────────────────┘
 ```
 
+The exact sidebar-vs-header allocation and list density are UI details to be validated by
+the autonomous UI review loop (below) and adjusted against the wonderblob reference.
+
 ### Components
 
-- **CaptureRail** — sidebar; capture/record actions + library nav.
-- **Gallery** — carousel filmstrip + selected-item view.
+- **LibrarySidebar** — date-grouped vertical capture list (replaces the bottom
+  filmstrip); selecting an item loads it into the content view. Settings gear at bottom.
+- **CaptureHeader** — capture modes (Region / Full / Window / Scroll) + Record control
+  with live timer; swaps in the annotation toolbar (color / stroke / font) when editing.
+- **Gallery** — selected-item preview in the content body.
 - **Editor** — Konva `Stage` + tool rail + color/stroke/font controls. 14 tools
   (select, arrow, line, rect, ellipse, pen, highlighter, text, step-numbers, pixelate,
   blur, crop, cutout V/H). Konva nodes + `Transformer` handles; undo/redo as a snapshot
@@ -153,6 +164,46 @@ commands, `listen` for events. `capture://done` pushes a thumbnail and opens the
 - Manual integration: capture→clipboard→thumbnail, record→pause→stop→finalize,
   bg-removal, gif export.
 - Python pytest suite stays on `main` as a live parity reference.
+
+### Autonomous UI review (built as project infrastructure)
+
+The frontend is plain web, so it runs in a normal browser without the Tauri shell. We
+build a screenshot-and-critique harness used continuously during the build:
+
+1. **Mockable IPC** — a `src/lib/ipc.ts` seam wraps every `invoke`/`listen`. A
+   `VITE_MOCK_IPC` mode returns canned captures, a fake library, and scripted recording
+   events, so any view renders in a plain browser (`vite dev`) with no Rust running.
+2. **Screenshot harness** — Playwright drives the dev server and captures each
+   component/view in light **and** dark themes at a fixed viewport, writing PNGs to
+   `artifacts/ui/<component>-<theme>.png`. A route or Storybook-style `?screen=` param
+   selects which view to mount.
+3. **Reference shots** — the same harness captures `../wonderblob`'s shell once into
+   `artifacts/ui/ref/` to anchor parity ("does this match the design language").
+4. **Visual critique** — a subagent with vision reads the screenshots (the Read tool
+   renders images) and scores each against `tokens.css` and the wonderblob reference:
+   correct background tiers, radii, spacing scale, focus rings, hover states, typography.
+   It returns structured findings (component, severity, what's off, suggested fix), which
+   feed the next build iteration. This is the "review the UI as you go" loop.
+
+The harness is a deliverable in its own milestone (early), so every later UI component is
+screenshotted and critiqued the moment it lands.
+
+## Execution model
+
+Implementation runs through **workflows** where the work fans out, and individual
+**subagents** where it doesn't. Concretely:
+
+- **Parallelizable via workflow pipelines:** the 14 editor tools (each tool = an
+  independent build→screenshot→critique chain), the per-view screenshot+critique passes,
+  and the `cargo test` oracle ports (one per subsystem). These pipeline cleanly:
+  build → screenshot → visual-critique, each item flowing independently.
+- **Sequential / single-subagent:** the Tauri+SvelteKit skeleton, the native recorder
+  port (one focused effort, highest risk), and packaging/cutover — these have ordering
+  dependencies and are not fanned out.
+- The autonomous UI-review loop is itself a reusable workflow stage (screenshot →
+  vision-critique → structured findings) invoked after each UI milestone.
+
+Worktree isolation is used only where parallel agents would mutate overlapping files.
 
 ## Risks
 
