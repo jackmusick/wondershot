@@ -64,9 +64,25 @@ M5 notes: bg-removal's `ort`/ONNX inference is **feature-gated `bgremove-onnx` (
 Output-effects UI. Three independent subsystems → workflow pipeline. **Exit:** GIF export,
 range-blur redaction, settings persistence, and bg-removal all match Python behavior.
 
-### M6 — Packaging
-Flatpak manifest for the Tauri app (resolve `webkitgtk-6.0` in the KDE runtime; reuse
-ffmpeg/x264 modules; bundle u2net model); Tauri bundler `.rpm`/AppImage; `install.sh`
+### M6 — Packaging  *(✅ COMPLETE — tag `m6-packaging`; live Flatpak/AppImage builds gated → below)*
+M6 notes: the deferred ONNX blocker is **resolved** — `ort` switched from the broken
+`download-binaries` build script to **`load-dynamic`** (+ `api-24` to restore the OrtApi
+surface `vitis.rs` needs, `ndarray` bumped to 0.17, the `session.inputs()`/`.name()` API
+rename); `bgremove-onnx` now compiles and the release binary links it lazily (dlopen at
+runtime via `ensure_ort_dylib`). **Webkit unknown resolved by probing the runtime:** the KDE
+runtime ships GTK3+libsoup3 but **no WebKitGTK**, so the Flatpak follows the working sibling
+**wonderblob** — `org.gnome.Platform//47` (ships `webkit2gtk-4.1`) unpacking a prebuilt Tauri
+`.deb` rather than compiling in-sandbox; KWin/portals still work via host D-Bus. ffmpeg/x264/
+wl-clipboard built as modules (GNOME runtime lacks them); onnxruntime 1.26 + u2net bundled
+(`WONDERSHOT_U2NET`), digests stream-hash-verified. `install.sh` rewritten for the AppImage;
+`release.yml` rewritten to wonderblob's pipeline (tauri-action on ubuntu-22.04 + flatpak-builder).
+Added the missing `@tauri-apps/cli` devDependency. **Verified locally:** cargo workspace (79
+core tests) + frontend (68 tests) green; the release binary **builds clean** with `--features
+bgremove` (webkit2gtk-4.1 linked, onnxruntime load-dynamic/not-hard-linked). **Gated (not run
+locally):** the AppImage/rpm *bundling* needs `libayatana-appindicator3` on the host (CI installs
+it); the Flatpak build (compiles ffmpeg/x264, ~25min) and the `curl|sh` launch (needs a published
+release asset) are CI/first-release gates. macOS/Windows packaging deferred (Linux-first).
+Flatpak manifest for the Tauri app; Tauri bundler `.rpm`/AppImage/deb; `install.sh`
 `curl|sh` path. **Exit:** a Flatpak and a `curl|sh` install both launch the app.
 
 ### M7 — Cutover + parity sign-off
