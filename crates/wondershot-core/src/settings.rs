@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -29,6 +30,10 @@ pub struct Settings {
     pub effect_corner_radius: u32,
     pub effect_fade: bool,
     pub effect_fade_height: u32,
+    /// Conf keys the Rust app doesn't model (sharing creds, AI endpoint, …).
+    /// Preserved verbatim across load→save so the shared wondershot.conf (also
+    /// read by the Python app) is never clobbered. Quotes are re-added on write.
+    pub extra: BTreeMap<String, String>,
 }
 
 impl Default for Settings {
@@ -66,6 +71,7 @@ impl Default for Settings {
             effect_corner_radius: 16,
             effect_fade: false,
             effect_fade_height: 96,
+            extra: BTreeMap::new(),
         }
     }
 }
@@ -149,7 +155,11 @@ impl Settings {
                         .map(String::from)
                         .collect()
                 }
-                _ => {}
+                // Preserve everything else (sharing creds, AI endpoint, …) so a
+                // save round-trips them back into the shared conf.
+                _ => {
+                    s.extra.insert(k.to_string(), v.to_string());
+                }
             }
         }
         s
@@ -159,12 +169,21 @@ impl Settings {
     /// then `key=value` lines). Round-trips with `from_conf_str`.
     pub fn to_conf_str(&self) -> String {
         let b = |x: bool| if x { "true" } else { "false" };
+        // QSettings INI quotes values containing ; or special chars; mirror that
+        // so the Python app (sharing the file) reads them back correctly.
+        let q = |v: &str| -> String {
+            if v.contains(';') || v.contains(',') || v.starts_with(' ') || v.ends_with(' ') {
+                format!("\"{}\"", v.replace('"', "\\\""))
+            } else {
+                v.to_string()
+            }
+        };
         let mut out = String::from("[General]\n");
         out.push_str(&format!("library_dir={}\n", self.library_dir));
         out.push_str(&format!("backend={}\n", self.backend));
         out.push_str(&format!("capture_cursor={}\n", b(self.capture_cursor)));
         out.push_str(&format!("capture_delay={}\n", self.capture_delay));
-        out.push_str(&format!("extra_dirs={}\n", self.extra_dirs.join(";")));
+        out.push_str(&format!("extra_dirs={}\n", q(&self.extra_dirs.join(";"))));
         out.push_str(&format!("mic_enabled={}\n", b(self.mic_enabled)));
         out.push_str(&format!("mic_device={}\n", self.mic_device));
         out.push_str(&format!("noise_suppression={}\n", b(self.noise_suppression)));
@@ -190,6 +209,10 @@ impl Settings {
         out.push_str(&format!("effect_corner_radius={}\n", self.effect_corner_radius));
         out.push_str(&format!("effect_fade={}\n", b(self.effect_fade)));
         out.push_str(&format!("effect_fade_height={}\n", self.effect_fade_height));
+        // Preserved unmodeled keys (sharing creds, AI endpoint, …), sorted.
+        for (k, v) in &self.extra {
+            out.push_str(&format!("{}={}\n", k, q(v)));
+        }
         out
     }
 
@@ -220,6 +243,28 @@ mod tests {
         assert_eq!(s.capture_cursor, false);
         assert_eq!(s.capture_delay, 0);
         assert!(s.library_dir.ends_with("Screenshots"));
+    }
+
+    #[test]
+    fn preserves_unmodeled_keys_and_quotes() {
+        // The shared conf has sharing/AI keys the Rust app doesn't model + a
+        // quoted extra_dirs. A load→save round-trip must keep them all.
+        let conf = "[General]\nlibrary_dir=/home/jack/Sync/Screenshots\n\
+            extra_dirs=\"/home/jack/Videos;/home/jack/Videos/Screencasts\"\n\
+            ai_endpoint=https://openrouter.ai/api\nshare_provider=onedrive\n\
+            azure_key=\"abc+def==\"\n";
+        let s = Settings::from_conf_str(conf);
+        assert_eq!(s.library_dir, "/home/jack/Sync/Screenshots");
+        assert_eq!(s.extra_dirs, vec!["/home/jack/Videos", "/home/jack/Videos/Screencasts"]);
+        assert_eq!(s.extra.get("ai_endpoint").unwrap(), "https://openrouter.ai/api");
+        assert_eq!(s.extra.get("azure_key").unwrap(), "abc+def==");
+        let out = s.to_conf_str();
+        assert!(out.contains("ai_endpoint=https://openrouter.ai/api"));
+        assert!(out.contains("share_provider=onedrive"));
+        assert!(out.contains("azure_key=abc+def==")); // no ; so unquoted is fine
+        assert!(out.contains("extra_dirs=\"/home/jack/Videos;/home/jack/Videos/Screencasts\""));
+        // Idempotent: re-parsing the output yields the same settings.
+        assert_eq!(Settings::from_conf_str(&out), s);
     }
 
     #[test]
@@ -300,6 +345,7 @@ mod tests {
             effect_corner_radius: 32,
             effect_fade: true,
             effect_fade_height: 200,
+            extra: BTreeMap::new(),
         };
         let round = Settings::from_conf_str(&s.to_conf_str());
         assert_eq!(s, round);
