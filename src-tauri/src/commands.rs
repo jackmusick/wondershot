@@ -17,9 +17,96 @@ pub fn get_settings() -> serde_json::Value {
         "capture_cursor": s.capture_cursor,
         "capture_delay": s.capture_delay,
         "extra_dirs": s.extra_dirs,
+        "mic_enabled": s.mic_enabled,
+        "mic_device": s.mic_device,
+        "noise_suppression": s.noise_suppression,
+        "record_cursor_halo": s.record_cursor_halo,
         "record_countdown": s.record_countdown,
         "camera_device": s.camera_device,
+        "hotkey_capture": s.hotkey_capture,
+        "copy_after_capture": s.copy_after_capture,
+        "show_gallery_after_capture": s.show_gallery_after_capture,
+        "pin_on_top": s.pin_on_top,
+        "quick_bar_enabled": s.quick_bar_enabled,
+        "quick_bar_timeout": s.quick_bar_timeout,
+        "stroke_width": s.stroke_width,
+        "font_size": s.font_size,
+        "tool_color": s.tool_color,
+        "video_blur_strength": s.video_blur_strength,
+        "gif_fps": s.gif_fps,
+        "gif_max_width": s.gif_max_width,
+        "effect_rounded": s.effect_rounded,
+        "effect_corner_radius": s.effect_corner_radius,
+        "effect_fade": s.effect_fade,
+        "effect_fade_height": s.effect_fade_height,
     })
+}
+
+/// Overlay the provided keys onto the current Settings and persist. Only keys
+/// present in `values` are applied; JSON numbers/bools/strings are coerced to
+/// the field types.
+#[tauri::command]
+pub fn set_settings(values: serde_json::Value) -> Result<(), String> {
+    let mut s = Settings::load();
+    let obj = values
+        .as_object()
+        .ok_or_else(|| "set_settings expects an object".to_string())?;
+
+    let get_str = |v: &serde_json::Value| v.as_str().map(|x| x.to_string());
+    let get_bool = |v: &serde_json::Value| v.as_bool();
+    let get_u32 = |v: &serde_json::Value| {
+        v.as_u64()
+            .map(|n| n as u32)
+            .or_else(|| v.as_str().and_then(|x| x.parse::<u32>().ok()))
+    };
+
+    for (k, v) in obj {
+        match k.as_str() {
+            "library_dir" => if let Some(x) = get_str(v) { s.library_dir = x },
+            "backend" => if let Some(x) = get_str(v) { s.backend = x },
+            "capture_cursor" => if let Some(x) = get_bool(v) { s.capture_cursor = x },
+            "capture_delay" => if let Some(x) = get_u32(v) { s.capture_delay = x },
+            "extra_dirs" => {
+                if let Some(arr) = v.as_array() {
+                    s.extra_dirs = arr
+                        .iter()
+                        .filter_map(|x| x.as_str().map(String::from))
+                        .filter(|x| !x.is_empty())
+                        .collect();
+                } else if let Some(x) = v.as_str() {
+                    s.extra_dirs = x
+                        .split(';')
+                        .filter(|x| !x.is_empty())
+                        .map(String::from)
+                        .collect();
+                }
+            }
+            "mic_enabled" => if let Some(x) = get_bool(v) { s.mic_enabled = x },
+            "mic_device" => if let Some(x) = get_str(v) { s.mic_device = x },
+            "noise_suppression" => if let Some(x) = get_bool(v) { s.noise_suppression = x },
+            "record_cursor_halo" => if let Some(x) = get_bool(v) { s.record_cursor_halo = x },
+            "record_countdown" => if let Some(x) = get_u32(v) { s.record_countdown = x },
+            "camera_device" => if let Some(x) = get_str(v) { s.camera_device = x },
+            "hotkey_capture" => if let Some(x) = get_str(v) { s.hotkey_capture = x },
+            "copy_after_capture" => if let Some(x) = get_bool(v) { s.copy_after_capture = x },
+            "show_gallery_after_capture" => if let Some(x) = get_bool(v) { s.show_gallery_after_capture = x },
+            "pin_on_top" => if let Some(x) = get_bool(v) { s.pin_on_top = x },
+            "quick_bar_enabled" => if let Some(x) = get_bool(v) { s.quick_bar_enabled = x },
+            "quick_bar_timeout" => if let Some(x) = get_u32(v) { s.quick_bar_timeout = x },
+            "stroke_width" => if let Some(x) = get_u32(v) { s.stroke_width = x },
+            "font_size" => if let Some(x) = get_u32(v) { s.font_size = x },
+            "tool_color" => if let Some(x) = get_str(v) { s.tool_color = x },
+            "video_blur_strength" => if let Some(x) = get_u32(v) { s.video_blur_strength = x },
+            "gif_fps" => if let Some(x) = get_u32(v) { s.gif_fps = x },
+            "gif_max_width" => if let Some(x) = get_u32(v) { s.gif_max_width = x },
+            "effect_rounded" => if let Some(x) = get_bool(v) { s.effect_rounded = x },
+            "effect_corner_radius" => if let Some(x) = get_u32(v) { s.effect_corner_radius = x },
+            "effect_fade" => if let Some(x) = get_bool(v) { s.effect_fade = x },
+            "effect_fade_height" => if let Some(x) = get_u32(v) { s.effect_fade_height = x },
+            _ => {}
+        }
+    }
+    s.save().map_err(|e| e.to_string())
 }
 
 #[tauri::command]

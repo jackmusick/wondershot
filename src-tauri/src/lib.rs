@@ -35,6 +35,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::health,
             commands::get_settings,
+            commands::set_settings,
             commands::list_library,
             commands::load_sidecar,
             commands::save_sidecar,

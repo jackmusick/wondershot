@@ -75,8 +75,33 @@ export async function mockInvoke(cmd: string, _args?: unknown): Promise<unknown>
         backend: 'auto',
         capture_cursor: false,
         capture_delay: 0,
-        extra_dirs: []
+        extra_dirs: [],
+        mic_enabled: true,
+        mic_device: '',
+        noise_suppression: true,
+        record_cursor_halo: false,
+        record_countdown: 0,
+        camera_device: '',
+        hotkey_capture: 'Ctrl+Shift+Print',
+        copy_after_capture: true,
+        show_gallery_after_capture: true,
+        pin_on_top: false,
+        quick_bar_enabled: true,
+        quick_bar_timeout: 8,
+        stroke_width: 10,
+        font_size: 24,
+        tool_color: '#e3242b',
+        video_blur_strength: 14,
+        gif_fps: 12,
+        gif_max_width: 720,
+        effect_rounded: false,
+        effect_corner_radius: 16,
+        effect_fade: false,
+        effect_fade_height: 96
       };
+    case 'set_settings':
+      // No persistence in browser dev; accept and resolve.
+      return null;
     case 'load_sidecar':
       return null;
     case 'save_sidecar':

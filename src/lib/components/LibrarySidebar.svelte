@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { captures, activeItem } from '$lib/stores';
+  import { captures, activeItem, settingsOpen } from '$lib/stores';
   import { groupByDate } from '$lib/library';
   import type { Capture } from '$lib/types';
   let now = Date.now();
@@ -20,7 +20,7 @@
       {/each}
     {/each}
   </div>
-  <button class="settings">⚙ Settings</button>
+  <button class="settings" onclick={() => settingsOpen.set(true)}>⚙ Settings</button>
 </aside>
 
 <style>

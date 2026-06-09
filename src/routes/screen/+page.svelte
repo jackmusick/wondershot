@@ -7,6 +7,7 @@
   import EditorCanvas from '$lib/editor/EditorCanvas.svelte';
   import EditorToolbar from '$lib/editor/EditorToolbar.svelte';
   import VideoPlayer from '$lib/video/VideoPlayer.svelte';
+  import Settings from '$lib/components/Settings.svelte';
   let screen = $derived(page.url.searchParams.get('screen') ?? 'shell');
   onMount(loadLibrary);
 </script>
@@ -25,6 +26,10 @@
 {:else if screen === 'video'}
   <div style="height:100vh;display:flex;flex-direction:column;background:var(--bg-content)">
     <VideoPlayer path="/lib/Recording_20260608_112000.mp4" />
+  </div>
+{:else if screen === 'settings'}
+  <div style="height:100vh;background:var(--bg-content)">
+    <Settings open={true} />
   </div>
 {:else}
   <a href="/">full shell at /</a>

@@ -6,6 +6,7 @@
   import LibrarySidebar from '$lib/components/LibrarySidebar.svelte';
   import CaptureHeader from '$lib/components/CaptureHeader.svelte';
   import ContentView from '$lib/components/ContentView.svelte';
+  import Settings from '$lib/components/Settings.svelte';
   onMount(() => {
     let unlisten: (() => void) | undefined;
     let unRecording: (() => void) | undefined;
@@ -32,6 +33,7 @@
     <CaptureHeader />
     <ContentView />
   </main>
+  <Settings />
 </div>
 
 <style>

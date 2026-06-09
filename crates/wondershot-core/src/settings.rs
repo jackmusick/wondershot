@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Settings {
     pub library_dir: String,
     pub backend: String,
@@ -13,6 +13,22 @@ pub struct Settings {
     pub record_cursor_halo: bool,
     pub record_countdown: u32,
     pub camera_device: String,
+    pub hotkey_capture: String,
+    pub copy_after_capture: bool,
+    pub show_gallery_after_capture: bool,
+    pub pin_on_top: bool,
+    pub quick_bar_enabled: bool,
+    pub quick_bar_timeout: u32,
+    pub stroke_width: u32,
+    pub font_size: u32,
+    pub tool_color: String,
+    pub video_blur_strength: u32,
+    pub gif_fps: u32,
+    pub gif_max_width: u32,
+    pub effect_rounded: bool,
+    pub effect_corner_radius: u32,
+    pub effect_fade: bool,
+    pub effect_fade_height: u32,
 }
 
 impl Default for Settings {
@@ -34,6 +50,22 @@ impl Default for Settings {
             record_cursor_halo: false,
             record_countdown: 0,
             camera_device: String::new(),
+            hotkey_capture: "Ctrl+Shift+Print".into(),
+            copy_after_capture: true,
+            show_gallery_after_capture: true,
+            pin_on_top: false,
+            quick_bar_enabled: true,
+            quick_bar_timeout: 8,
+            stroke_width: 10,
+            font_size: 24,
+            tool_color: "#e3242b".into(),
+            video_blur_strength: 14,
+            gif_fps: 12,
+            gif_max_width: 720,
+            effect_rounded: false,
+            effect_corner_radius: 16,
+            effect_fade: false,
+            effect_fade_height: 96,
         }
     }
 }
@@ -73,6 +105,22 @@ impl Settings {
                 "record_cursor_halo" => s.record_cursor_halo = v == "true",
                 "record_countdown" => s.record_countdown = v.parse().unwrap_or(0),
                 "camera_device" => s.camera_device = v.to_string(),
+                "hotkey_capture" => s.hotkey_capture = v.to_string(),
+                "copy_after_capture" => s.copy_after_capture = v == "true",
+                "show_gallery_after_capture" => s.show_gallery_after_capture = v == "true",
+                "pin_on_top" => s.pin_on_top = v == "true",
+                "quick_bar_enabled" => s.quick_bar_enabled = v == "true",
+                "quick_bar_timeout" => s.quick_bar_timeout = v.parse().unwrap_or(8),
+                "stroke_width" => s.stroke_width = v.parse().unwrap_or(10),
+                "font_size" => s.font_size = v.parse().unwrap_or(24),
+                "tool_color" => s.tool_color = v.to_string(),
+                "video_blur_strength" => s.video_blur_strength = v.parse().unwrap_or(14),
+                "gif_fps" => s.gif_fps = v.parse().unwrap_or(12),
+                "gif_max_width" => s.gif_max_width = v.parse().unwrap_or(720),
+                "effect_rounded" => s.effect_rounded = v == "true",
+                "effect_corner_radius" => s.effect_corner_radius = v.parse().unwrap_or(16),
+                "effect_fade" => s.effect_fade = v == "true",
+                "effect_fade_height" => s.effect_fade_height = v.parse().unwrap_or(96),
                 "extra_dirs" => {
                     s.extra_dirs = v
                         .split(';')
@@ -84,6 +132,53 @@ impl Settings {
             }
         }
         s
+    }
+
+    /// Serialize all keys back to the QSettings INI format (`[General]` header
+    /// then `key=value` lines). Round-trips with `from_conf_str`.
+    pub fn to_conf_str(&self) -> String {
+        let b = |x: bool| if x { "true" } else { "false" };
+        let mut out = String::from("[General]\n");
+        out.push_str(&format!("library_dir={}\n", self.library_dir));
+        out.push_str(&format!("backend={}\n", self.backend));
+        out.push_str(&format!("capture_cursor={}\n", b(self.capture_cursor)));
+        out.push_str(&format!("capture_delay={}\n", self.capture_delay));
+        out.push_str(&format!("extra_dirs={}\n", self.extra_dirs.join(";")));
+        out.push_str(&format!("mic_enabled={}\n", b(self.mic_enabled)));
+        out.push_str(&format!("mic_device={}\n", self.mic_device));
+        out.push_str(&format!("noise_suppression={}\n", b(self.noise_suppression)));
+        out.push_str(&format!("record_cursor_halo={}\n", b(self.record_cursor_halo)));
+        out.push_str(&format!("record_countdown={}\n", self.record_countdown));
+        out.push_str(&format!("camera_device={}\n", self.camera_device));
+        out.push_str(&format!("hotkey_capture={}\n", self.hotkey_capture));
+        out.push_str(&format!("copy_after_capture={}\n", b(self.copy_after_capture)));
+        out.push_str(&format!(
+            "show_gallery_after_capture={}\n",
+            b(self.show_gallery_after_capture)
+        ));
+        out.push_str(&format!("pin_on_top={}\n", b(self.pin_on_top)));
+        out.push_str(&format!("quick_bar_enabled={}\n", b(self.quick_bar_enabled)));
+        out.push_str(&format!("quick_bar_timeout={}\n", self.quick_bar_timeout));
+        out.push_str(&format!("stroke_width={}\n", self.stroke_width));
+        out.push_str(&format!("font_size={}\n", self.font_size));
+        out.push_str(&format!("tool_color={}\n", self.tool_color));
+        out.push_str(&format!("video_blur_strength={}\n", self.video_blur_strength));
+        out.push_str(&format!("gif_fps={}\n", self.gif_fps));
+        out.push_str(&format!("gif_max_width={}\n", self.gif_max_width));
+        out.push_str(&format!("effect_rounded={}\n", b(self.effect_rounded)));
+        out.push_str(&format!("effect_corner_radius={}\n", self.effect_corner_radius));
+        out.push_str(&format!("effect_fade={}\n", b(self.effect_fade)));
+        out.push_str(&format!("effect_fade_height={}\n", self.effect_fade_height));
+        out
+    }
+
+    /// Create the conf dir and write `to_conf_str()` to `conf_path()`.
+    pub fn save(&self) -> std::io::Result<()> {
+        let path = Self::conf_path();
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&path, self.to_conf_str())
     }
 
     pub fn library_dirs(&self) -> Vec<PathBuf> {
@@ -133,5 +228,71 @@ mod tests {
         let s = Settings::from_conf_str(conf);
         assert_eq!(s.record_countdown, 5);
         assert_eq!(s.camera_device, "/dev/video0");
+    }
+
+    #[test]
+    fn new_keys_parse_and_default() {
+        let s = Settings::default();
+        assert_eq!(s.hotkey_capture, "Ctrl+Shift+Print");
+        assert_eq!(s.copy_after_capture, true);
+        assert_eq!(s.show_gallery_after_capture, true);
+        assert_eq!(s.pin_on_top, false);
+        assert_eq!(s.quick_bar_enabled, true);
+        assert_eq!(s.quick_bar_timeout, 8);
+        assert_eq!(s.stroke_width, 10);
+        assert_eq!(s.font_size, 24);
+        assert_eq!(s.tool_color, "#e3242b");
+        assert_eq!(s.video_blur_strength, 14);
+        assert_eq!(s.gif_fps, 12);
+        assert_eq!(s.gif_max_width, 720);
+        assert_eq!(s.effect_corner_radius, 16);
+        assert_eq!(s.effect_fade_height, 96);
+    }
+
+    #[test]
+    fn to_conf_str_from_conf_str_round_trip() {
+        let s = Settings {
+            library_dir: "/tmp/shots".into(),
+            backend: "spectacle".into(),
+            capture_cursor: true,
+            capture_delay: 3,
+            extra_dirs: vec!["/a".into(), "/b".into()],
+            mic_enabled: false,
+            mic_device: "mic-x".into(),
+            noise_suppression: false,
+            record_cursor_halo: true,
+            record_countdown: 5,
+            camera_device: "/dev/video0".into(),
+            hotkey_capture: "Ctrl+Alt+P".into(),
+            copy_after_capture: false,
+            show_gallery_after_capture: false,
+            pin_on_top: true,
+            quick_bar_enabled: false,
+            quick_bar_timeout: 30,
+            stroke_width: 5,
+            font_size: 40,
+            tool_color: "#00ff00".into(),
+            video_blur_strength: 22,
+            gif_fps: 24,
+            gif_max_width: 1080,
+            effect_rounded: true,
+            effect_corner_radius: 32,
+            effect_fade: true,
+            effect_fade_height: 200,
+        };
+        let round = Settings::from_conf_str(&s.to_conf_str());
+        assert_eq!(s, round);
+    }
+
+    #[test]
+    fn save_writes_a_file() {
+        let dir = std::env::temp_dir().join(format!("wondershot-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("wondershot.conf");
+        let s = Settings::default();
+        std::fs::write(&path, s.to_conf_str()).unwrap();
+        let read = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(Settings::from_conf_str(&read), s);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
