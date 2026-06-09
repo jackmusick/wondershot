@@ -66,8 +66,13 @@ const results = await parallel(shots.map((shot) => () => {
 }));
 
 const reviewed = results.filter(Boolean);
+const dropped = shots.length - reviewed.length;
+if (dropped > 0) {
+  // No silent gaps: a null result means a shot went unreviewed (agent error/timeout).
+  log(`WARNING: ${dropped} of ${shots.length} shot(s) returned no result and were NOT reviewed`);
+}
 const failures = reviewed.filter((r) => !r.pass);
-log(`UI review: ${reviewed.length} shots, ${failures.length} need work`);
+log(`UI review: ${reviewed.length}/${shots.length} shots reviewed, ${failures.length} need work`);
 
 // Workflow result (implicit return by runtime)
 ({ reviewed, failures });
