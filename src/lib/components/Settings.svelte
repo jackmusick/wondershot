@@ -7,7 +7,7 @@
   // `open` prop forces the modal open (harness/refshots); otherwise the store drives it.
   let visible = $derived(open || $settingsOpen);
 
-  type Tab = 'general' | 'capture' | 'recording' | 'output';
+  type Tab = 'general' | 'capture' | 'recording' | 'output' | 'sharing' | 'ai';
   let tab = $state<Tab>('general');
 
   type SettingsData = Record<string, unknown>;
@@ -78,6 +78,8 @@
         <button class="tab" class:active={tab === 'capture'} role="tab" onclick={() => (tab = 'capture')}>Capture</button>
         <button class="tab" class:active={tab === 'recording'} role="tab" onclick={() => (tab = 'recording')}>Recording</button>
         <button class="tab" class:active={tab === 'output'} role="tab" onclick={() => (tab = 'output')}>Output</button>
+        <button class="tab" class:active={tab === 'sharing'} role="tab" onclick={() => (tab = 'sharing')}>Sharing</button>
+        <button class="tab" class:active={tab === 'ai'} role="tab" onclick={() => (tab = 'ai')}>AI</button>
       </div>
 
       <div class="body">
@@ -171,6 +173,46 @@
             <span>Tool color</span>
             <input type="color" bind:value={s.tool_color} />
           </label>
+        {:else if tab === 'sharing'}
+          <p class="note">
+            Upload a capture to a cloud target and copy a share link. Backends aren't
+            wired into this build yet — credentials are stored and preserved for parity.
+          </p>
+          <label class="field row">
+            <span>Default provider</span>
+            <select bind:value={s.share_provider}>
+              <option value="onedrive">OneDrive / SharePoint</option>
+              <option value="s3">S3-compatible</option>
+              <option value="azure">Azure Blob</option>
+            </select>
+          </label>
+          <label class="field row">
+            <span>Link expiry (days)</span>
+            <input type="number" min="0" max="365" value={num('share_expiry_days')} oninput={(e) => setNum('share_expiry_days', e.currentTarget.valueAsNumber)} />
+          </label>
+          <div class="divider"></div>
+          <div class="group-label">S3-compatible (AWS, MinIO, B2, R2…)</div>
+          <label class="field"><span>Endpoint</span><input type="text" bind:value={s.s3_endpoint} placeholder="https://s3.amazonaws.com" /></label>
+          <label class="field"><span>Bucket</span><input type="text" bind:value={s.s3_bucket} /></label>
+          <label class="field"><span>Region</span><input type="text" bind:value={s.s3_region} /></label>
+          <label class="field"><span>Access key</span><input type="text" bind:value={s.s3_access_key} /></label>
+          <label class="field"><span>Secret key</span><input type="password" bind:value={s.s3_secret_key} /></label>
+          <div class="divider"></div>
+          <div class="group-label">Azure Blob Storage</div>
+          <label class="field"><span>Account</span><input type="text" bind:value={s.azure_account} /></label>
+          <label class="field"><span>Container</span><input type="text" bind:value={s.azure_container} /></label>
+          <label class="field"><span>Key</span><input type="password" bind:value={s.azure_key} /></label>
+          <div class="divider"></div>
+          <div class="group-label">OneDrive / SharePoint</div>
+          <label class="field"><span>Graph client ID</span><input type="text" bind:value={s.graph_client_id} /></label>
+        {:else if tab === 'ai'}
+          <p class="note">
+            Used by AI Redact / Simplify and the bg-removal helpers. OpenAI-compatible
+            endpoint. The inference wiring is in progress; the endpoint is stored for parity.
+          </p>
+          <label class="field"><span>Endpoint</span><input type="text" bind:value={s.ai_endpoint} placeholder="https://openrouter.ai/api" /></label>
+          <label class="field"><span>Model</span><input type="text" bind:value={s.ai_model} placeholder="google/gemini-2.5-flash" /></label>
+          <label class="field"><span>API key</span><input type="password" bind:value={s.ai_api_key} /></label>
         {/if}
       </div>
 
@@ -307,6 +349,17 @@
     height: 1px;
     background: var(--border);
     margin: 4px 0;
+  }
+  .note {
+    margin: 0;
+    color: var(--fg-secondary);
+    font-size: var(--text-small);
+    line-height: 1.4;
+  }
+  .group-label {
+    font-weight: 600;
+    color: var(--fg-primary);
+    font-size: var(--text-small);
   }
   .foot {
     display: flex;

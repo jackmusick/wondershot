@@ -11,7 +11,7 @@ pub fn health() -> String {
 #[tauri::command]
 pub fn get_settings() -> serde_json::Value {
     let s = Settings::load();
-    serde_json::json!({
+    let mut out = serde_json::json!({
         "library_dir": s.library_dir,
         "backend": s.backend,
         "capture_cursor": s.capture_cursor,
@@ -39,7 +39,15 @@ pub fn get_settings() -> serde_json::Value {
         "effect_corner_radius": s.effect_corner_radius,
         "effect_fade": s.effect_fade,
         "effect_fade_height": s.effect_fade_height,
-    })
+    });
+    // Surface the preserved-but-unmodeled keys (sharing creds, AI endpoint, …)
+    // so the Settings Sharing/AI tabs can read them. They round-trip via `extra`.
+    if let Some(obj) = out.as_object_mut() {
+        for (k, v) in &s.extra {
+            obj.insert(k.clone(), serde_json::Value::String(v.clone()));
+        }
+    }
+    out
 }
 
 /// Overlay the provided keys onto the current Settings and persist. Only keys
@@ -103,7 +111,21 @@ pub fn set_settings(values: serde_json::Value) -> Result<(), String> {
             "effect_corner_radius" => if let Some(x) = get_u32(v) { s.effect_corner_radius = x },
             "effect_fade" => if let Some(x) = get_bool(v) { s.effect_fade = x },
             "effect_fade_height" => if let Some(x) = get_u32(v) { s.effect_fade_height = x },
-            _ => {}
+            // Unmodeled keys (sharing creds, AI endpoint, …): store as strings in
+            // `extra` so they persist back to the shared conf. Numbers/bools are
+            // stringified to match QSettings' text format.
+            _ => {
+                let sval = match v {
+                    serde_json::Value::String(x) => Some(x.clone()),
+                    serde_json::Value::Bool(b) => Some(b.to_string()),
+                    serde_json::Value::Number(n) => Some(n.to_string()),
+                    serde_json::Value::Null => Some(String::new()),
+                    _ => None,
+                };
+                if let Some(x) = sval {
+                    s.extra.insert(k.clone(), x);
+                }
+            }
         }
     }
     s.save().map_err(|e| e.to_string())
