@@ -3,6 +3,7 @@
   import { onMount } from 'svelte';
   import { loadLibrary } from '$lib/stores';
   import Filmstrip from '$lib/components/Filmstrip.svelte';
+  import PropertiesPanel from '$lib/components/PropertiesPanel.svelte';
   import CaptureHeader from '$lib/components/CaptureHeader.svelte';
   import EditorCanvas from '$lib/editor/EditorCanvas.svelte';
   import EditorToolbar from '$lib/editor/EditorToolbar.svelte';
@@ -21,6 +22,7 @@
     <EditorToolbar />
     <div style="flex:1;display:flex;min-height:0">
       <EditorCanvas path="/fixtures/editor-base.png" />
+      <PropertiesPanel />
     </div>
   </div>
 {:else if screen === 'video'}

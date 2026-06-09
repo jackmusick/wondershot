@@ -1,7 +1,5 @@
 <script lang="ts">
   import { activeTool, SHORTCUTS, type ToolId } from './tools';
-  import { drawStyle, textStyle, normalizeColor, type TextAlign } from './style';
-  import { effects } from './effects';
   import { zoomApi, saveApi, bgApi } from './zoom';
 
   // Tool metadata: id, human label, and an inline-SVG path/glyph. Icons are
@@ -49,37 +47,6 @@
 
   function pick(id: ToolId) {
     activeTool.set(id);
-  }
-
-  // --- Color swatch: open a hidden native color input on click ---
-  let colorEl: HTMLInputElement;
-  // The native input only accepts/returns #rrggbb; store keeps #rrggbbaa.
-  let colorRgb = $derived($drawStyle.color.slice(0, 7));
-  function onColorInput(e: Event) {
-    const v = (e.target as HTMLInputElement).value;
-    drawStyle.update((s) => ({ ...s, color: normalizeColor(v) }));
-  }
-
-  function onWidth(e: Event) {
-    const v = Number((e.target as HTMLInputElement).value);
-    drawStyle.update((s) => ({ ...s, width: v }));
-  }
-
-  function onFontSize(e: Event) {
-    const v = Number((e.target as HTMLInputElement).value);
-    textStyle.update((s) => ({ ...s, point_size: v }));
-  }
-  function setAlign(a: TextAlign) {
-    textStyle.update((s) => ({ ...s, align: a }));
-  }
-
-  function onRadius(e: Event) {
-    const v = Number((e.target as HTMLInputElement).value);
-    effects.update((s) => ({ ...s, corner_radius: v }));
-  }
-  function onFadeHeight(e: Event) {
-    const v = Number((e.target as HTMLInputElement).value);
-    effects.update((s) => ({ ...s, fade_height: v }));
   }
 
   function zoom(fn: 'zoomIn' | 'zoomOut' | 'zoomActual' | 'zoomFit') {
@@ -164,69 +131,7 @@
     {/each}
   </div>
 
-  <span class="sep"></span>
-
-  <!-- Style controls -->
-  <div class="style">
-    <button
-      class="swatch"
-      title="Stroke color"
-      aria-label="Stroke color"
-      style="--swatch:{colorRgb}"
-      onclick={() => colorEl.click()}
-    ></button>
-    <input
-      bind:this={colorEl}
-      type="color"
-      class="color-input"
-      value={colorRgb}
-      oninput={onColorInput}
-      tabindex="-1"
-      aria-hidden="true"
-    />
-    <label class="field" title="Stroke width">
-      <span class="ico-stroke"></span>
-      <input type="range" min="1" max="32" value={$drawStyle.width} oninput={onWidth} />
-      <span class="num">{$drawStyle.width}</span>
-    </label>
-
-    {#if $activeTool === 'text'}
-      <span class="sep"></span>
-      <label class="field" title="Font size">
-        <span class="lbl">A</span>
-        <input type="number" min="6" max="96" value={$textStyle.point_size} oninput={onFontSize} />
-      </label>
-      <div class="align">
-        <button class:active={$textStyle.align === 'left'} title="Align left" aria-label="Align left" onclick={() => setAlign('left')}>
-          <svg viewBox="0 0 16 16"><path d="M2 4h12M2 8h8M2 12h11" /></svg>
-        </button>
-        <button class:active={$textStyle.align === 'center'} title="Align center" aria-label="Align center" onclick={() => setAlign('center')}>
-          <svg viewBox="0 0 16 16"><path d="M2 4h12M4 8h8M3 12h10" /></svg>
-        </button>
-        <button class:active={$textStyle.align === 'right'} title="Align right" aria-label="Align right" onclick={() => setAlign('right')}>
-          <svg viewBox="0 0 16 16"><path d="M2 4h12M6 8h8M3 12h11" /></svg>
-        </button>
-      </div>
-    {/if}
-  </div>
-
   <div class="spacer"></div>
-
-  <!-- Effects -->
-  <div class="effects">
-    <label class="toggle" title="Round the image corners on save">
-      <input type="checkbox" checked={$effects.rounded} onchange={(e) => effects.update((s) => ({ ...s, rounded: (e.target as HTMLInputElement).checked }))} />
-      Rounded
-    </label>
-    <input class="effect-num" type="number" min="2" max="64" value={$effects.corner_radius} oninput={onRadius} disabled={!$effects.rounded} aria-label="Corner radius" />
-    <label class="toggle" title="Fade the image bottom on save">
-      <input type="checkbox" checked={$effects.fade} onchange={(e) => effects.update((s) => ({ ...s, fade: (e.target as HTMLInputElement).checked }))} />
-      Fade
-    </label>
-    <input class="effect-num" type="number" min="8" max="512" value={$effects.fade_height} oninput={onFadeHeight} disabled={!$effects.fade} aria-label="Fade height" />
-  </div>
-
-  <span class="sep"></span>
 
   <!-- Zoom controls -->
   <div class="zoom">

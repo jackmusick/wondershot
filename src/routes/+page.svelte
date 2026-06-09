@@ -3,8 +3,10 @@
   import { loadLibrary, takeCapture, openEditorByPath, importPaths } from '$lib/stores';
   import { ipcListen, ipcEmit } from '$lib/ipc';
   import { initRecordingEvents } from '$lib/recorder/control';
+  import { activeItem } from '$lib/stores';
   import CaptureHeader from '$lib/components/CaptureHeader.svelte';
   import ContentView from '$lib/components/ContentView.svelte';
+  import PropertiesPanel from '$lib/components/PropertiesPanel.svelte';
   import Filmstrip from '$lib/components/Filmstrip.svelte';
   import Settings from '$lib/components/Settings.svelte';
   onMount(() => {
@@ -33,11 +35,17 @@
 
 <div class="shell">
   <CaptureHeader />
-  <ContentView />
+  <div class="work">
+    <ContentView />
+    {#if $activeItem && $activeItem.kind !== 'video'}
+      <PropertiesPanel />
+    {/if}
+  </div>
   <Filmstrip />
   <Settings />
 </div>
 
 <style>
   .shell { display: flex; flex-direction: column; height: 100vh; background: var(--bg-content); }
+  .work { flex: 1; display: flex; min-height: 0; }
 </style>
