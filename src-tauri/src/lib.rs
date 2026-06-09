@@ -53,6 +53,10 @@ pub fn run() {
             commands::stop_recording,
             commands::pause_recording,
             commands::resume_recording,
+            commands::grab_frame,
+            commands::apply_blur,
+            commands::export_gif,
+            commands::trim_video,
         ])
         .run(tauri::generate_context!())
         .expect("error while running wondershot");

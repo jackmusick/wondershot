@@ -91,6 +91,15 @@ export async function mockInvoke(cmd: string, _args?: unknown): Promise<unknown>
       return null;
     case 'copy_image':
       return true;
+    case 'grab_frame':
+    case 'apply_blur':
+    case 'export_gif':
+    case 'trim_video': {
+      // No ffmpeg in browser dev: echo back a plausible output path so the
+      // player's success paths (loadLibrary + select) resolve without crashing.
+      const p = (_args as { path?: string } | undefined)?.path ?? '/mock/video.mp4';
+      return p;
+    }
     case 'pixelate_patch':
     case 'blur_patch':
       // The real backend reads the base image + processes the region; the mock

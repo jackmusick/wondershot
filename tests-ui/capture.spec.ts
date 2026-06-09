@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { existsSync, statSync } from 'node:fs';
 
-const SCREENS = ['shell', 'sidebar', 'header', 'editor'];
+const SCREENS = ['shell', 'sidebar', 'header', 'editor', 'video'];
 const THEMES = ['dark', 'light'] as const;
 
 for (const screen of SCREENS) {
@@ -12,6 +12,11 @@ for (const screen of SCREENS) {
       await page.evaluate((t) => document.documentElement.setAttribute('data-theme', t), theme);
       if (screen === 'editor') {
         await page.waitForSelector('[data-editor-ready="true"]', { timeout: 8000 });
+      }
+      if (screen === 'video') {
+        // The <video> won't decode a real file headlessly, but the transport
+        // controls render immediately on --bg-content — that's what we shoot.
+        await page.waitForSelector('input.timeline', { timeout: 8000 });
       }
       await page.waitForTimeout(150);
       const out = `artifacts/ui/${screen}-${theme}.png`;

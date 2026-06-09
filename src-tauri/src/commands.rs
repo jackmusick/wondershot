@@ -1,6 +1,6 @@
 use std::path::Path;
 use std::sync::Mutex;
-use wondershot_core::{capture, clipboard, library, paths, settings::Settings, sidecar};
+use wondershot_core::{capture, clipboard, library, paths, settings::Settings, sidecar, video};
 use wondershot_core::record::{files, pipeline, portal, recorder};
 
 #[tauri::command]
@@ -393,6 +393,199 @@ pub fn resume_recording(state: tauri::State<'_, RecState>) -> Result<(), String>
         rec.resume();
     }
     Ok(())
+}
+
+// --- video: ffmpeg-driven operations (M5 T2) -------------------------------
+
+/// Locate the ffmpeg binary. M2/M4 have no bundled-ffmpeg helper, so resolve
+/// it on PATH (the flatpak ships ffmpeg in the runtime; dev hosts have it too).
+fn find_ffmpeg() -> Result<String, String> {
+    std::env::var_os("PATH")
+        .and_then(|paths| {
+            std::env::split_paths(&paths)
+                .map(|p| p.join("ffmpeg"))
+                .find(|p| p.is_file())
+        })
+        .map(|p| p.to_string_lossy().into_owned())
+        .or_else(|| {
+            // Common absolute fallbacks if PATH is sparse.
+            ["/usr/bin/ffmpeg", "/usr/local/bin/ffmpeg", "/app/bin/ffmpeg"]
+                .into_iter()
+                .find(|p| Path::new(p).is_file())
+                .map(|s| s.to_string())
+        })
+        .ok_or_else(|| "ffmpeg not found on PATH".to_string())
+}
+
+/// The library dir and the `.rendering` tmp dir (created), as paths.
+fn library_and_rendering() -> (std::path::PathBuf, std::path::PathBuf) {
+    let s = Settings::load();
+    let library_dir = std::path::PathBuf::from(&s.library_dir);
+    let _ = std::fs::create_dir_all(&library_dir);
+    let rendering = files::rendering_dir(&library_dir);
+    let _ = std::fs::create_dir_all(&rendering);
+    (library_dir, rendering)
+}
+
+/// Basename (file_name) of a path as a String.
+fn basename(path: &str) -> String {
+    Path::new(path)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.to_string())
+}
+
+/// Lowercase extension (no dot) of a path.
+fn ext_of(path: &str) -> String {
+    Path::new(path)
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .unwrap_or_default()
+}
+
+/// Run ffmpeg with `args`, then atomically move `tmp` → a unique path in the
+/// library named `out_name`. Returns the final path. On failure the tmp is
+/// removed and ffmpeg's stderr tail is surfaced.
+async fn run_ffmpeg_to_library(
+    args: &[String],
+    tmp: &Path,
+    library_dir: &Path,
+    out_name: &str,
+) -> Result<String, String> {
+    let ffmpeg = find_ffmpeg()?;
+    let output = tokio::process::Command::new(&ffmpeg)
+        .args(args)
+        .output()
+        .await
+        .map_err(|e| format!("could not start ffmpeg: {e}"))?;
+    if !output.status.success() {
+        let _ = std::fs::remove_file(tmp);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let tail: String = stderr.lines().rev().take(4).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("\n");
+        return Err(format!("ffmpeg failed: {tail}"));
+    }
+    if !tmp.exists() {
+        return Err("ffmpeg produced no output file".into());
+    }
+    let out = paths::unique_path(library_dir, out_name);
+    std::fs::rename(tmp, &out)
+        .or_else(|_| std::fs::copy(tmp, &out).map(|_| ()).and_then(|_| std::fs::remove_file(tmp)))
+        .map_err(|e| format!("could not move render into library: {e}"))?;
+    Ok(out.to_string_lossy().into_owned())
+}
+
+/// Grab a single frame at `position` seconds, saved as `<stem>-frame.png` in
+/// the library. Returns the new file's path.
+#[tauri::command]
+pub async fn grab_frame(path: String, position: f64) -> Result<String, String> {
+    let (library_dir, rendering) = library_and_rendering();
+    let out_name = video::frame_name(&basename(&path));
+    let tmp = rendering.join(&out_name);
+    let args = video::build_frame_grab_args(&path, position, &tmp.to_string_lossy());
+    run_ffmpeg_to_library(&args, &tmp, &library_dir, &out_name).await
+}
+
+/// Apply time-gated blur redactions and re-encode to H.264.
+///
+/// CONTAINER COERCION: H.264 cannot live in a webm, so the output extension is
+/// the source ext only when it is already an mp4/m4v/mov container; otherwise
+/// it is forced to `.mp4`. Output name is `<stem>-redacted.<coerced-ext>`.
+#[tauri::command]
+pub async fn apply_blur(
+    path: String,
+    redactions: Vec<video::Redaction>,
+    blur: u32,
+) -> Result<String, String> {
+    if redactions.is_empty() {
+        return Err("no redactions to apply".into());
+    }
+    let (library_dir, rendering) = library_and_rendering();
+
+    let src_ext = ext_of(&path);
+    let coerced_ext = if matches!(src_ext.as_str(), "mp4" | "m4v" | "mov") {
+        src_ext
+    } else {
+        "mp4".to_string()
+    };
+    let stem = Path::new(&path)
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "video".into());
+    let out_name = format!("{stem}-redacted.{coerced_ext}");
+    let tmp = rendering.join(&out_name);
+
+    // video_w/video_h = 0 ⇒ the filter does not clamp (the UI already mapped
+    // boxes into valid frame coords).
+    let (graph, label) = video::build_blur_filter(&redactions, blur as i64, 0, 0);
+
+    let args: Vec<String> = vec![
+        "-y".into(),
+        "-i".into(),
+        path.clone(),
+        "-filter_complex".into(),
+        graph,
+        "-map".into(),
+        format!("[{label}]"),
+        "-map".into(),
+        "0:a?".into(),
+        "-c:v".into(),
+        "libx264".into(),
+        "-crf".into(),
+        "20".into(),
+        "-preset".into(),
+        "veryfast".into(),
+        "-movflags".into(),
+        "+faststart".into(),
+        tmp.to_string_lossy().into_owned(),
+    ];
+    run_ffmpeg_to_library(&args, &tmp, &library_dir, &out_name).await
+}
+
+/// Export the video (optionally a sub-range) to a palette-optimized GIF named
+/// `<stem>.gif`. Returns the new file's path.
+#[tauri::command]
+pub async fn export_gif(
+    path: String,
+    fps: u32,
+    max_width: u32,
+    start: Option<f64>,
+    end: Option<f64>,
+) -> Result<String, String> {
+    let (library_dir, rendering) = library_and_rendering();
+    let out_name = video::gif_name(&basename(&path));
+    let tmp = rendering.join(&out_name);
+    let args = video::build_gif_args(
+        &path,
+        &tmp.to_string_lossy(),
+        fps as i64,
+        max_width as i64,
+        start,
+        end,
+    );
+    run_ffmpeg_to_library(&args, &tmp, &library_dir, &out_name).await
+}
+
+/// Trim the video to `[start, end]`. Stream-copy keeps the source container;
+/// re-encode lands in `.mp4` (always x264). Returns the new file's path.
+#[tauri::command]
+pub async fn trim_video(
+    path: String,
+    start: f64,
+    end: f64,
+    reencode: bool,
+) -> Result<String, String> {
+    let (library_dir, rendering) = library_and_rendering();
+    let out_name = video::trimmed_name(&basename(&path), reencode);
+    let tmp = rendering.join(&out_name);
+    let args = video::build_trim_args(
+        &path,
+        start,
+        end,
+        &tmp.to_string_lossy(),
+        reencode,
+        "libx264",
+    );
+    run_ffmpeg_to_library(&args, &tmp, &library_dir, &out_name).await
 }
 
 /// Write `img` as the next base file alongside `path` and return its path.
