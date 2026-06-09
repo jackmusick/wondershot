@@ -711,3 +711,57 @@ fn write_new_base(path: &str, img: &image::RgbaImage) -> Result<String, String> 
         .map_err(|e| e.to_string())?;
     Ok(base.to_string_lossy().into_owned())
 }
+
+// --- M7 cutover: CLI-driven commands ---------------------------------------
+
+/// Install the per-user `.desktop` launcher + point its Icon at the app-id
+/// (parity with Python `--install-desktop`). Idempotent; best-effort xdg
+/// database refresh. The AppImage path uses this to register a menu entry.
+#[tauri::command]
+pub fn install_desktop() -> Result<(), String> {
+    use std::io::Write;
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let data = std::env::var_os("XDG_DATA_HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".local/share")
+        });
+    let apps = data.join("applications");
+    std::fs::create_dir_all(&apps).map_err(|e| e.to_string())?;
+    let desktop = format!(
+        "[Desktop Entry]\nType=Application\nName=Wondershot\n\
+         Comment=Screenshot & screen-recording with annotation\n\
+         Exec={} %U\nIcon=io.github.jackmusick.wondershot\nTerminal=false\n\
+         Categories=Utility;Graphics;\nStartupNotify=true\n",
+        exe.display()
+    );
+    let path = apps.join("io.github.jackmusick.wondershot.desktop");
+    let mut f = std::fs::File::create(&path).map_err(|e| e.to_string())?;
+    f.write_all(desktop.as_bytes()).map_err(|e| e.to_string())?;
+    let _ = std::process::Command::new("update-desktop-database")
+        .arg(&apps)
+        .status();
+    Ok(())
+}
+
+/// Copy `paths` into the library dir (parity with Python `--import`), returning
+/// the destination paths. Files already inside the library are left in place.
+#[tauri::command]
+pub fn import_files(paths: Vec<String>) -> Result<Vec<String>, String> {
+    let lib = Settings::load().library_dir;
+    std::fs::create_dir_all(&lib).map_err(|e| e.to_string())?;
+    let lib_dir = Path::new(&lib);
+    let mut out = Vec::new();
+    for p in paths {
+        let src = std::path::PathBuf::from(&p);
+        let name = src
+            .file_name()
+            .ok_or_else(|| format!("bad import path: {p}"))?;
+        let dest = lib_dir.join(name);
+        if src != dest {
+            std::fs::copy(&src, &dest).map_err(|e| e.to_string())?;
+        }
+        out.push(dest.to_string_lossy().into_owned());
+    }
+    Ok(out)
+}
