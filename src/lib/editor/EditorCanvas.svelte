@@ -6,7 +6,7 @@
   import type { Item, Vec2 } from './model';
   import { History } from './history';
   import { drawStyle, textStyle, type DrawStyle, type TextStyle } from './style';
-  import { zoomApi, saveApi, bgApi } from './zoom';
+  import { zoomApi, saveApi, bgApi, viewInfo } from './zoom';
   import { drawTools, type DrawCtx } from './tools/index';
   import { WS_NODE_NAME, nodeToItemRef, tagNode } from './tools/arrowLine';
   // Side-effect import: registers the rect/ellipse/highlight box-shape tools
@@ -78,6 +78,7 @@
     const ch = container.clientHeight;
     stage.position({ x: (cw - imgW * scale) / 2, y: (ch - imgH * scale) / 2 });
     stage.batchDraw();
+    viewInfo.set({ width: imgW, height: imgH, zoom: scale });
   }
 
   function fitToView() {
@@ -105,6 +106,7 @@
       y: pointer.y - mousePointTo.y * newScale,
     });
     stage.batchDraw();
+    viewInfo.set({ width: imgW, height: imgH, zoom: newScale });
   }
 
   // --- Annotation model + undo/redo history ---
@@ -1076,6 +1078,7 @@
       zoomApi.set(null);
       saveApi.set(null);
       bgApi.set(null);
+      viewInfo.set(null);
       unsubTool();
       unsubStyle();
       unsubTextStyle();

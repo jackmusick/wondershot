@@ -16,6 +16,19 @@ export interface ZoomApi {
 export const zoomApi = writable<ZoomApi | null>(null);
 
 /**
+ * Live view info for the zoom bar below the canvas: the base image's pixel
+ * resolution and the current zoom factor. EditorCanvas updates it on load and
+ * on every zoom/fit; null when no canvas is mounted.
+ */
+export interface ViewInfo {
+  width: number;
+  height: number;
+  zoom: number;
+}
+
+export const viewInfo = writable<ViewInfo | null>(null);
+
+/**
  * Save bridge, mirroring zoomApi. EditorCanvas registers its async `save()`
  * here on mount; the EditorToolbar's Save button calls it. Null when no canvas
  * is mounted, so the button no-ops gracefully.

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { activeTool, SHORTCUTS, type ToolId } from './tools';
-  import { zoomApi, bgApi } from './zoom';
+  import { bgApi } from './zoom';
 
   // Tool metadata: id, human label, and an inline-SVG path/glyph. Icons are
   // simple monochrome strokes drawn in a 16x16 box; where an icon would be
@@ -55,10 +55,6 @@
 
   function pick(id: ToolId) {
     activeTool.set(id);
-  }
-
-  function zoom(fn: 'zoomIn' | 'zoomOut' | 'zoomActual' | 'zoomFit') {
-    $zoomApi?.[fn]();
   }
 
   // --- Remove BG: AI background removal (M5 T3) ---
@@ -152,15 +148,6 @@
   </div>
 
   <div class="spacer"></div>
-
-  <!-- Zoom controls -->
-  <div class="zoom">
-    <button class="zbtn" title="Zoom out" aria-label="Zoom out" onclick={() => zoom('zoomOut')}>−</button>
-    <button class="ztext" title="Fit to view" onclick={() => zoom('zoomFit')}>Fit</button>
-    <button class="ztext" title="Actual size (100%)" onclick={() => zoom('zoomActual')}>100%</button>
-    <button class="zbtn" title="Zoom in" aria-label="Zoom in" onclick={() => zoom('zoomIn')}>+</button>
-  </div>
-
   <span class="autosave" title="Edits save automatically">Auto-saved</span>
 </header>
 
@@ -176,8 +163,7 @@
     flex-shrink: 0;
     overflow-x: auto;
   }
-  .tools,
-  .zoom {
+  .tools {
     display: flex;
     align-items: center;
     gap: 2px;
@@ -316,23 +302,6 @@
     padding: 0 4px;
   }
   .effect-num:disabled { opacity: 0.4; }
-
-  /* Zoom */
-  .zbtn,
-  .ztext {
-    height: 24px;
-    border: 1px solid var(--border);
-    background: var(--bg-field);
-    color: var(--fg-primary);
-    border-radius: var(--radius);
-    cursor: pointer;
-    font-size: var(--text-small);
-    flex-shrink: 0;
-  }
-  .zbtn { width: 26px; font-size: 15px; line-height: 1; }
-  .ztext { padding: 0 8px; }
-  .zbtn:hover,
-  .ztext:hover { background: var(--bg-hover); }
 
   .autosave {
     font-size: var(--text-small);

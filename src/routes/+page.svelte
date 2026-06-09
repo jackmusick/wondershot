@@ -7,6 +7,7 @@
   import CaptureHeader from '$lib/components/CaptureHeader.svelte';
   import ContentView from '$lib/components/ContentView.svelte';
   import PropertiesPanel from '$lib/components/PropertiesPanel.svelte';
+  import ZoomBar from '$lib/components/ZoomBar.svelte';
   import Filmstrip from '$lib/components/Filmstrip.svelte';
   import Settings from '$lib/components/Settings.svelte';
   onMount(() => {
@@ -41,6 +42,9 @@
       <PropertiesPanel />
     {/if}
   </div>
+  {#if $activeItem && $activeItem.kind !== 'video'}
+    <ZoomBar />
+  {/if}
   <Filmstrip />
   <Settings />
 </div>

@@ -4,6 +4,7 @@
   import { loadLibrary } from '$lib/stores';
   import Filmstrip from '$lib/components/Filmstrip.svelte';
   import PropertiesPanel from '$lib/components/PropertiesPanel.svelte';
+  import ZoomBar from '$lib/components/ZoomBar.svelte';
   import CaptureHeader from '$lib/components/CaptureHeader.svelte';
   import EditorCanvas from '$lib/editor/EditorCanvas.svelte';
   import EditorToolbar from '$lib/editor/EditorToolbar.svelte';
@@ -24,6 +25,7 @@
       <EditorCanvas path="/fixtures/editor-base.png" />
       <PropertiesPanel />
     </div>
+    <ZoomBar />
   </div>
 {:else if screen === 'video'}
   <div style="height:100vh;display:flex;flex-direction:column;background:var(--bg-content)">
