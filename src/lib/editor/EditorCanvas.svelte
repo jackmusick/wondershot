@@ -5,7 +5,8 @@
   import { activeTool, toolForKey, type ToolId } from './tools';
   import type { Item, Vec2 } from './model';
   import { History } from './history';
-  import { drawStyle, type DrawStyle } from './style';
+  import { drawStyle, textStyle, type DrawStyle, type TextStyle } from './style';
+  import { zoomApi } from './zoom';
   import { drawTools, type DrawCtx } from './tools/index';
   import { WS_NODE_NAME, nodeToItemRef, tagNode } from './tools/arrowLine';
   // Side-effect import: registers the rect/ellipse/highlight box-shape tools
@@ -134,6 +135,10 @@
   /** Current draw style (color/width), kept in sync from the store. */
   let currentStyle: DrawStyle = { color: '#ff3b30ff', width: 4 };
   const unsubStyle = drawStyle.subscribe((s) => (currentStyle = s));
+
+  /** Current text defaults (font size / align), kept in sync from the store. */
+  let currentTextStyle: TextStyle = { point_size: 24, align: 'left' };
+  const unsubTextStyle = textStyle.subscribe((s) => (currentTextStyle = s));
 
   /**
    * Fetch a Rust-computed processed patch (pixelate/blur) for a region of the
@@ -541,15 +546,20 @@
    */
   function placeText(pos: Vec2) {
     if (!KonvaMod) return;
-    const placeholder: TextItem = textItem('', pos, { color: currentStyle.color }) ?? {
+    const textOpts = {
+      color: currentStyle.color,
+      point_size: currentTextStyle.point_size,
+      align: currentTextStyle.align,
+    };
+    const placeholder: TextItem = textItem('', pos, textOpts) ?? {
       type: 'text',
       text: '',
       color: currentStyle.color,
       family: 'sans-serif',
-      point_size: 24,
+      point_size: currentTextStyle.point_size,
       bold: true,
       text_width: -1,
-      align: 'left',
+      align: currentTextStyle.align,
       pos: [pos[0], pos[1]],
       rotation: 0,
       origin: [0, 0],
@@ -558,7 +568,7 @@
     annotationsLayer.add(node);
     annotationsLayer.batchDraw();
     openTextEditor(node, (text) => {
-      const item = textItem(text, pos, { color: currentStyle.color });
+      const item = textItem(text, pos, textOpts);
       if (!item) {
         node.destroy();
         annotationsLayer.batchDraw();
@@ -824,6 +834,20 @@
     };
     container.addEventListener('wheel', onWheel, { passive: false });
 
+    // Expose zoom controls to the toolbar. zoomIn/zoomOut step about the
+    // container center (mirroring the Ctrl+wheel factor); actual/fit reuse the
+    // existing helpers.
+    function zoomCenter(factor: number) {
+      if (!stage) return;
+      zoomAt({ x: container.clientWidth / 2, y: container.clientHeight / 2 }, factor);
+    }
+    zoomApi.set({
+      zoomIn: () => zoomCenter(1.1),
+      zoomOut: () => zoomCenter(1 / 1.1),
+      zoomActual: actualSize,
+      zoomFit: fitToView,
+    });
+
     window.addEventListener('keydown', onKeyDown);
 
     // --- Load the base image ---
@@ -843,20 +867,6 @@
         // snapshot, so undo can restore the original (pre-destructive) base.
         currentBaseSrc = src;
         history.reset({ baseSrc: src, items: [] });
-
-        // Demo annotation so selection + transformer are screenshot-able.
-        const demo = new Konva.Rect({
-          x: imgW * 0.18,
-          y: imgH * 0.28,
-          width: imgW * 0.32,
-          height: imgH * 0.34,
-          stroke: '#ff5a4d',
-          strokeWidth: 4,
-          draggable: true,
-        });
-        annotationsLayer.add(demo);
-        annotationsLayer.batchDraw();
-        select(demo);
 
         fitToView();
 
@@ -880,8 +890,10 @@
       ro.disconnect();
       container.removeEventListener('wheel', onWheel);
       window.removeEventListener('keydown', onKeyDown);
+      zoomApi.set(null);
       unsubTool();
       unsubStyle();
+      unsubTextStyle();
       stage?.destroy();
       stage = null;
     };

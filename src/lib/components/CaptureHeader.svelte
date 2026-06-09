@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { recording, takeCapture } from '$lib/stores';
+  import { recording, takeCapture, view, activeItem } from '$lib/stores';
+  import EditorToolbar from '$lib/editor/EditorToolbar.svelte';
   const modes: { label: string; mode?: 'region' | 'fullscreen' | 'window' }[] = [
     { label: 'Region', mode: 'region' },
     { label: 'Full screen', mode: 'fullscreen' },
@@ -12,6 +13,9 @@
   }
 </script>
 
+{#if $view === 'editor' && $activeItem}
+  <EditorToolbar />
+{:else}
 <header class="header">
   <div class="modes">
     {#each modes as m}
@@ -29,6 +33,7 @@
     {/if}
   </button>
 </header>
+{/if}
 
 <style>
   .header {
