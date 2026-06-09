@@ -12,6 +12,9 @@
   // into `drawTools`. Box tools are NOT in DRAG_ONLY_TYPES, so they get the
   // full resize/rotate Transformer.
   import './tools/boxShapes';
+  // Side-effect import: registers the freehand (pen) tool into `drawTools`.
+  // Freehand is a DRAG_ONLY_TYPE, like arrow/line.
+  import './tools/freehand';
 
   let { path }: { path: string } = $props();
 
@@ -188,7 +191,7 @@
   }
 
   /** Item types edited by dragging the whole node, not a box transformer. */
-  const DRAG_ONLY_TYPES = new Set(['arrow', 'line']);
+  const DRAG_ONLY_TYPES = new Set(['arrow', 'line', 'freehand']);
 
   function select(node: Konva.Node | null) {
     if (!transformer) return;
