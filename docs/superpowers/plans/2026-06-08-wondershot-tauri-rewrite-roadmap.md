@@ -25,7 +25,7 @@ findings) is reused as a workflow stage in M2, M3, and M5.
 
 ## Milestones
 
-### M1 — Foundation + UI-review harness  *(detailed plan written; build next)*
+### M1 — Foundation + UI-review harness  *(✅ COMPLETE — tag `m1-foundation`)*
 SvelteKit 2 / Svelte 5 / Tauri 2 scaffold on the branch; copy + retint `tokens.css`; app
 shell (sidebar=library list, header=capture actions, content view-switcher) with mocked
 data; mockable IPC seam; Playwright screenshot harness (light/dark); wonderblob reference
@@ -33,7 +33,7 @@ shots; vision-critique workflow stage; minimal Rust (health command, tray stub,
 single-instance); Vitest. **Exit:** `npm run build` succeeds, the shell screenshots in
 both themes, and the critique stage returns findings.
 
-### M2 — Capture + clipboard + library
+### M2 — Capture + clipboard + library  *(detailed plan written; building)*
 `wondershot-core` crates: `capture` (spectacle subprocess + `ashpd` portal + KWin
 geometry via `zbus`), `clipboard` (`wl-clipboard-rs`), `library` (scan existing PNG/MP4 +
 `.sidecar` read/write, trash). Wire `capture_*`, `copy_image`, `list_library`,
