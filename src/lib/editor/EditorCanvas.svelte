@@ -3,6 +3,11 @@
   import type Konva from 'konva';
   import { assetSrc } from '$lib/ipc';
   import { activeTool, toolForKey, type ToolId } from './tools';
+  import type { Item } from './model';
+  import { History } from './history';
+  import { drawStyle, type DrawStyle } from './style';
+  import { drawTools, type DrawCtx } from './tools/index';
+  import { WS_NODE_NAME } from './tools/arrowLine';
 
   let { path }: { path: string } = $props();
 
@@ -65,13 +70,81 @@
     stage.batchDraw();
   }
 
-  /** Extension point — tools plug in here (M3 T5+). */
+  // --- Annotation model + undo/redo history ---
+  let items: Item[] = $state([]);
+  const history = new History<Item[]>([]);
+
+  /** Current draw style (color/width), kept in sync from the store. */
+  let currentStyle: DrawStyle = { color: '#ff3b30ff', width: 4 };
+  const unsubStyle = drawStyle.subscribe((s) => (currentStyle = s));
+
+  /** Build the DrawCtx handed to every tool. */
+  function drawCtx(Konva: typeof import('konva').default): DrawCtx {
+    return { layer: annotationsLayer, Konva, style: currentStyle };
+  }
+
+  let KonvaMod: typeof import('konva').default | null = null;
+
+  /**
+   * Route pointer phases to the active drawing tool. begin on down, update on
+   * move, finish on up. A non-null finish appends the Item to the model and
+   * pushes a history snapshot; the finished Konva node stays on the
+   * annotations layer (now selectable by the select tool). Every later tool
+   * reuses this same dispatch — it keys purely off `drawTools[tool]`.
+   */
   function dispatchToolEvent(
-    _phase: 'down' | 'move' | 'up',
-    _pos: { x: number; y: number },
-    _tool: ToolId,
+    phase: 'down' | 'move' | 'up',
+    pos: { x: number; y: number },
+    tool: ToolId,
   ) {
-    // no-op for now; later tasks implement drawing per active tool
+    if (!KonvaMod) return;
+    const dt = drawTools[tool];
+    if (!dt) return;
+    const ctx = drawCtx(KonvaMod);
+    if (phase === 'down') {
+      dt.begin(ctx, pos.x, pos.y);
+    } else if (phase === 'move') {
+      dt.update(ctx, pos.x, pos.y);
+    } else {
+      const item = dt.finish(ctx, pos.x, pos.y);
+      if (item) {
+        items = [...items, item];
+        history.push([...items]);
+      }
+    }
+  }
+
+  /**
+   * Rebuild the annotations layer from the current `items` model. Destroys all
+   * tool-created nodes (tagged with WS_NODE_NAME) and re-`render`s each item
+   * via its tool module. Used after undo/redo. The transformer's selection is
+   * cleared since the nodes it pointed at no longer exist.
+   */
+  function rebuildAnnotations() {
+    if (!KonvaMod || !annotationsLayer) return;
+    transformer.nodes([]);
+    annotationsLayer.find(`.${WS_NODE_NAME}`).forEach((n) => n.destroy());
+    const ctx = drawCtx(KonvaMod);
+    for (const item of items) {
+      const dt = drawTools[item.type];
+      if (dt) dt.render(ctx, item);
+    }
+    annotationsLayer.batchDraw();
+    overlayLayer.batchDraw();
+  }
+
+  function undo() {
+    const snap = history.undo();
+    if (snap === null) return;
+    items = [...snap];
+    rebuildAnnotations();
+  }
+
+  function redo() {
+    const snap = history.redo();
+    if (snap === null) return;
+    items = [...snap];
+    rebuildAnnotations();
   }
 
   /** Pointer position in stage (image) coordinates. */
@@ -117,6 +190,10 @@
       return;
     }
     if (e.ctrlKey || e.metaKey) {
+      const k = e.key.toLowerCase();
+      if (k === 'z' && e.shiftKey) { redo(); e.preventDefault(); return; }
+      if (k === 'z') { undo(); e.preventDefault(); return; }
+      if (k === 'y') { redo(); e.preventDefault(); return; }
       if (e.key === '0') { actualSize(); e.preventDefault(); return; }
       if (e.key === '9') { fitToView(); e.preventDefault(); return; }
       return;
@@ -146,6 +223,7 @@
   });
 
   function build(Konva: typeof import('konva').default): () => void {
+    KonvaMod = Konva;
     stage = new Konva.Stage({
       container,
       width: container.clientWidth,
@@ -253,6 +331,7 @@
       container.removeEventListener('wheel', onWheel);
       window.removeEventListener('keydown', onKeyDown);
       unsubTool();
+      unsubStyle();
       stage?.destroy();
       stage = null;
     };

@@ -1,0 +1,22 @@
+import type Konva from 'konva';
+import type { Item } from '$lib/editor/model';
+import type { DrawStyle } from '$lib/editor/style';
+
+export interface DrawCtx {
+  layer: Konva.Layer; // annotations layer to draw onto
+  Konva: typeof Konva; // the loaded Konva module
+  style: DrawStyle; // current color/width
+}
+
+/** A drawing tool: begins on pointerdown, updates on move, finishes on up.
+ *  begin() creates an in-progress Konva node; update() mutates it; finish()
+ *  returns the finished model Item (or null to discard a degenerate draw). */
+export interface DrawTool {
+  begin(ctx: DrawCtx, x: number, y: number): void;
+  update(ctx: DrawCtx, x: number, y: number): void;
+  finish(ctx: DrawCtx, x: number, y: number): Item | null;
+  /** Recreate a Konva node from a saved Item (for undo/redo + load). */
+  render(ctx: DrawCtx, item: Item): Konva.Node;
+}
+
+export const drawTools: Partial<Record<string, DrawTool>> = {};
