@@ -10,10 +10,33 @@ export const view = writable<View>('gallery');
 export const recording = writable<RecordingState>({ status: 'idle' });
 export const settingsOpen = writable<boolean>(false);
 export const capturePanelOpen = writable<boolean>(false);
+/** Pinned capture paths (filmstrip pin affordance). */
+export const pinned = writable<string[]>([]);
 
 export async function loadLibrary(): Promise<void> {
   const caps = await ipcInvoke<Capture[]>('list_library');
   captures.set(await normalizeCaptures(caps));
+  await loadPinned();
+}
+
+/** Refresh the pinned-paths list from the backend. */
+export async function loadPinned(): Promise<void> {
+  try {
+    pinned.set((await ipcInvoke<string[]>('list_pinned')) ?? []);
+  } catch (e) {
+    console.error('loadPinned failed', e);
+  }
+}
+
+/** Pin / unpin a capture and refresh the list. */
+export async function togglePin(c: Capture): Promise<void> {
+  const isPinned = get(pinned).includes(c.path);
+  try {
+    const list = await ipcInvoke<string[]>('set_pinned', { path: c.path, pinned: !isPinned });
+    pinned.set(list ?? []);
+  } catch (e) {
+    console.error('togglePin failed', e);
+  }
 }
 
 /** Move a library item to the trash (filmstrip hover-delete) + refresh. */

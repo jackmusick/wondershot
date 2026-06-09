@@ -1,6 +1,27 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { activeTool, SHORTCUTS, type ToolId } from './tools';
   import { bgApi } from './zoom';
+  import { ipcInvoke } from '$lib/ipc';
+
+  // Whether an AI endpoint is configured (Settings → AI). Gates the messaging on
+  // the AI Redact / Simplify buttons. The inference pipeline itself is a separate
+  // follow-up; until it lands these stay disabled, but the tooltip is honest
+  // about *why* (no endpoint vs. pipeline pending).
+  let aiConfigured = $state(false);
+  onMount(async () => {
+    try {
+      const s = (await ipcInvoke<Record<string, unknown>>('get_settings')) ?? {};
+      aiConfigured = !!String(s.ai_endpoint ?? '').trim();
+    } catch {
+      aiConfigured = false;
+    }
+  });
+  function aiTip(name: string): string {
+    return aiConfigured
+      ? `${name} — AI endpoint configured; inference pipeline is coming soon`
+      : `${name} — set an AI endpoint in Settings → AI first`;
+  }
 
   // Tool metadata: id, human label, and an inline-SVG path/glyph. Icons are
   // simple monochrome strokes drawn in a 16x16 box; where an icon would be
@@ -136,10 +157,10 @@
     {#snippet sparkle()}
       <svg viewBox="0 0 16 16" class="ai-spark"><path d="M8 1.5l1.2 3.3L12.5 6 9.2 7.2 8 10.5 6.8 7.2 3.5 6l3.3-1.2z"/><path d="M12.8 10.2l.6 1.5 1.5.6-1.5.6-.6 1.5-.6-1.5-1.5-.6 1.5-.6z"/></svg>
     {/snippet}
-    <button class="tool ai" disabled title="AI Redact — needs the AI backend (not wired yet)" onclick={() => aiNotReady('AI Redact')}>
+    <button class="tool ai" disabled title={aiTip('AI Redact')} onclick={() => aiNotReady('AI Redact')}>
       {@render sparkle()}<span class="tlabel">Redact</span>
     </button>
-    <button class="tool ai" disabled title="AI Simplify — needs the AI backend (not wired yet)" onclick={() => aiNotReady('AI Simplify')}>
+    <button class="tool ai" disabled title={aiTip('AI Simplify')} onclick={() => aiNotReady('AI Simplify')}>
       {@render sparkle()}<span class="tlabel">Simplify</span>
     </button>
     <button class="tool ai" title={bgTip} aria-label="Remove background" onclick={removeBg} disabled={!bgEnabled}>

@@ -170,3 +170,35 @@ layer the M3 JSON/screenshot tests never exercised.
 - [ ] **T9 — Capture flow.** "Capture is wrong": should open the compact Snagit-style capture panel and a Spectacle-style region **drag-selection**. In the Flatpak, Spectacle isn't in the sandbox → currently the portal Screenshot. Build the compact `CapturePanel` (toggles + big Capture + Full screen/Record) and make region capture reach Spectacle's drag UI (host Spectacle via `flatpak-spawn --host` with the right permission, or the portal interactive path) — verify in the real app.
 - [ ] **T10 — Blur.** "Translucent box, not blurred": the Rust `blurred_patch` is correct, so chase the patch round-trip in the real app (does `blur_patch` return / does the node swap fire); add a frontend E2E asserting the placeholder is replaced when the patch resolves.
 - [ ] **T11 — Filmstrip hover delete.** Add the hover (×)/pin affordance; needs a `trash_item` backend command (move to XDG trash) — not yet implemented.
+
+---
+
+## QA round 3 (functionality hookup + live Flatpak permission audit)
+
+A hard-target search found a batch of UI that was built but never wired, plus
+(crucially) **Flatpak sandbox permission gaps** that only surfaced by building +
+installing the real Flatpak and clicking through it (the unsandboxed host app hid
+them). Process note: the deb-only bundle (`--bundles deb`) is now the build path —
+`targets: [appimage, rpm, deb]` runs appimage FIRST and its linuxdeploy step fails,
+aborting before the deb is regenerated (this silently shipped a stale deb once).
+
+**Done (built + unit/cargo green; needs real-app retest on the dev box):**
+- ✅ Copy-to-clipboard on capture (wired `capture://done` → `copy_image` when `copy_after_capture`); Ctrl+C copies the active image; Left/Right arrow gallery nav (guarded while typing).
+- ✅ Filmstrip **pin** affordance (hover pin on the left, × on the right; pinned floats to front; `list_pinned`/`set_pinned` → `pins.json`) + **right-click menu** (Copy / Save as… / Show in folder / Pin / Trash).
+- ✅ `save_image_as` (portal file-chooser via `rfd` xdg-portal), `show_in_folder`, `open_url`.
+- ✅ Native **drag-out** copies file contents (`@crabnebula/tauri-plugin-drag` + `tauri-plugin-drag`, `drag:default`).
+- ✅ Device **dropdowns** for camera/mic (`enumerateDevices`, labels unlocked via a brief `getUserMedia` probe); camera bubble reads `camera_device` deviceId and re-inits on a `camera://changed` event from Settings save.
+- ✅ **Camera bubble drag** — root cause was a missing capability: `core:window:allow-start-dragging` is NOT in `core:default`, and `bubble` wasn't in any capability's `windows`. Fixed `capabilities/default.json` (all windows + start-dragging/set-size/show/hide/minimize/close/center/always-on-top).
+- ✅ **Framed → frameless capture window** with a **custom titlebar** (min/close wired to the window API + a `data-tauri-drag-region`). Native secondary-window titlebar buttons don't function on this Wayland/KWin + GNOME-runtime setup; the custom bar guarantees they work. Actions forward to the main window via `capture-cmd`. `show_capture_window` recreates it after a native close.
+- ✅ **AI Test** button (`test_ai_endpoint`, `ureq`): state lives inside the button (Test → spinner → ✓ Connected / ✕ Failed); the error message renders below so it can't shrink the button.
+- ✅ **Settings → Sharing → OneDrive/SharePoint** rebuilt to match the OG Qt dialog: **Status**, **Connect/Disconnect**, **Save to** (My OneDrive / SharePoint → site search → library → Selected), **App** = "Wondershot Built-In" with a **Change** toggle. Left-aligned layout (not the right-aligned `field.row`). Ported `msgraph.py`'s device-code OAuth to Rust (`graph.rs`: device code → poll → whoami → token cache + refresh; `sites_search`/`site_drives`). Shares the OG's `graph_token.json` so a sign-in carries between the Python app and this one.
+
+**Flatpak manifest permission fixes (the real "old app works, new one doesn't" gap):**
+- ✅ `--share=network` — the sandbox had no DNS/network, so the AI test and all cloud sharing failed. The host app was never sandboxed.
+- ✅ `--device=all` (was only `dri`) — the camera bubble's `getUserMedia` needs `/dev/video*`.
+
+**Still open / honest gaps:**
+- [ ] **AI Redact / Simplify inference** — buttons stay disabled (config-aware tooltip). Actual vision-model redaction/simplification is a real feature, not wiring.
+- [ ] **Mic device → recording** — the dropdown now shows real labels, but the record pipeline expects a PipeWire/Pulse source name, not a webview `deviceId`. Needs a pulse-enumeration backend (pre-existing deferred item). Camera (bubble) works because `getUserMedia` takes a `deviceId`.
+- [ ] **OneDrive connect round-trip** — the device-code flow is a faithful port but needs a real Microsoft sign-in to verify end-to-end.
+- [ ] Real-app retest of all of the above on the dev box (has a DE; rebuild the Flatpak there).

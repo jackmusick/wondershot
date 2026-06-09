@@ -17,6 +17,13 @@ image = "0.25"
 base64 = "0.22"
 tokio = { version = "1", features = ["rt-multi-thread", "time", "process"] }
 trash = "5"
+# Native "Save as…" via the desktop file-chooser portal (DBus/ashpd) — works in
+# the Flatpak sandbox and off the GTK main thread (async).
+rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "tokio"] }
+# Blocking HTTP for the AI-endpoint connectivity test + OneDrive Graph calls.
+ureq = { version = "2", features = ["json"] }
+# Native file drag-out (filmstrip → file manager copies the real file, not a URL).
+tauri-plugin-drag = "2"
 
 [features]
 # Opt-in AI background removal — forwards to wondershot-core's ONNX inference

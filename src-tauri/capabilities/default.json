@@ -2,6 +2,19 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Wondershot core capabilities",
-  "windows": ["main", "screen"],
-  "permissions": ["core:default", "core:event:default"]
+  "windows": ["main", "bubble", "capture", "countdown", "screen"],
+  "permissions": [
+    "core:default",
+    "core:event:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-set-size",
+    "core:window:allow-show",
+    "core:window:allow-hide",
+    "core:window:allow-set-focus",
+    "core:window:allow-minimize",
+    "core:window:allow-close",
+    "core:window:allow-center",
+    "core:window:allow-set-always-on-top",
+    "drag:default"
+  ]
 }

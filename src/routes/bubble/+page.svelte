@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
+  import { ipcInvoke, ipcListen } from '$lib/ipc';
 
   const USE_MOCK = typeof (globalThis as any).__TAURI_INTERNALS__ === 'undefined';
 
@@ -11,21 +12,48 @@
   let hasCamera = $state(false);
   let videoEl: HTMLVideoElement;
   let stream: MediaStream | null = null;
+  let unwatch: (() => void) | undefined;
 
-  async function startCamera() {
+  /** The configured camera deviceId (empty = system default). */
+  async function configuredCamera(): Promise<string> {
+    try {
+      const s = (await ipcInvoke<Record<string, unknown>>('get_settings')) ?? {};
+      return String(s.camera_device ?? '');
+    } catch {
+      return '';
+    }
+  }
+
+  function stopStream() {
+    stream?.getTracks().forEach((t) => t.stop());
+    stream = null;
+  }
+
+  async function startCamera(deviceId?: string) {
     if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
       hasCamera = false;
       return;
     }
+    stopStream();
+    const id = deviceId ?? (await configuredCamera());
+    const video: MediaTrackConstraints | boolean = id ? { deviceId: { exact: id } } : true;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      stream = await navigator.mediaDevices.getUserMedia({ video });
       if (videoEl) {
         videoEl.srcObject = stream;
         await videoEl.play().catch(() => {});
       }
       hasCamera = true;
     } catch {
-      // No camera or permission denied — fall back to placeholder.
+      // Requested device gone? Fall back to the default camera before giving up.
+      if (id) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          if (videoEl) { videoEl.srcObject = stream; await videoEl.play().catch(() => {}); }
+          hasCamera = true;
+          return;
+        } catch { /* fall through */ }
+      }
       hasCamera = false;
     }
   }
@@ -59,10 +87,17 @@
     }
   }
 
-  onMount(startCamera);
+  onMount(async () => {
+    await startCamera();
+    // Re-init when the user picks a different camera in Settings.
+    unwatch = await ipcListen<string>('camera://changed', (id) => {
+      void startCamera(id || undefined);
+    });
+  });
 
   onDestroy(() => {
-    stream?.getTracks().forEach((t) => t.stop());
+    unwatch?.();
+    stopStream();
   });
 </script>
 

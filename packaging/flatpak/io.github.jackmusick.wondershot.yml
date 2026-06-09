@@ -23,9 +23,14 @@ command: wondershot
 
 finish-args:
   - --share=ipc
+  # Network: AI endpoint test/inference + cloud sharing (S3/Azure/OneDrive
+  # Graph). The host (unsandboxed) app had this implicitly.
+  - --share=network
   - --socket=wayland
   - --socket=fallback-x11
-  - --device=dri
+  # --device=all (not just dri): the camera bubble's getUserMedia needs the
+  # webcam (/dev/video*); dri alone only covers the GPU render node.
+  - --device=all
   # Recorder: portal ScreenCast negotiates the PipeWire stream
   - --filesystem=xdg-run/pipewire-0
   - --socket=pulseaudio

@@ -1,4 +1,5 @@
 mod commands;
+mod graph;
 
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::TrayIconBuilder;
@@ -59,6 +60,7 @@ pub fn run() {
             // argv includes argv0 here; parse_args expects it stripped.
             dispatch_cli(app, parse_args(argv.into_iter().skip(1)));
         }))
+        .plugin(tauri_plugin_drag::init())
         .manage(commands::RecState::default())
         .setup(move |app| {
             use tauri::Listener;
@@ -140,6 +142,19 @@ pub fn run() {
             commands::import_files,
             commands::toggle_camera_bubble,
             commands::trash_item,
+            commands::list_pinned,
+            commands::set_pinned,
+            commands::save_image_as,
+            commands::show_in_folder,
+            commands::test_ai_endpoint,
+            commands::show_capture_window,
+            commands::open_url,
+            commands::graph_status,
+            commands::graph_connect_start,
+            commands::graph_connect_poll,
+            commands::graph_disconnect,
+            commands::graph_sites_search,
+            commands::graph_site_drives,
         ])
         .run(tauri::generate_context!())
         .expect("error while running wondershot");

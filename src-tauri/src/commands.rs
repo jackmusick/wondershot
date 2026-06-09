@@ -2,6 +2,7 @@ use std::path::Path;
 use std::sync::Mutex;
 use wondershot_core::{bgremove, capture, clipboard, library, paths, settings::Settings, sidecar, video};
 use wondershot_core::record::{files, pipeline, portal, recorder};
+use crate::graph;
 
 #[tauri::command]
 pub fn health() -> String {
@@ -829,6 +830,215 @@ pub fn toggle_camera_bubble(app: tauri::AppHandle) -> Result<bool, String> {
         let _ = w.set_focus();
         Ok(true)
     }
+}
+
+// --- pins (filmstrip pin affordance) ---------------------------------------
+
+/// Where the pinned-paths list lives (next to wondershot.conf).
+fn pins_path() -> std::path::PathBuf {
+    Settings::conf_path()
+        .parent()
+        .map(|p| p.join("pins.json"))
+        .unwrap_or_else(|| std::path::PathBuf::from("pins.json"))
+}
+
+/// The list of pinned capture paths (most-recently-pinned last).
+#[tauri::command]
+pub fn list_pinned() -> Vec<String> {
+    std::fs::read_to_string(pins_path())
+        .ok()
+        .and_then(|s| serde_json::from_str::<Vec<String>>(&s).ok())
+        .unwrap_or_default()
+}
+
+/// Pin or unpin a capture by path; returns the updated pinned list.
+#[tauri::command]
+pub fn set_pinned(path: String, pinned: bool) -> Result<Vec<String>, String> {
+    let mut list = list_pinned();
+    list.retain(|p| p != &path);
+    if pinned {
+        list.push(path);
+    }
+    let p = pins_path();
+    if let Some(parent) = p.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let json = serde_json::to_string(&list).map_err(|e| e.to_string())?;
+    std::fs::write(&p, json).map_err(|e| e.to_string())?;
+    Ok(list)
+}
+
+// --- right-click actions: Save as / Show in folder -------------------------
+
+/// "Save as…": open the desktop file-chooser (portal) and copy the capture to
+/// the chosen path. Returns the destination, or `None` if the user cancelled.
+#[tauri::command]
+pub async fn save_image_as(path: String) -> Result<Option<String>, String> {
+    let src = std::path::PathBuf::from(&path);
+    let name = src
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "screenshot.png".into());
+    let chosen = rfd::AsyncFileDialog::new()
+        .set_file_name(&name)
+        .save_file()
+        .await;
+    let Some(dest) = chosen else { return Ok(None) };
+    let dest = dest.path().to_path_buf();
+    std::fs::copy(&src, &dest).map_err(|e| e.to_string())?;
+    Ok(Some(dest.to_string_lossy().into_owned()))
+}
+
+/// Open the capture's containing folder in the file manager (host file manager
+/// when sandboxed, via flatpak-spawn).
+#[tauri::command]
+pub fn show_in_folder(path: String) -> Result<(), String> {
+    let p = Path::new(&path);
+    let dir = p.parent().unwrap_or(p);
+    open_target(&dir.to_string_lossy())
+}
+
+/// Open a URL (e.g. the OneDrive device-code sign-in page) in the default browser.
+#[tauri::command]
+pub fn open_url(url: String) -> Result<(), String> {
+    open_target(&url)
+}
+
+/// xdg-open a path/URL, routing through the host opener when sandboxed.
+fn open_target(target: &str) -> Result<(), String> {
+    let res = if in_flatpak() {
+        std::process::Command::new("flatpak-spawn")
+            .args(["--host", "xdg-open", target])
+            .spawn()
+    } else {
+        std::process::Command::new("xdg-open").arg(target).spawn()
+    };
+    res.map(|_| ()).map_err(|e| e.to_string())
+}
+
+// --- OneDrive / SharePoint (Microsoft Graph, device-code OAuth) -------------
+
+/// Connected account label ('' when not signed in). Drives the Sharing → OneDrive
+/// "Status:" row.
+#[tauri::command]
+pub fn graph_status() -> serde_json::Value {
+    serde_json::json!({
+        "account": graph::connected_account(),
+        "default_client_id": graph::DEFAULT_CLIENT_ID,
+    })
+}
+
+/// Begin device-code sign-in: returns the user_code + verification_uri to show,
+/// and the device_code + interval the frontend polls with.
+#[tauri::command]
+pub fn graph_connect_start(client_id: String) -> Result<serde_json::Value, String> {
+    let cid = if client_id.trim().is_empty() {
+        graph::DEFAULT_CLIENT_ID.to_string()
+    } else {
+        client_id.trim().to_string()
+    };
+    let dc = graph::request_device_code(&cid)?;
+    Ok(serde_json::json!({
+        "client_id": cid,
+        "device_code": dc.get("device_code"),
+        "user_code": dc.get("user_code"),
+        "verification_uri": dc.get("verification_uri"),
+        "interval": dc.get("interval"),
+        "expires_in": dc.get("expires_in"),
+    }))
+}
+
+/// One poll of the device-code flow. `status` is `pending` | `connected`;
+/// errors propagate as a command error.
+#[tauri::command]
+pub fn graph_connect_poll(client_id: String, device_code: String) -> Result<serde_json::Value, String> {
+    match graph::poll_token(&client_id, &device_code)? {
+        None => Ok(serde_json::json!({ "status": "pending" })),
+        Some(tokens) => {
+            let token = tokens
+                .get("access_token")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let account = graph::whoami(&token).unwrap_or_else(|_| "connected".into());
+            graph::save_tokens(&tokens, &client_id, &account)?;
+            Ok(serde_json::json!({ "status": "connected", "account": account }))
+        }
+    }
+}
+
+#[tauri::command]
+pub fn graph_disconnect() -> Result<(), String> {
+    graph::disconnect();
+    Ok(())
+}
+
+#[tauri::command]
+pub fn graph_sites_search(query: String) -> Result<Vec<serde_json::Value>, String> {
+    let token = graph::ensure_access_token()?;
+    graph::sites_search(&token, &query)
+}
+
+#[tauri::command]
+pub fn graph_site_drives(site_id: String) -> Result<Vec<serde_json::Value>, String> {
+    let token = graph::ensure_access_token()?;
+    graph::site_drives(&token, &site_id)
+}
+
+// --- AI endpoint connectivity test (Settings → AI → Test) ------------------
+
+/// Probe the OpenAI-compatible AI endpoint for reachability/auth by GETting its
+/// `/v1/models` (or `/models`) listing. Returns a short status string on success.
+#[tauri::command]
+pub fn test_ai_endpoint(endpoint: String, model: String, api_key: String) -> Result<String, String> {
+    let base = endpoint.trim().trim_end_matches('/');
+    if base.is_empty() {
+        return Err("No endpoint set".into());
+    }
+    let url = if base.ends_with("/v1") {
+        format!("{base}/models")
+    } else {
+        format!("{base}/v1/models")
+    };
+    let mut req = ureq::get(&url).timeout(std::time::Duration::from_secs(15));
+    if !api_key.trim().is_empty() {
+        req = req.set("Authorization", &format!("Bearer {}", api_key.trim()));
+    }
+    match req.call() {
+        Ok(resp) => {
+            let m = model.trim();
+            let suffix = if m.is_empty() { String::new() } else { format!(" · model “{m}” will be used") };
+            Ok(format!("Connected (HTTP {}){suffix}", resp.status()))
+        }
+        Err(ureq::Error::Status(code, _)) => {
+            Err(format!("Endpoint reachable but returned HTTP {code} (check API key/model)"))
+        }
+        Err(e) => Err(format!("Could not reach endpoint: {e}")),
+    }
+}
+
+/// Show + focus the framed capture window (header "Capture"). Mirrors
+/// `toggle_camera_bubble`'s proven show path rather than a JS getByLabel lookup.
+#[tauri::command]
+pub fn show_capture_window(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::Manager;
+    if let Some(w) = app.get_webview_window("capture") {
+        w.show().map_err(|e| e.to_string())?;
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+        return Ok(());
+    }
+    // The window was natively closed (X destroys it) — recreate it so the
+    // header "Capture" button always reopens a fresh, movable window.
+    tauri::WebviewWindowBuilder::new(&app, "capture", tauri::WebviewUrl::App("/capture".into()))
+        .title("Capture")
+        .inner_size(380.0, 224.0)
+        .resizable(false)
+        .decorations(false)
+        .center()
+        .build()
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 /// Move a library item to the desktop trash (filmstrip hover-delete). Best-effort

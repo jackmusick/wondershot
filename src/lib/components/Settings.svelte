@@ -1,7 +1,38 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { ipcInvoke } from '$lib/ipc';
+  import { ipcInvoke, ipcEmit } from '$lib/ipc';
   import { settingsOpen } from '$lib/stores';
+
+  type Device = { id: string; label: string };
+  let cameras = $state<Device[]>([]);
+  let mics = $state<Device[]>([]);
+
+  /** Enumerate webcam / mic inputs for the device dropdowns. Labels are only
+   * populated once the user has granted camera/mic permission (e.g. after the
+   * camera bubble has run once); until then we fall back to generic names. */
+  async function enumerateDevices() {
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.enumerateDevices) return;
+    try {
+      // Device labels + stable ids are only exposed after a getUserMedia grant.
+      // Probe briefly (cam + mic), then release — otherwise the dropdowns only
+      // ever show generic "Camera 1 / Microphone 1" placeholders.
+      try {
+        const probe = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        probe.getTracks().forEach((t) => t.stop());
+      } catch {
+        // permission denied / no device — fall back to generic names below
+      }
+      const devs = await navigator.mediaDevices.enumerateDevices();
+      cameras = devs
+        .filter((d) => d.kind === 'videoinput')
+        .map((d, i) => ({ id: d.deviceId, label: d.label || `Camera ${i + 1}` }));
+      mics = devs
+        .filter((d) => d.kind === 'audioinput')
+        .map((d, i) => ({ id: d.deviceId, label: d.label || `Microphone ${i + 1}` }));
+    } catch {
+      // ignore — selects fall back to the stored value
+    }
+  }
 
   let { open = false }: { open?: boolean } = $props();
   // `open` prop forces the modal open (harness/refshots); otherwise the store drives it.
@@ -20,6 +51,8 @@
     const dirs = Array.isArray(data.extra_dirs) ? (data.extra_dirs as string[]) : [];
     s = { ...data, extra_dirs_text: dirs.join(';') };
     loaded = true;
+    void enumerateDevices();
+    void loadGraph();
   }
 
   onMount(() => {
@@ -37,6 +70,125 @@
     settingsOpen.set(false);
   }
 
+  // --- OneDrive / SharePoint (Graph) --------------------------------------
+  let graphAccount = $state('');
+  let defaultClientId = $state('');
+  let connecting = $state(false);
+  let connectMsg = $state('');
+  let connectGen = 0;
+  // Client ID: hidden behind "Wondershot Built-In" unless the user changes it.
+  let clientCustom = $state(false);
+  // Save-to: OneDrive vs a SharePoint library.
+  let destMode = $state<'onedrive' | 'sharepoint'>('onedrive');
+  let spQuery = $state('');
+  let spSites = $state<Array<{ id: string; name: string; url: string }>>([]);
+  let spSiteId = $state('');
+  let spDrives = $state<Array<{ id: string; name: string }>>([]);
+  let spBusy = $state('');
+
+  async function loadGraph() {
+    try {
+      const r = (await ipcInvoke<{ account: string; default_client_id: string }>('graph_status')) ?? { account: '', default_client_id: '' };
+      graphAccount = r.account ?? '';
+      defaultClientId = r.default_client_id ?? '';
+    } catch { graphAccount = ''; }
+    const cid = String(s.graph_client_id ?? '');
+    clientCustom = !!cid && cid !== defaultClientId;
+    destMode = s.graph_drive_id ? 'sharepoint' : 'onedrive';
+  }
+
+  function clientId(): string {
+    return clientCustom ? String(s.graph_client_id ?? '').trim() || defaultClientId : defaultClientId;
+  }
+  function toggleClient() {
+    clientCustom = !clientCustom;
+    if (!clientCustom) s.graph_client_id = '';
+  }
+
+  async function graphConnect() {
+    if (connecting) { connectGen++; connecting = false; connectMsg = ''; return; }   // cancel
+    if (graphAccount) {                                                              // disconnect
+      try { await ipcInvoke('graph_disconnect'); } catch {}
+      graphAccount = '';
+      return;
+    }
+    const gen = ++connectGen;
+    connecting = true;
+    connectMsg = 'Starting sign-in…';
+    try {
+      const start = await ipcInvoke<{ client_id: string; device_code: string; user_code: string; verification_uri: string; interval: number }>(
+        'graph_connect_start', { clientId: clientId() }
+      );
+      connectMsg = `Enter code ${start.user_code} at ${start.verification_uri} (opening browser…)`;
+      try { await ipcInvoke('open_url', { url: start.verification_uri }); } catch {}
+      const interval = Math.max(2, Number(start.interval || 5));
+      // Poll until connected / error / cancelled.
+      while (connectGen === gen) {
+        await new Promise((r) => setTimeout(r, interval * 1000));
+        if (connectGen !== gen) return;
+        const res = await ipcInvoke<{ status: string; account?: string }>('graph_connect_poll', {
+          clientId: start.client_id, deviceCode: start.device_code,
+        });
+        if (res.status === 'connected') {
+          graphAccount = res.account ?? 'connected';
+          connecting = false; connectMsg = '';
+          return;
+        }
+      }
+    } catch (e) {
+      if (connectGen === gen) { connectMsg = e instanceof Error ? e.message : String(e); connecting = false; }
+    }
+  }
+
+  async function spFind() {
+    if (!graphAccount) { spBusy = 'Connect first.'; return; }
+    if (!spQuery.trim()) return;
+    spBusy = 'Searching…';
+    try {
+      spSites = (await ipcInvoke('graph_sites_search', { query: spQuery.trim() })) ?? [];
+      spBusy = spSites.length ? '' : 'No sites found.';
+    } catch (e) { spBusy = e instanceof Error ? e.message : String(e); }
+  }
+  async function spSiteChosen(id: string) {
+    spSiteId = id;
+    spDrives = [];
+    if (!id) return;
+    spBusy = 'Loading libraries…';
+    try {
+      spDrives = (await ipcInvoke('graph_site_drives', { siteId: id })) ?? [];
+      spBusy = '';
+    } catch (e) { spBusy = e instanceof Error ? e.message : String(e); }
+  }
+  function spLibChosen(drive: { id: string; name: string }) {
+    const site = spSites.find((x) => x.id === spSiteId);
+    s.graph_drive_id = drive.id;
+    s.graph_drive_label = site ? `${site.name} / ${drive.name}` : drive.name;
+  }
+  function destChanged(mode: 'onedrive' | 'sharepoint') {
+    destMode = mode;
+    if (mode === 'onedrive') { s.graph_drive_id = ''; s.graph_drive_label = ''; }
+  }
+
+  // AI endpoint connectivity test (AI tab).
+  let aiTesting = $state(false);
+  let aiResult = $state<{ ok: boolean; msg: string } | null>(null);
+  async function testAi() {
+    aiTesting = true;
+    aiResult = null;
+    try {
+      const msg = await ipcInvoke<string>('test_ai_endpoint', {
+        endpoint: String(s.ai_endpoint ?? ''),
+        model: String(s.ai_model ?? ''),
+        apiKey: String(s.ai_api_key ?? ''),
+      });
+      aiResult = { ok: true, msg };
+    } catch (e) {
+      aiResult = { ok: false, msg: e instanceof Error ? e.message : String(e) };
+    } finally {
+      aiTesting = false;
+    }
+  }
+
   async function save() {
     const snap = { ...$state.snapshot(s) } as SettingsData;
     // Map the edited semicolon string back to an extra_dirs array.
@@ -47,6 +199,8 @@
       .filter((x) => x.length > 0);
     delete snap.extra_dirs_text;
     await ipcInvoke('set_settings', { values: snap });
+    // Tell the live camera bubble to re-init with the (possibly new) device.
+    void ipcEmit('camera://changed', String(snap.camera_device ?? ''));
     close();
   }
 
@@ -125,7 +279,15 @@
           <label class="check"><input type="checkbox" bind:checked={s.mic_enabled} /> Record microphone</label>
           <label class="field">
             <span>Microphone device</span>
-            <input type="text" bind:value={s.mic_device} placeholder="Default" />
+            <select bind:value={s.mic_device}>
+              <option value="">Default</option>
+              {#each mics as d (d.id)}
+                <option value={d.id}>{d.label}</option>
+              {/each}
+              {#if s.mic_device && !mics.some((d) => d.id === s.mic_device)}
+                <option value={s.mic_device}>{s.mic_device}</option>
+              {/if}
+            </select>
           </label>
           <label class="check"><input type="checkbox" bind:checked={s.noise_suppression} /> Noise suppression</label>
           <label class="field row">
@@ -134,7 +296,16 @@
           </label>
           <label class="field">
             <span>Camera device</span>
-            <input type="text" bind:value={s.camera_device} placeholder="None" />
+            <select bind:value={s.camera_device}>
+              <option value="">None / default</option>
+              {#each cameras as d (d.id)}
+                <option value={d.id}>{d.label}</option>
+              {/each}
+              {#if s.camera_device && !cameras.some((d) => d.id === s.camera_device)}
+                <option value={s.camera_device}>{s.camera_device}</option>
+              {/if}
+            </select>
+            <small>Drives the camera bubble. Names appear after granting camera access once.</small>
           </label>
           <label class="check"><input type="checkbox" bind:checked={s.record_cursor_halo} disabled /> Cursor halo <small class="inline">(coming soon)</small></label>
           <label class="field row">
@@ -203,8 +374,70 @@
           <label class="field"><span>Container</span><input type="text" bind:value={s.azure_container} /></label>
           <label class="field"><span>Key</span><input type="password" bind:value={s.azure_key} /></label>
           <div class="divider"></div>
-          <div class="group-label">OneDrive / SharePoint</div>
-          <label class="field"><span>Graph client ID</span><input type="text" bind:value={s.graph_client_id} /></label>
+          <div class="group-label">OneDrive / SharePoint (Microsoft account)</div>
+
+          <div class="od">
+            <div class="od-row">
+              <span class="od-label">Status</span>
+              <span class="status" class:connected={graphAccount}>
+                {graphAccount ? `Connected as ${graphAccount}` : 'Not connected'}
+              </span>
+              <button class="btn ghost od-connect" onclick={graphConnect}>
+                {connecting ? 'Cancel' : graphAccount ? 'Disconnect' : 'Connect…'}
+              </button>
+            </div>
+            {#if connectMsg}<div class="connect-msg">{connectMsg}</div>{/if}
+
+            <div class="od-row">
+              <span class="od-label">Save to</span>
+              <select value={destMode} onchange={(e) => destChanged(e.currentTarget.value as 'onedrive' | 'sharepoint')}>
+                <option value="onedrive">My OneDrive</option>
+                <option value="sharepoint">A SharePoint site</option>
+              </select>
+            </div>
+
+            {#if destMode === 'sharepoint'}
+              <div class="sp-box">
+                <div class="od-row">
+                  <span class="od-label">Site</span>
+                  <input class="grow" type="text" bind:value={spQuery} placeholder="search site name…"
+                    onkeydown={(e) => e.key === 'Enter' && spFind()} />
+                  <button class="btn ghost" onclick={spFind}>Find</button>
+                </div>
+                {#if spSites.length}
+                  <div class="od-row">
+                    <span class="od-label"></span>
+                    <select class="grow" value={spSiteId} onchange={(e) => spSiteChosen(e.currentTarget.value)}>
+                      <option value="">Select a site…</option>
+                      {#each spSites as site (site.id)}<option value={site.id}>{site.name}</option>{/each}
+                    </select>
+                  </div>
+                {/if}
+                {#if spDrives.length}
+                  <div class="od-row">
+                    <span class="od-label">Library</span>
+                    <select class="grow" onchange={(e) => { const d = spDrives.find((x) => x.id === e.currentTarget.value); if (d) spLibChosen(d); }}>
+                      <option value="">Select a library…</option>
+                      {#each spDrives as d (d.id)}<option value={d.id}>{d.name}</option>{/each}
+                    </select>
+                  </div>
+                {/if}
+                {#if s.graph_drive_label}<div class="selected">Selected: {s.graph_drive_label}</div>{/if}
+                {#if spBusy}<div class="connect-msg">{spBusy}</div>{/if}
+              </div>
+            {/if}
+
+            <div class="od-row">
+              <span class="od-label">App</span>
+              {#if clientCustom}
+                <input class="grow" type="text" bind:value={s.graph_client_id} placeholder="your Azure app client ID" />
+                <button class="btn ghost" onclick={toggleClient}>Use default</button>
+              {:else}
+                <span class="builtin grow">Wondershot Built-In</span>
+                <button class="btn ghost" onclick={toggleClient}>Change</button>
+              {/if}
+            </div>
+          </div>
         {:else if tab === 'ai'}
           <p class="note">
             Used by AI Redact / Simplify and the bg-removal helpers. OpenAI-compatible
@@ -213,6 +446,17 @@
           <label class="field"><span>Endpoint</span><input type="text" bind:value={s.ai_endpoint} placeholder="https://openrouter.ai/api" /></label>
           <label class="field"><span>Model</span><input type="text" bind:value={s.ai_model} placeholder="google/gemini-2.5-flash" /></label>
           <label class="field"><span>API key</span><input type="password" bind:value={s.ai_api_key} /></label>
+          <div class="ai-test">
+            <button class="btn ghost ai-btn" class:ok={aiResult?.ok} class:err={aiResult && !aiResult.ok} onclick={testAi} disabled={aiTesting}>
+              {#if aiTesting}<span class="spin" aria-hidden="true"></span> Testing…
+              {:else if aiResult?.ok}<span class="mark">✓</span> Connected
+              {:else if aiResult}<span class="mark">✕</span> Failed
+              {:else}Test connection{/if}
+            </button>
+          </div>
+          {#if aiResult && !aiResult.ok}
+            <small class="ai-result err">{aiResult.msg}</small>
+          {/if}
         {/if}
       </div>
 
@@ -287,10 +531,12 @@
   .body {
     flex: 1;
     overflow-y: auto;
+    /* Reserve the scrollbar gutter so it never overlaps the inputs. */
+    scrollbar-gutter: stable;
     display: flex;
     flex-direction: column;
     gap: 10px;
-    padding: 2px 2px 4px;
+    padding: 2px 12px 4px 2px;
   }
   .field {
     display: flex;
@@ -360,6 +606,45 @@
     font-weight: 600;
     color: var(--fg-primary);
     font-size: var(--text-small);
+  }
+  .ai-test {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 4px;
+  }
+  .ai-result {
+    font-size: var(--text-small);
+    line-height: 1.3;
+  }
+  .ai-result.ok { color: var(--accent); }
+  .ai-result.err { color: var(--danger); }
+  .ai-btn { display: inline-flex; align-items: center; gap: 7px; min-width: 132px; justify-content: center; }
+  .ai-btn.ok { border-color: var(--accent); color: var(--accent); }
+  .ai-btn.err { border-color: var(--danger); color: var(--danger); }
+  .ai-btn .mark { font-weight: 700; }
+  .spin {
+    width: 12px; height: 12px; border-radius: 50%;
+    border: 2px solid var(--fg-secondary); border-top-color: transparent;
+    display: inline-block; animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  /* OneDrive group: left-aligned label + control rows (not space-between). */
+  .od { display: flex; flex-direction: column; gap: 9px; }
+  .od-row { display: flex; align-items: center; gap: 8px; }
+  .od-label { flex: 0 0 64px; color: var(--fg-secondary); font-size: var(--text-small); }
+  .od-row .grow { flex: 1 1 auto; min-width: 0; }
+  .od-row select { min-width: 180px; }
+  .od-connect { margin-left: auto; }
+  .status { color: var(--fg-secondary); font-size: var(--text-base); }
+  .status.connected { color: var(--accent); }
+  .connect-msg { color: var(--fg-secondary); font-size: var(--text-small); line-height: 1.4; word-break: break-word; }
+  .selected { color: var(--accent); font-size: var(--text-small); }
+  .builtin { color: var(--fg-secondary); font-size: var(--text-base); }
+  .sp-box {
+    display: flex; flex-direction: column; gap: 8px;
+    padding: 10px; border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--bg-field);
   }
   .foot {
     display: flex;

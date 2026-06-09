@@ -37,6 +37,17 @@
         "skipTaskbar": true,
         "shadow": false,
         "visible": false
+      },
+      {
+        "label": "capture",
+        "url": "/capture",
+        "title": "Capture",
+        "width": 380,
+        "height": 224,
+        "resizable": false,
+        "decorations": false,
+        "visible": false,
+        "center": true
       }
     ],
     "security": {

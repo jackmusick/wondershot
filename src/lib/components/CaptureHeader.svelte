@@ -9,6 +9,22 @@
   } from '$lib/recorder/control';
   import EditorToolbar from '$lib/editor/EditorToolbar.svelte';
 
+  const USE_MOCK = typeof (globalThis as any).__TAURI_INTERNALS__ === 'undefined';
+
+  /** Open the framed, always-on-top capture window (real mode), or the in-page
+   * popover in browser dev where secondary windows don't exist. */
+  async function openCapture() {
+    if (USE_MOCK) {
+      capturePanelOpen.set(true);
+      return;
+    }
+    try {
+      await ipcInvoke('show_capture_window');
+    } catch (e) {
+      console.error('open capture window failed', e);
+    }
+  }
+
   function fmt(ms: number) {
     const s = Math.floor(ms / 1000);
     return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
@@ -25,7 +41,7 @@
 </script>
 
 <header class="header">
-  <button class="hbtn" title="Capture (opens the capture panel)" onclick={() => capturePanelOpen.set(true)}>
+  <button class="hbtn" title="Capture (opens the capture window)" onclick={openCapture}>
     <svg viewBox="0 0 16 16"><path d="M2 5.5A1.5 1.5 0 0 1 3.5 4h1l1-1.5h3L9.5 4h3A1.5 1.5 0 0 1 14 5.5V12a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 12z"/><circle cx="8" cy="8.5" r="2.5"/></svg>
     Capture
   </button>

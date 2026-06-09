@@ -44,6 +44,7 @@ export const MOCK_CAPTURES: Capture[] = [
 ];
 
 let mockList: Capture[] = [...MOCK_CAPTURES];
+let mockPinned: string[] = [];
 let counter = 0;
 
 /** Prepend a fake new screen recording (used by the mock record simulation). */
@@ -116,6 +117,39 @@ export async function mockInvoke(cmd: string, _args?: unknown): Promise<unknown>
       return null;
     case 'copy_image':
       return true;
+    case 'list_pinned':
+      return mockPinned;
+    case 'set_pinned': {
+      const a = _args as { path?: string; pinned?: boolean } | undefined;
+      const path = a?.path ?? '';
+      mockPinned = mockPinned.filter((p) => p !== path);
+      if (a?.pinned) mockPinned = [...mockPinned, path];
+      return mockPinned;
+    }
+    case 'save_image_as':
+      // No file dialog in browser dev; pretend the user picked a path.
+      return (_args as { path?: string } | undefined)?.path ?? null;
+    case 'show_in_folder':
+    case 'show_capture_window':
+    case 'open_url':
+      return null;
+    case 'graph_status':
+      return { account: '', default_client_id: 'cf7aef3a-2dc5-4b58-b247-2e61fe6a98cc' };
+    case 'graph_connect_start':
+      return { client_id: 'mock', device_code: 'mock', user_code: 'ABCD-EFGH', verification_uri: 'https://microsoft.com/devicelogin', interval: 5 };
+    case 'graph_connect_poll':
+      return { status: 'connected', account: 'mock@example.com' };
+    case 'graph_disconnect':
+      return null;
+    case 'graph_sites_search':
+      return [{ id: 'site1', name: 'Contoso Team', url: '' }];
+    case 'graph_site_drives':
+      return [{ id: 'drive1', name: 'Documents' }];
+    case 'test_ai_endpoint': {
+      const a = _args as { endpoint?: string } | undefined;
+      if (!a?.endpoint) throw new Error('No endpoint set');
+      return 'Connected (mock)';
+    }
     case 'install_desktop':
     case 'trash_item':
       return null;
