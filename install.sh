@@ -53,6 +53,14 @@ fi
 
 mkdir -p "$HOME_DIR" "$BIN_DIR" "$APP_DIR"
 
+# Cutover: the old (Python) installer created a venv here; the AppImage reuses
+# $HOME_DIR, so clear the stale venv (and its bin/wondershot the symlink pointed
+# at) rather than leaving two installs side by side.
+if [ -d "$HOME_DIR/venv" ]; then
+    say "removing the old Python install ($HOME_DIR/venv)"
+    rm -rf "$HOME_DIR/venv"
+fi
+
 say "looking up the latest release..."
 api="https://api.github.com/repos/$REPO/releases/latest"
 url=$(curl -fsSL "$api" \
