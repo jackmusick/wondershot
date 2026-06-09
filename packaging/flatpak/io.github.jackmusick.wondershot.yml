@@ -29,9 +29,11 @@ finish-args:
   # Recorder: portal ScreenCast negotiates the PipeWire stream
   - --filesystem=xdg-run/pipewire-0
   - --socket=pulseaudio
-  # Library folders (watched dirs + sidecars)
-  - --filesystem=xdg-pictures
-  - --filesystem=xdg-videos
+  # Library lives wherever the user configured it (e.g. ~/Sync/Screenshots) +
+  # watched video dirs + the shared ~/.config/wondershot/wondershot.conf. The
+  # non-Flatpak install had full home access; a screenshot manager genuinely
+  # needs the user's chosen folders, so grant home rather than guess subpaths.
+  - --filesystem=home
   # KWin scripting (auto-size-to-window); host D-Bus, runtime-independent
   - --talk-name=org.kde.KWin
   # Portals (screenshot/screencast) ride the session bus

@@ -72,6 +72,19 @@ impl Default for Settings {
 
 impl Settings {
     pub fn conf_path() -> PathBuf {
+        // In a Flatpak, XDG_CONFIG_HOME is sandboxed to ~/.var/app/<id>/config,
+        // which hides the user's real ~/.config/wondershot/wondershot.conf shared
+        // with the non-Flatpak (pip/AppImage) install. With the manifest's
+        // --filesystem=xdg-config/wondershot grant, read the host config directly
+        // so settings (library dir, backend, camera/mic, …) carry over on cutover.
+        if std::env::var_os("FLATPAK_ID").is_some() {
+            if let Some(home) = dirs::home_dir() {
+                return home
+                    .join(".config")
+                    .join("wondershot")
+                    .join("wondershot.conf");
+            }
+        }
         dirs::config_dir()
             .unwrap_or_default()
             .join("wondershot")
@@ -93,7 +106,15 @@ impl Settings {
                 continue;
             }
             let (k, v) = line.split_once('=').unwrap();
-            let (k, v) = (k.trim(), v.trim());
+            // QSettings INI quotes values containing ; or special chars
+            // (e.g. extra_dirs="a;b", azure_key="…=="). Strip one matched pair.
+            let k = k.trim();
+            let v = v.trim();
+            let v = if v.len() >= 2 && v.starts_with('"') && v.ends_with('"') {
+                &v[1..v.len() - 1]
+            } else {
+                v
+            };
             match k {
                 "library_dir" => s.library_dir = v.to_string(),
                 "backend" => s.backend = v.to_string(),
