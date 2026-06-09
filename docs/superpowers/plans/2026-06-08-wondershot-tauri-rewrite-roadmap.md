@@ -33,7 +33,7 @@ shots; vision-critique workflow stage; minimal Rust (health command, tray stub,
 single-instance); Vitest. **Exit:** `npm run build` succeeds, the shell screenshots in
 both themes, and the critique stage returns findings.
 
-### M2 — Capture + clipboard + library  *(detailed plan written; building)*
+### M2 — Capture + clipboard + library  *(✅ COMPLETE — tag `m2-capture`; live capture round-trip pending an interactive Wayland session)*
 `wondershot-core` crates: `capture` (spectacle subprocess + `ashpd` portal + KWin
 geometry via `zbus`), `clipboard` (`wl-clipboard-rs`), `library` (scan existing PNG/MP4 +
 `.sidecar` read/write, trash). Wire `capture_*`, `copy_image`, `list_library`,
