@@ -17,7 +17,7 @@
 # ship them and Wondershot shells out to / loads them at runtime.
 app-id: io.github.jackmusick.wondershot
 runtime: org.gnome.Platform
-runtime-version: '47'
+runtime-version: '49'
 sdk: org.gnome.Sdk
 command: wondershot
 

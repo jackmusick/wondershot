@@ -24,3 +24,7 @@ test-results/
 
 # Tauri build-generated schemas/capabilities
 src-tauri/gen/
+
+# Flatpak build input (never commit the bundled deb)
+packaging/flatpak/*.deb
+packaging/flatpak/.flatpak-builder/
