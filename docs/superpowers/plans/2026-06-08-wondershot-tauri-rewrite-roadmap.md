@@ -85,8 +85,20 @@ release asset) are CI/first-release gates. macOS/Windows packaging deferred (Lin
 Flatpak manifest for the Tauri app; Tauri bundler `.rpm`/AppImage/deb; `install.sh`
 `curl|sh` path. **Exit:** a Flatpak and a `curl|sh` install both launch the app.
 
-### M7 — Cutover + parity sign-off
+### M7 — Cutover + parity sign-off  *(✅ COMPLETE — tag `m7-cutover`; merge to `main` is the one human-gated step)*
+M7 notes: the one un-ported behavior — the CLI/global-hotkey model — is now in: a pure
+`CliAction` parser (11 tests) drives both launch args and **single-instance forwarded** args, so
+`wondershot --capture` from a bound shortcut triggers a capture in the running instance (emits
+`cli://capture|fullscreen|edit|import`, frontend routes to existing store actions);
+`--version`/`--install-desktop` short-circuit before the GUI; `install_desktop`/`import_files`
+commands added. Cutover invariants preserved (app-id/`.desktop`/library/conf unchanged →
+Flatpak supersedes the old in place; `install.sh` clears the stale pip venv). Parity checklist
+written (`...-m7-parity-checklist.md`): all subsystems have ✅ automated coverage — **90 core +
+68 frontend tests green** — with live-hardware/display runs (capture, recorder via portal, ffmpeg,
+the Flatpak/AppImage/`curl|sh` launch) as ⏳ gates, not code gaps. ui-review of the shell passed
+(0 findings). **Remaining:** the `tauri-rewrite` → `main` merge replaces the working Python daily
+driver and depends on the ⏳ live gates a human must exercise first — held for explicit sign-off
+rather than auto-merged.
 Same app-id/`.desktop`/library dir so the new build supersedes the Flatpak and removes the
-old pip venv; full parity pass against the Python app (every feature in the spec's parity
-list); merge `tauri-rewrite` → `main`. **Exit:** parity checklist green; cutover install
-replaces the old one with the library intact.
+old pip venv; full parity pass against the Python app; merge `tauri-rewrite` → `main`.
+**Exit:** parity checklist green; cutover install replaces the old one with the library intact.
