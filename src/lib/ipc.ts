@@ -31,3 +31,10 @@ export async function ipcListen<T>(event: string, cb: (payload: T) => void): Pro
   const un = await listen<T>(event, (e) => cb(e.payload));
   return un;
 }
+
+/** Emit an app event to the backend (no-op in mock/browser dev). */
+export async function ipcEmit(event: string, payload?: unknown): Promise<void> {
+  if (USE_MOCK) return;
+  const { emit } = await import('@tauri-apps/api/event');
+  await emit(event, payload);
+}

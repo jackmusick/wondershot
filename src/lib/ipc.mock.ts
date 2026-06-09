@@ -116,6 +116,11 @@ export async function mockInvoke(cmd: string, _args?: unknown): Promise<unknown>
       return null;
     case 'copy_image':
       return true;
+    case 'install_desktop':
+      return null;
+    case 'import_files':
+      // Echo back the requested paths; no real copy in browser dev.
+      return (_args as { paths?: string[] } | undefined)?.paths ?? [];
     case 'grab_frame':
     case 'apply_blur':
     case 'export_gif':

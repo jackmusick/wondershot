@@ -15,6 +15,26 @@ export async function loadLibrary(): Promise<void> {
   captures.set(await normalizeCaptures(caps));
 }
 
+/** Open the editor on a library item by path (CLI `--edit FILE`). */
+export async function openEditorByPath(path: string): Promise<void> {
+  await loadLibrary();
+  const item = get(captures).find((c) => c.path === path);
+  if (item) {
+    activeItem.set(item);
+    view.set('editor');
+  }
+}
+
+/** Copy files into the library and refresh (CLI `--import F…`). */
+export async function importPaths(paths: string[]): Promise<void> {
+  try {
+    await ipcInvoke<string[]>('import_files', { paths });
+    await loadLibrary();
+  } catch (e) {
+    console.error('import failed', e);
+  }
+}
+
 export async function takeCapture(mode: 'region' | 'fullscreen' | 'window'): Promise<void> {
   const cmd = `capture_${mode}`;
   try {
