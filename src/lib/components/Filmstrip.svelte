@@ -31,12 +31,11 @@
   }
 </script>
 
-<div class="filmstrip" role="list">
+<div class="filmstrip">
   {#each $captures as c (c.id)}
     <button
       class="card"
       class:selected={$activeItem?.id === c.id}
-      role="listitem"
       onclick={() => open(c)}
       title={c.title}
     >

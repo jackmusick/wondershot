@@ -26,6 +26,5 @@
   /* Editor fills the body instead of centering a shrink-wrapped child. */
   .content-body.editor,
   .content-body.video { align-items: stretch; justify-content: stretch; overflow: hidden; }
-  .preview { max-width: 90%; max-height: 90%; border-radius: var(--radius); box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
   .placeholder { color: var(--fg-secondary); font-size: var(--text-small); }
 </style>

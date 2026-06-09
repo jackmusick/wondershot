@@ -228,80 +228,6 @@
     font-weight: 700;
   }
 
-  /* Color swatch */
-  .swatch {
-    width: 26px;
-    height: 22px;
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius);
-    background: var(--swatch);
-    cursor: pointer;
-    padding: 0;
-    flex-shrink: 0;
-  }
-  .color-input {
-    position: absolute;
-    width: 0;
-    height: 0;
-    opacity: 0;
-    pointer-events: none;
-  }
-
-  .field {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    height: 28px;
-    padding: 0 6px;
-    color: var(--fg-secondary);
-    font-size: var(--text-small);
-  }
-  .field input[type='range'] { width: 72px; accent-color: var(--accent); }
-  .field input[type='number'] {
-    width: 44px;
-    height: 22px;
-    background: var(--bg-field);
-    color: var(--fg-primary);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    font-size: var(--text-small);
-    padding: 0 4px;
-  }
-  .field .num {
-    min-width: 16px;
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-    color: var(--fg-primary);
-  }
-  .field .lbl { font-weight: 700; color: var(--fg-primary); }
-  .ico-stroke {
-    width: 16px;
-    height: 0;
-    border-top: 3px solid var(--fg-secondary);
-    border-radius: 2px;
-  }
-
-  .toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    font-size: var(--text-small);
-    color: var(--fg-primary);
-    cursor: pointer;
-    white-space: nowrap;
-  }
-  .toggle input { accent-color: var(--accent); }
-  .effect-num {
-    width: 48px;
-    height: 22px;
-    background: var(--bg-field);
-    color: var(--fg-primary);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    font-size: var(--text-small);
-    padding: 0 4px;
-  }
-  .effect-num:disabled { opacity: 0.4; }
 
   .autosave {
     font-size: var(--text-small);
@@ -310,19 +236,4 @@
     padding: 0 6px;
   }
 
-  .bgremove {
-    height: 26px;
-    padding: 0 10px;
-    border: 1px solid var(--border-strong);
-    background: var(--bg-field);
-    color: var(--fg-primary);
-    border-radius: var(--radius);
-    cursor: pointer;
-    font-size: var(--text-small);
-    font-weight: 600;
-    white-space: nowrap;
-    flex-shrink: 0;
-  }
-  .bgremove:hover:not(:disabled) { background: var(--bg-hover); }
-  .bgremove:disabled { opacity: 0.4; cursor: not-allowed; }
 </style>

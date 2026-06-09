@@ -158,6 +158,65 @@
   let currentTextStyle: TextStyle = { point_size: 24, align: 'left' };
   const unsubTextStyle = textStyle.subscribe((s) => (currentTextStyle = s));
 
+  // --- Image effects (rounded corners + bottom fade), applied live to the
+  // Konva scene so they BOTH preview and bake into the flattened output. ---
+  let fadeNode: Konva.Rect | null = null;
+  let effectsInit = false;
+  let currentEffects: Effects = { rounded: false, corner_radius: 12, fade: false, fade_height: 64 };
+  const unsubEffects = effects.subscribe((e) => {
+    currentEffects = e;
+    applyEffects();
+    // Persist a user toggle (skip the initial subscribe + pre-load fires).
+    if (effectsInit && ready) scheduleAutosave();
+    effectsInit = true;
+  });
+
+  /** Rounded-rect clip path over the full image bounds (Konva clipFunc). */
+  function roundedClip(ctx: Konva.Context, r: number) {
+    const w = imgW;
+    const h = imgH;
+    ctx.beginPath();
+    ctx.moveTo(r, 0);
+    ctx.arcTo(w, 0, w, h, r);
+    ctx.arcTo(w, h, 0, h, r);
+    ctx.arcTo(0, h, 0, 0, r);
+    ctx.arcTo(0, 0, w, 0, r);
+    ctx.closePath();
+  }
+
+  /** Apply rounded-corner clip + bottom-fade gradient to the base/annotation
+   *  layers from `currentEffects`. Idempotent; re-run on load and on change. */
+  function applyEffects() {
+    if (!stage || !KonvaMod || !imgW || !imgH) return;
+    const e = currentEffects;
+    const r = e.rounded ? Math.max(0, Math.min(e.corner_radius, imgW / 2, imgH / 2)) : 0;
+    const clip = r > 0 ? (ctx: Konva.Context) => roundedClip(ctx, r) : null;
+    baseLayer.clipFunc(clip as never);
+    annotationsLayer.clipFunc(clip as never);
+
+    fadeNode?.destroy();
+    fadeNode = null;
+    if (e.fade && e.fade_height > 0) {
+      const fh = Math.min(e.fade_height, imgH);
+      fadeNode = new KonvaMod.Rect({
+        x: 0,
+        y: imgH - fh,
+        width: imgW,
+        height: fh,
+        fillLinearGradientStartPoint: { x: 0, y: 0 },
+        fillLinearGradientEndPoint: { x: 0, y: fh },
+        fillLinearGradientColorStops: [0, 'rgba(0,0,0,0)', 1, 'rgba(0,0,0,1)'],
+        // Erase the base toward transparent at the bottom (true fade-out).
+        globalCompositeOperation: 'destination-out',
+        listening: false,
+        name: 'ws-fade',
+      });
+      baseLayer.add(fadeNode);
+    }
+    baseLayer.batchDraw();
+    annotationsLayer.batchDraw();
+  }
+
   /**
    * Fetch a Rust-computed processed patch (pixelate/blur) for a region of the
    * base image and return it as a `data:image/png;base64,…` URL. The backend
@@ -290,8 +349,11 @@
       if (imageNode) imageNode.destroy();
       imageNode = new KonvaMod.Image({ image: img, x: 0, y: 0, width: imgW, height: imgH });
       baseLayer.add(imageNode);
-      baseLayer.batchDraw();
       if (dimsChanged) fitToView();
+      // Re-apply effects so the fade node sits above the new base image and the
+      // clip matches the (possibly new) dimensions.
+      applyEffects();
+      baseLayer.batchDraw();
       onReady?.();
     };
     img.src = src;
@@ -1006,6 +1068,7 @@
         history.reset({ baseSrc: src, items: [] });
 
         fitToView();
+        applyEffects();
 
         if (!destroyed && !cancelled) ready = true;
 
@@ -1058,6 +1121,12 @@
             : 0,
         scale: () => stage.scaleX(),
         ready: () => ready,
+        // Effects are applied to the live scene (clip for rounded, a ws-fade
+        // node for fade) — so they preview AND bake. Lets tests assert toggles.
+        effectsState: () => ({
+          clipped: !!baseLayer.clipFunc(),
+          fade: !!baseLayer.findOne('.ws-fade'),
+        }),
       };
     }
 
@@ -1082,6 +1151,7 @@
       unsubTool();
       unsubStyle();
       unsubTextStyle();
+      unsubEffects();
       stage?.destroy();
       stage = null;
     };

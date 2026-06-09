@@ -69,6 +69,23 @@ test('draw a box, then select it → transformer shows resize/rotate handles', a
   expect(await hook(page, () => (window as any).__wsEditor.renderedAnchors())).toBeGreaterThanOrEqual(5);
 });
 
+test('effects: toggling Rounded corners / Bottom fade applies to the live scene', async ({ page }) => {
+  await gotoEditor(page);
+  let st = await hook(page, () => (window as any).__wsEditor.effectsState());
+  expect(st).toEqual({ clipped: false, fade: false });
+
+  // PropertiesPanel checkboxes (rendered in the editor screen route).
+  await page.getByText('Rounded corners').click();
+  await expect
+    .poll(() => hook(page, () => (window as any).__wsEditor.effectsState().clipped))
+    .toBe(true);
+
+  await page.getByText('Bottom fade').click();
+  await expect
+    .poll(() => hook(page, () => (window as any).__wsEditor.effectsState().fade))
+    .toBe(true);
+});
+
 test('step tool places exactly one badge per click (not drag-existing + add)', async ({ page }) => {
   await gotoEditor(page);
   const box = await canvasBox(page);
