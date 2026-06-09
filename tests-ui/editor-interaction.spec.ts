@@ -86,6 +86,29 @@ test('effects: toggling Rounded corners / Bottom fade applies to the live scene'
     .toBe(true);
 });
 
+test('transformer handles stay a usable size when zoomed out (large-image case)', async ({ page }) => {
+  await gotoEditor(page);
+  const box = await canvasBox(page);
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+
+  await pickTool(page, 'Box');
+  await page.mouse.move(cx - 80, cy - 60);
+  await page.mouse.down();
+  await page.mouse.move(cx + 80, cy + 60, { steps: 6 });
+  await page.mouse.up();
+  await pickTool(page, 'Select');
+  await page.mouse.click(cx, cy);
+
+  // Zoom out a lot (simulates a large screenshot fit-scaled down).
+  for (let i = 0; i < 8; i++) await page.locator('button[aria-label="Zoom out"]').click();
+
+  // Reselect after zoom and check the handle's on-screen size is still grabbable.
+  await page.mouse.click(cx, cy);
+  const px = await hook(page, () => (window as any).__wsEditor.anchorScreenSize());
+  expect(px).toBeGreaterThanOrEqual(7);
+});
+
 test('cut (vertical band) removes a strip → image width shrinks', async ({ page }) => {
   await gotoEditor(page);
   const before = await hook(page, () => (window as any).__wsEditor.imageSize());

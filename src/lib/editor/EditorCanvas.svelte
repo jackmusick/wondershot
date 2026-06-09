@@ -77,6 +77,7 @@
     const cw = container.clientWidth;
     const ch = container.clientHeight;
     stage.position({ x: (cw - imgW * scale) / 2, y: (ch - imgH * scale) / 2 });
+    updateTransformerScale();
     stage.batchDraw();
     viewInfo.set({ width: imgW, height: imgH, zoom: scale });
   }
@@ -105,6 +106,7 @@
       x: pointer.x - mousePointTo.x * newScale,
       y: pointer.y - mousePointTo.y * newScale,
     });
+    updateTransformerScale();
     stage.batchDraw();
     viewInfo.set({ width: imgW, height: imgH, zoom: newScale });
   }
@@ -821,6 +823,20 @@
     });
   }
 
+  /** Keep the transformer's handles/border a constant SCREEN size regardless of
+   *  zoom. Konva draws anchors in the (scaled) stage space, so on a large image
+   *  fit-scaled down the default ~10px anchors render sub-pixel ("no corners").
+   *  Counter the stage scale so a 10px anchor stays 10px on screen. */
+  function updateTransformerScale() {
+    if (!transformer || !stage) return;
+    const s = stage.scaleX() || 1;
+    transformer.anchorSize(10 / s);
+    transformer.anchorStrokeWidth(1 / s);
+    transformer.borderStrokeWidth(1 / s);
+    transformer.rotateAnchorOffset(24 / s);
+    transformer.forceUpdate();
+  }
+
   function select(node: Konva.Node | null) {
     if (!transformer) return;
     // Two-point items (arrow/line) are moved by dragging — they show no resize
@@ -831,6 +847,7 @@
     transformer.resizeEnabled(!dragOnly);
     transformer.rotateEnabled(!dragOnly);
     transformer.nodes(node ? [node] : []);
+    updateTransformerScale();
     overlayLayer.batchDraw();
   }
 
@@ -1119,6 +1136,11 @@
             ? transformer.find('.rotater, .top-left, .top-right, .bottom-left, .bottom-right')
                 .filter((n: any) => n.isVisible() && n.width() > 0).length
             : 0,
+        // Anchor size in SCREEN pixels — shrinks with zoom-out unless countered.
+        anchorScreenSize: () => {
+          const a = transformer.findOne('.top-left') as any;
+          return a ? a.width() * stage.scaleX() * (a.scaleX?.() ?? 1) : 0;
+        },
         scale: () => stage.scaleX(),
         imageSize: () => ({ w: imgW, h: imgH }),
         ready: () => ready,
