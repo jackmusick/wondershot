@@ -1022,6 +1022,30 @@
     });
     ro.observe(container);
 
+    // Test hook (dev / mock-IPC only): lets Playwright drive the canvas with
+    // real mouse events and assert Konva state (items, current selection, the
+    // transformer's handles, zoom) without a DOM representation of the scene.
+    if (import.meta.env.DEV || import.meta.env.VITE_MOCK_IPC) {
+      (window as unknown as { __wsEditor?: unknown }).__wsEditor = {
+        stage,
+        transformer,
+        itemCount: () => items.length,
+        items: () => items.map((i) => ({ ...i })),
+        selectionCount: () => transformer.nodes().length,
+        selectionHasHandles: () =>
+          transformer.nodes().length > 0 && transformer.resizeEnabled(),
+        // Actual rendered handles: Konva names the resize anchors and the
+        // 'rotater'. If these aren't present/visible the user sees no corners.
+        renderedAnchors: () =>
+          transformer.isVisible()
+            ? transformer.find('.rotater, .top-left, .top-right, .bottom-left, .bottom-right')
+                .filter((n: any) => n.isVisible() && n.width() > 0).length
+            : 0,
+        scale: () => stage.scaleX(),
+        ready: () => ready,
+      };
+    }
+
     return () => {
       cancelled = true;
       editTeardown?.();
