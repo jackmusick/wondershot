@@ -41,7 +41,8 @@ geometry via `zbus`), `clipboard` (`wl-clipboard-rs`), `library` (scan existing 
 flow into the library sidebar. **Exit:** region/full/window capture → thumbnail → clipboard,
 existing library loads unchanged. Oracle: port `tests/` capture/library assertions to `cargo test`.
 
-### M3 — Editor (Konva, 14 tools)  *(IN PROGRESS — backend done: T1 serde models + T2 imageops, both parity-tested; visual canvas T3+ pending)*
+### M3 — Editor (Konva, 14 tools)  *(✅ COMPLETE — tag `m3-editor`)*
+Deferred to a later pass (noted): multi-base re-edit stack (bases>1 cross-session re-edit of crops/cutouts — M3 writes base.0 only); drag-to-swap step numbers; text drag-to-set-box-width; live effects preview (state is saved, not previewed). Interactive canvas UX validated by JSON-parity tests + screenshots, not headless click-tests.
 Konva `Stage` in the content view; tool rail; 14 tools (select, arrow, line, rect,
 ellipse, pen, highlighter, text, step-numbers, pixelate, blur, crop, cutout V/H);
 `Transformer` handles; snapshot undo/redo; serialize to existing `.sidecar` JSON. Each
