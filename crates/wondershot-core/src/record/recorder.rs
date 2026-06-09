@@ -461,6 +461,20 @@ pub fn build_test_description(tmp: &str) -> String {
     )
 }
 
+/// Like `build_test_description` but `is-live` with a configurable buffer
+/// count, so a pause/resume test can use a source long enough to span the
+/// paused window and emit buffers in real time (so `pause()` actually drops a
+/// real span of frames rather than the whole burst arriving instantly).
+#[cfg(test)]
+pub fn build_test_description_n(tmp: &str, num_buffers: u32) -> String {
+    format!(
+        "videotestsrc num-buffers={num_buffers} is-live=true ! videoconvert ! videorate ! \
+         video/x-raw,format=I420,framerate=30/1 ! identity name=pause ! \
+         x264enc speed-preset=veryfast tune=zerolatency key-int-max=120 ! \
+         h264parse ! queue ! mux. mp4mux name=mux ! filesink location={tmp}"
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -494,5 +508,56 @@ mod tests {
     #[test]
     fn supports_pause_is_true() {
         assert!(Recorder::supports_pause());
+    }
+
+    /// Runtime smoke test for the highest-risk, otherwise-unexercised path:
+    /// the BUFFER pad probe that drops buffers while paused and rewrites
+    /// PTS/DTS on resume. Drives a live videotestsrc through a full
+    /// pause()->resume()->stop() cycle and asserts the pipeline survives the
+    /// drop + PTS-rewrite and finalizes cleanly (EOS -> Finished, not Failed).
+    #[test]
+    fn pause_resume_rewrites_pts_and_finalizes() {
+        let dir = tempfile::tempdir().unwrap();
+        let tmp = dir.path().join("t.mp4");
+        let out = dir.path().join("out.mp4");
+        // 150 buffers @ 30fps live ~= 5s of source; plenty to have frames
+        // before the pause, during the (dropped) pause, and after resume.
+        let desc = build_test_description_n(tmp.to_str().unwrap(), 150);
+
+        // Latch the terminal event so we can assert Finished, not Failed.
+        let result: std::sync::Arc<std::sync::Mutex<Option<RecEvent>>> =
+            std::sync::Arc::new(std::sync::Mutex::new(None));
+        let r2 = result.clone();
+        let rec = Recorder::launch(&desc, tmp.clone(), out.clone(), move |e| match e {
+            RecEvent::Finished(_) | RecEvent::Failed(_) => {
+                *r2.lock().unwrap() = Some(e);
+            }
+            _ => {}
+        })
+        .expect("launch");
+
+        // Let some buffers flow, then pause (probe starts dropping), hold the
+        // pause so a real span of frames is dropped, then resume (probe now
+        // PTS-rewrites every buffer), let more flow, then stop().
+        std::thread::sleep(std::time::Duration::from_millis(400));
+        rec.pause();
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        rec.resume();
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        rec.stop();
+
+        // The pipeline survived the drop + PTS-rewrite path and finalized.
+        assert!(out.exists(), "output mp4 should exist after pause/resume");
+        let len = std::fs::metadata(&out).unwrap().len();
+        assert!(len > 0, "output mp4 should be non-empty (got {len} bytes)");
+
+        // Terminal event must be a clean Finished, never Failed.
+        let terminal = result.lock().unwrap().clone();
+        match terminal {
+            Some(RecEvent::Finished(p)) => {
+                assert_eq!(p, out, "Finished should carry the out path");
+            }
+            other => panic!("expected Finished after pause/resume, got {other:?}"),
+        }
     }
 }
