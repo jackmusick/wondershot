@@ -6,6 +6,7 @@
 
   let { path }: { path: string } = $props();
 
+  let ready = $state(false);
   let container: HTMLDivElement;
   let stage: Konva.Stage | null = null;
   let baseLayer: Konva.Layer;
@@ -231,6 +232,8 @@
         select(demo);
 
         fitToView();
+
+        if (!destroyed && !cancelled) ready = true;
       };
       imageObj.src = src;
     })();
@@ -256,7 +259,7 @@
   }
 </script>
 
-<div class="editor-canvas" bind:this={container}></div>
+<div class="editor-canvas" bind:this={container} data-editor-ready={ready ? 'true' : 'false'}></div>
 
 <style>
   .editor-canvas {
