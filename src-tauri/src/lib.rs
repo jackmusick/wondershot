@@ -107,12 +107,31 @@ pub fn run() {
                     .build(&tray_handle)?;
                 Ok::<(), tauri::Error>(())
             }));
+            let tray_ok = matches!(tray, Ok(Ok(())));
             match tray {
                 Ok(Ok(())) => {}
                 Ok(Err(e)) => eprintln!("tray icon unavailable: {e}"),
                 Err(_) => eprintln!(
                     "tray icon unavailable: no appindicator library at runtime — continuing without a tray"
                 ),
+            }
+
+            // Closing the main window must QUIT when there is no tray: the
+            // hidden helper windows (bubble/countdown/capture) otherwise keep
+            // the process alive as an unreachable ghost — and the
+            // single-instance plugin then forwards every relaunch to a main
+            // window that no longer exists ("app won't reopen", stray bwrap).
+            // With a working tray, staying resident is the Python app's
+            // close-to-tray behavior, so keep it.
+            if !tray_ok {
+                if let Some(main) = app.get_webview_window("main") {
+                    let handle = app.handle().clone();
+                    main.on_window_event(move |e| {
+                        if matches!(e, tauri::WindowEvent::Destroyed) {
+                            handle.exit(0);
+                        }
+                    });
+                }
             }
 
             // Act on the launch args once the webview's cli:// listeners are

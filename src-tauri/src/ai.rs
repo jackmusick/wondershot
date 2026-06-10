@@ -54,33 +54,53 @@ pub fn chat(
         // empty region lists). 1024 was the bug, not a budget.
         "max_tokens": 4096,
     });
-    let mut req = ureq::post(&chat_url(endpoint))
-        .timeout(std::time::Duration::from_secs(120))
-        .set("Content-Type", "application/json");
-    if !api_key.trim().is_empty() {
-        req = req.set("Authorization", &format!("Bearer {}", api_key.trim()));
-    }
-    let resp = match req.send_json(body) {
-        Ok(r) => r,
-        Err(ureq::Error::Status(code, r)) => {
-            let detail = r
-                .into_json::<Value>()
-                .ok()
-                .and_then(|v| {
-                    v.pointer("/error/message")
-                        .or_else(|| v.get("error"))
-                        .and_then(|x| x.as_str().map(String::from))
-                })
-                .unwrap_or_default();
-            return Err(format!("AI endpoint returned HTTP {code} {detail}"));
+    // Rate limits are routine on hosted endpoints (OpenRouter free tiers
+    // especially): retry 429/503 a few times, honoring Retry-After when sent.
+    const ATTEMPTS: u32 = 3;
+    let mut last_err = String::new();
+    for attempt in 0..ATTEMPTS {
+        let mut req = ureq::post(&chat_url(endpoint))
+            .timeout(std::time::Duration::from_secs(120))
+            .set("Content-Type", "application/json");
+        if !api_key.trim().is_empty() {
+            req = req.set("Authorization", &format!("Bearer {}", api_key.trim()));
         }
-        Err(e) => return Err(format!("could not reach AI endpoint: {e}")),
-    };
-    let v: Value = resp.into_json().map_err(|e| e.to_string())?;
-    v.pointer("/choices/0/message/content")
-        .and_then(|c| c.as_str())
-        .map(String::from)
-        .ok_or_else(|| "AI response had no message content".into())
+        match req.send_json(body.clone()) {
+            Ok(resp) => {
+                let v: Value = resp.into_json().map_err(|e| e.to_string())?;
+                return v
+                    .pointer("/choices/0/message/content")
+                    .and_then(|c| c.as_str())
+                    .map(String::from)
+                    .ok_or_else(|| "AI response had no message content".into());
+            }
+            Err(ureq::Error::Status(code @ (429 | 503), r)) => {
+                let wait = r
+                    .header("Retry-After")
+                    .and_then(|h| h.parse::<u64>().ok())
+                    .unwrap_or(2 * (attempt as u64 + 1))
+                    .min(30);
+                last_err = format!("AI endpoint rate-limited (HTTP {code})");
+                if attempt + 1 < ATTEMPTS {
+                    std::thread::sleep(std::time::Duration::from_secs(wait));
+                }
+            }
+            Err(ureq::Error::Status(code, r)) => {
+                let detail = r
+                    .into_json::<Value>()
+                    .ok()
+                    .and_then(|v| {
+                        v.pointer("/error/message")
+                            .or_else(|| v.get("error"))
+                            .and_then(|x| x.as_str().map(String::from))
+                    })
+                    .unwrap_or_default();
+                return Err(format!("AI endpoint returned HTTP {code} {detail}"));
+            }
+            Err(e) => return Err(format!("could not reach AI endpoint: {e}")),
+        }
+    }
+    Err(format!("{last_err} — gave up after {ATTEMPTS} attempts; try again in a minute"))
 }
 
 // ---------------------------------------------------------------------------

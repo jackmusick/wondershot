@@ -509,6 +509,7 @@ pub fn list_capture_devices() -> Vec<(String, String)> {
     let devices = monitor.devices();
     monitor.stop();
     let mut out = Vec::new();
+    let mut seen = std::collections::HashSet::new();
     for d in devices {
         let class = d.device_class().to_string();
         let kind = if class.contains("Audio") { "audioinput" } else { "videoinput" };
@@ -521,7 +522,13 @@ pub fn list_capture_devices() -> Vec<(String, String)> {
                 continue;
             }
         }
-        out.push((kind.to_string(), d.display_name().to_string()));
+        let label = d.display_name().to_string();
+        // The same physical device often appears under multiple providers
+        // (v4l2 + pipewire) with one display name — dedupe, or the Settings
+        // dropdowns get duplicate keys (which breaks the Recording tab).
+        if !label.is_empty() && seen.insert((kind, label.clone())) {
+            out.push((kind.to_string(), label));
+        }
     }
     out
 }

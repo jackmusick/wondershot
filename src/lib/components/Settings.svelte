@@ -15,8 +15,15 @@
   async function enumerateDevices() {
     try {
       const devs = (await ipcInvoke<{ kind: string; label: string }[]>('list_media_devices')) ?? [];
-      cameras = devs.filter((d) => d.kind === 'videoinput').map((d) => ({ id: d.label, label: d.label }));
-      mics = devs.filter((d) => d.kind === 'audioinput').map((d) => ({ id: d.label, label: d.label }));
+      // Dedupe defensively: duplicate labels would be duplicate keys in the
+      // keyed {#each}, which throws and makes the Recording tab unrenderable.
+      const pick = (kind: string) =>
+        [...new Set(devs.filter((d) => d.kind === kind).map((d) => d.label))].map((label) => ({
+          id: label,
+          label,
+        }));
+      cameras = pick('videoinput');
+      mics = pick('audioinput');
     } catch {
       // ignore — selects fall back to the stored value
     }
