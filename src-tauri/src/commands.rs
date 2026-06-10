@@ -922,17 +922,21 @@ pub fn import_files(paths: Vec<String>) -> Result<Vec<String>, String> {
 /// window is declared in tauri.conf (label "bubble", visible:false at startup).
 #[tauri::command]
 pub fn toggle_camera_bubble(app: tauri::AppHandle) -> Result<bool, String> {
-    use tauri::Manager;
+    use tauri::{Emitter, Manager};
     let Some(w) = app.get_webview_window("bubble") else {
         return Err("camera bubble window not found".into());
     };
     let visible = w.is_visible().unwrap_or(false);
     if visible {
         w.hide().map_err(|e| e.to_string())?;
+        // Release the webcam while hidden (privacy + stability: WebKit's
+        // capture stack should not run for an invisible window).
+        let _ = app.emit("bubble://hidden", ());
         Ok(false)
     } else {
         w.show().map_err(|e| e.to_string())?;
         let _ = w.set_focus();
+        let _ = app.emit("bubble://shown", ());
         Ok(true)
     }
 }

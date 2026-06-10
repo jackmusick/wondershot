@@ -100,17 +100,47 @@
     }
   }
 
+  let unShown: (() => void) | undefined;
+  let unHidden: (() => void) | undefined;
+  let shown = false;
+
   onMount(async () => {
-    await startCamera();
-    // Re-init when the user picks a different camera in Settings.
-    unwatch = await ipcListen<string>('camera://changed', () => {
-      // Payload is the saved LABEL; re-resolve to a deviceId via settings.
+    // LAZY camera: this window exists (hidden) from app launch, but WebKit's
+    // capture stack must not run until the bubble is actually shown — probing
+    // devices at startup is a privacy smell AND aborts WebKitGTK's web
+    // process on some Wayland/PipeWire setups (KDE/Fedora launch crash).
+    // The backend emits bubble://shown / bubble://hidden from the toggle.
+    unShown = await ipcListen('bubble://shown', () => {
+      shown = true;
       void startCamera();
+    });
+    unHidden = await ipcListen('bubble://hidden', () => {
+      shown = false;
+      stopStream();
+    });
+    // Already visible (e.g. webview reloaded while shown)? Start right away.
+    if (!USE_MOCK) {
+      try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        if (await getCurrentWindow().isVisible()) {
+          shown = true;
+          void startCamera();
+        }
+      } catch {
+        // ignore — stays lazy
+      }
+    }
+    // Re-init when the user picks a different camera in Settings (only while
+    // visible; a hidden bubble re-resolves on its next show instead).
+    unwatch = await ipcListen<string>('camera://changed', () => {
+      if (shown) void startCamera();
     });
   });
 
   onDestroy(() => {
     unwatch?.();
+    unShown?.();
+    unHidden?.();
     stopStream();
   });
 </script>
