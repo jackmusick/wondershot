@@ -55,7 +55,11 @@ pub fn get_settings() -> serde_json::Value {
 /// present in `values` are applied; JSON numbers/bools/strings are coerced to
 /// the field types.
 #[tauri::command]
-pub fn set_settings(values: serde_json::Value) -> Result<(), String> {
+pub fn set_settings(
+    app: tauri::AppHandle,
+    watch: tauri::State<crate::watcher::LibWatch>,
+    values: serde_json::Value,
+) -> Result<(), String> {
     let mut s = Settings::load();
     let obj = values
         .as_object()
@@ -129,7 +133,10 @@ pub fn set_settings(values: serde_json::Value) -> Result<(), String> {
             }
         }
     }
-    s.save().map_err(|e| e.to_string())
+    s.save().map_err(|e| e.to_string())?;
+    // Library / extra dirs may have changed — rebind the live folder watcher.
+    crate::watcher::rewatch(&app, watch.inner());
+    Ok(())
 }
 
 #[tauri::command]

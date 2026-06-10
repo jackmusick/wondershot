@@ -30,6 +30,9 @@
           console.error('copy-after-capture failed', e);
         }
       }));
+      // Live folder watching: the backend debounce-emits this when a media file
+      // lands in / leaves a watched dir (Spectacle hotkey, external drop).
+      uns.push(await ipcListen('library://changed', () => void loadLibrary()));
       // CLI / global-hotkey forwarding (parity with the Python --capture model).
       uns.push(await ipcListen('cli://capture', () => takeCapture('region')));
       uns.push(await ipcListen('cli://fullscreen', () => takeCapture('fullscreen')));

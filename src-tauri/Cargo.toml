@@ -24,6 +24,9 @@ rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "t
 ureq = { version = "2", features = ["json"] }
 # Native file drag-out (filmstrip → file manager copies the real file, not a URL).
 tauri-plugin-drag = "2"
+# Live library-folder watching (Qt parity: externally created captures appear
+# in the filmstrip without a restart).
+notify = "8"
 
 [features]
 # Opt-in AI background removal — forwards to wondershot-core's ONNX inference

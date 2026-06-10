@@ -1,5 +1,6 @@
 mod commands;
 mod graph;
+mod watcher;
 
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::TrayIconBuilder;
@@ -62,8 +63,13 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_drag::init())
         .manage(commands::RecState::default())
+        .manage(watcher::LibWatch::default())
         .setup(move |app| {
-            use tauri::Listener;
+            use tauri::{Listener, Manager};
+
+            // Watch the library folders so externally created files (Spectacle
+            // hotkey captures, drops from other apps) appear live — Qt parity.
+            watcher::rewatch(app.handle(), app.state::<watcher::LibWatch>().inner());
             // Tray "Record / Stop" item. Tray menu -> command wiring is awkward
             // (the menu handler has no access to the recorder's async start
             // path), so the item emits a `tray://record-toggle` event the
