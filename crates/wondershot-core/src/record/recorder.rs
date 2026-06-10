@@ -449,6 +449,46 @@ fn move_file(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()
     std::fs::remove_file(src)
 }
 
+/// Resolve a human-readable mic DESCRIPTION (what Settings stores — the same
+/// string Qt's `QAudioDevice::description()` and the webview's device label
+/// show) to the pulse/pipewire source NAME that `pulsesrc device=` expects.
+/// Mirrors the Python `record.mic_pulse_device`. Empty/no-match → "" (default
+/// mic). Uses a gst DeviceMonitor so it works wherever the recorder works
+/// (incl. the Flatpak sandbox — no pactl dependency).
+pub fn resolve_mic_source(description: &str) -> String {
+    use gst::prelude::*;
+    if description.is_empty() {
+        return String::new();
+    }
+    if gst::init().is_err() {
+        return String::new();
+    }
+    let monitor = gst::DeviceMonitor::new();
+    monitor.add_filter(Some("Audio/Source"), None);
+    if monitor.start().is_err() {
+        return String::new();
+    }
+    let devices = monitor.devices();
+    monitor.stop();
+    for d in devices {
+        let name = d.display_name();
+        if name == description || name.starts_with(description) || description.starts_with(name.as_str()) {
+            // The provider-configured element carries the real source name in
+            // its `device` property — more reliable than guessing prop keys.
+            if let Some(elem) = d.create_element(None).ok() {
+                let v = elem.property_value("device");
+                if let Ok(Some(s)) = v.get::<Option<String>>() {
+                    return s;
+                }
+                if let Ok(s) = v.get::<String>() {
+                    return s;
+                }
+            }
+        }
+    }
+    String::new()
+}
+
 /// Self-contained pipeline for the smoke test — needs no PipeWire/portal.
 /// `videotestsrc num-buffers=30` EOSes on its own.
 #[cfg(test)]

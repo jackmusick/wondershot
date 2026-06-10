@@ -327,12 +327,16 @@
           <label class="check"><input type="checkbox" bind:checked={s.mic_enabled} /> Record microphone</label>
           <label class="field">
             <span>Microphone device</span>
+            <!-- Stored value is the device LABEL (description), not the webview
+                 deviceId: ids are origin-scoped hashes that change across app
+                 restarts, and the shared wondershot.conf is also read by the
+                 Python app, which stores Qt device descriptions. -->
             <select bind:value={s.mic_device}>
               <option value="">Default</option>
               {#each mics as d (d.id)}
-                <option value={d.id}>{d.label}</option>
+                <option value={d.label}>{d.label}</option>
               {/each}
-              {#if s.mic_device && !mics.some((d) => d.id === s.mic_device)}
+              {#if s.mic_device && !mics.some((d) => d.label === s.mic_device)}
                 <option value={s.mic_device}>{s.mic_device}</option>
               {/if}
             </select>
@@ -347,9 +351,9 @@
             <select bind:value={s.camera_device}>
               <option value="">None / default</option>
               {#each cameras as d (d.id)}
-                <option value={d.id}>{d.label}</option>
+                <option value={d.label}>{d.label}</option>
               {/each}
-              {#if s.camera_device && !cameras.some((d) => d.id === s.camera_device)}
+              {#if s.camera_device && !cameras.some((d) => d.label === s.camera_device)}
                 <option value={s.camera_device}>{s.camera_device}</option>
               {/if}
             </select>

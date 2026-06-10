@@ -550,12 +550,11 @@ pub async fn start_recording(
 
     // NOTE: have_webrtcdsp is hardcoded false for M4 — src-tauri has no
     // gstreamer dependency to probe ElementFactory::find("webrtcdsp").
-    // NOTE: mic_device is passed through as the pulse device string. Resolving
-    // a human-readable description -> pulse name (Python does this via Qt) is
-    // deferred to a pipewire/pulse enumeration follow-up. Empty = default mic.
+    // mic_device in settings is a human-readable description (shared with the
+    // Python app's conf); resolve it to the pulse source name here.
     let opts = pipeline::PipelineOpts {
         mic_enabled: s.mic_enabled,
-        mic_device: s.mic_device.clone(),
+        mic_device: recorder::resolve_mic_source(&s.mic_device),
         noise_suppression: s.noise_suppression,
         have_webrtcdsp: false,
         crop: None,

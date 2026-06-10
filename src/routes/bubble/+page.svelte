@@ -14,11 +14,24 @@
   let stream: MediaStream | null = null;
   let unwatch: (() => void) | undefined;
 
-  /** The configured camera deviceId (empty = system default). */
+  /** The configured camera as a webview deviceId (empty = system default).
+   *  Settings stores the device LABEL (stable across restarts + shared with
+   *  the Python app's conf), so resolve label → deviceId here. Exact label
+   *  match first, then prefix (Qt and the webview render slightly different
+   *  suffixes for the same camera). */
   async function configuredCamera(): Promise<string> {
     try {
       const s = (await ipcInvoke<Record<string, unknown>>('get_settings')) ?? {};
-      return String(s.camera_device ?? '');
+      const label = String(s.camera_device ?? '');
+      if (!label) return '';
+      const devs = (await navigator.mediaDevices.enumerateDevices()).filter(
+        (d) => d.kind === 'videoinput'
+      );
+      const hit =
+        devs.find((d) => d.label === label) ??
+        devs.find((d) => d.label.startsWith(label) || label.startsWith(d.label)) ??
+        devs.find((d) => d.deviceId === label); // pre-label-era saved deviceId
+      return hit?.deviceId ?? '';
     } catch {
       return '';
     }
@@ -90,8 +103,9 @@
   onMount(async () => {
     await startCamera();
     // Re-init when the user picks a different camera in Settings.
-    unwatch = await ipcListen<string>('camera://changed', (id) => {
-      void startCamera(id || undefined);
+    unwatch = await ipcListen<string>('camera://changed', () => {
+      // Payload is the saved LABEL; re-resolve to a deviceId via settings.
+      void startCamera();
     });
   });
 
