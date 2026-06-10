@@ -249,6 +249,17 @@
     }
   }
 
+  /** The full shortcut command, from the backend (flatpak run …, or the real
+   *  exe path — a bare `wondershot` isn't on PATH for flatpak installs). */
+  let captureCmd = $state('wondershot --capture');
+  $effect(() => {
+    if (visible) {
+      void ipcInvoke<string>('capture_command')
+        .then((c) => (captureCmd = c))
+        .catch(() => {});
+    }
+  });
+
   let shortcutsErr = $state('');
   async function openShortcuts() {
     shortcutsErr = '';
@@ -324,7 +335,7 @@
               Bind a key (e.g. <b>Meta+Shift+S</b>) to the command below in your desktop's
               shortcut settings. It reaches the running Wondershot instantly.
             </small>
-            <input type="text" readonly value="wondershot --capture" onfocus={(e) => e.currentTarget.select()} />
+            <input type="text" readonly value={captureCmd} onfocus={(e) => e.currentTarget.select()} />
             <button class="btn wide" onclick={openShortcuts}>Open KDE Shortcuts settings</button>
             {#if shortcutsErr}<small class="err">{shortcutsErr}</small>{/if}
           </fieldset>

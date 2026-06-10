@@ -175,6 +175,7 @@ pub fn run() {
             commands::video_thumb,
             commands::graph_connect_interactive,
             commands::list_media_devices,
+            commands::capture_command,
             commands::share_capture,
             media_server::media_server_port,
             commands::grab_frame,

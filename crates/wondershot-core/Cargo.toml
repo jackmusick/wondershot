@@ -13,6 +13,7 @@ ashpd = { version = "0.9", default-features = false, features = ["tokio"] }
 zbus = "4"
 gstreamer = "0.23"
 gstreamer-base = "0.23"
+gstreamer-app = "0.23"
 ort = { version = "=2.0.0-rc.12", default-features = false, features = ["load-dynamic", "ndarray", "api-24"], optional = true }
 ndarray = { version = "0.17", optional = true }
 

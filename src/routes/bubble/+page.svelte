@@ -10,63 +10,30 @@
 
   let size = $state(220);
   let hasCamera = $state(false);
-  let videoEl: HTMLVideoElement;
-  let stream: MediaStream | null = null;
+  /** MJPEG stream URL (backend gst → loopback server) — '' = stopped. The
+   *  webview never touches getUserMedia: WebKitGTK's capture portal is
+   *  unreliable in the Flatpak (launch crashes, silent black feeds); the
+   *  backend reads the camera with GStreamer and serves multipart JPEG. */
+  let camSrc = $state('');
   let unwatch: (() => void) | undefined;
 
-  /** The configured camera as a webview deviceId (empty = system default).
-   *  Settings stores the device LABEL (stable across restarts + shared with
-   *  the Python app's conf), so resolve label → deviceId here. Exact label
-   *  match first, then prefix (Qt and the webview render slightly different
-   *  suffixes for the same camera). */
-  async function configuredCamera(): Promise<string> {
+  function stopStream() {
+    camSrc = '';
+    hasCamera = false;
+  }
+
+  async function startCamera() {
     try {
       const s = (await ipcInvoke<Record<string, unknown>>('get_settings')) ?? {};
       const label = String(s.camera_device ?? '');
-      if (!label) return '';
-      const devs = (await navigator.mediaDevices.enumerateDevices()).filter(
-        (d) => d.kind === 'videoinput'
-      );
-      const hit =
-        devs.find((d) => d.label === label) ??
-        devs.find((d) => d.label.startsWith(label) || label.startsWith(d.label)) ??
-        devs.find((d) => d.deviceId === label); // pre-label-era saved deviceId
-      return hit?.deviceId ?? '';
-    } catch {
-      return '';
-    }
-  }
-
-  function stopStream() {
-    stream?.getTracks().forEach((t) => t.stop());
-    stream = null;
-  }
-
-  async function startCamera(deviceId?: string) {
-    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
-      hasCamera = false;
-      return;
-    }
-    stopStream();
-    const id = deviceId ?? (await configuredCamera());
-    const video: MediaTrackConstraints | boolean = id ? { deviceId: { exact: id } } : true;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ video });
-      if (videoEl) {
-        videoEl.srcObject = stream;
-        await videoEl.play().catch(() => {});
+      const port = await ipcInvoke<number>('media_server_port');
+      if (!port) {
+        hasCamera = false;
+        return;
       }
-      hasCamera = true;
+      // Cache-buster so a re-show always opens a fresh stream connection.
+      camSrc = `http://127.0.0.1:${port}/camera?label=${encodeURIComponent(label)}&t=${Date.now()}`;
     } catch {
-      // Requested device gone? Fall back to the default camera before giving up.
-      if (id) {
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({ video: true });
-          if (videoEl) { videoEl.srcObject = stream; await videoEl.play().catch(() => {}); }
-          hasCamera = true;
-          return;
-        } catch { /* fall through */ }
-      }
       hasCamera = false;
     }
   }
@@ -152,8 +119,17 @@
   onwheel={onWheel}
   onpointerdown={onPointerDown}
 >
-  <!-- svelte-ignore a11y_media_has_caption -->
-  <video bind:this={videoEl} class="cam" class:hidden={!hasCamera} autoplay playsinline muted></video>
+  {#if camSrc}
+    <img
+      class="cam"
+      class:hidden={!hasCamera}
+      src={camSrc}
+      alt=""
+      draggable="false"
+      onload={() => (hasCamera = true)}
+      onerror={() => (hasCamera = false)}
+    />
+  {/if}
   {#if !hasCamera}
     <div class="placeholder" aria-label="no camera">
       <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.6">

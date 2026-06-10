@@ -8,5 +8,6 @@ pub mod editor;
 pub mod imageops;
 pub mod bgremove;
 pub mod record;
+pub mod camera;
 pub mod video;
 pub mod cli;

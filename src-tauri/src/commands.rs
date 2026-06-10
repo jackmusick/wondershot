@@ -1308,6 +1308,21 @@ pub async fn share_capture(path: String) -> Result<serde_json::Value, String> {
     Ok(serde_json::json!({ "url": url, "provider": provider, "copied": copied }))
 }
 
+/// The exact command a desktop shortcut should run to trigger a capture in
+/// the running app (Settings → Global capture hotkey). The bare name
+/// `wondershot` isn't on PATH for a Flatpak install, and even host installs
+/// want the full path (the Qt dialog showed one).
+#[tauri::command]
+pub fn capture_command() -> String {
+    if in_flatpak() {
+        "flatpak run io.github.jackmusick.wondershot --capture".into()
+    } else {
+        std::env::current_exe()
+            .map(|p| format!("{} --capture", p.display()))
+            .unwrap_or_else(|_| "wondershot --capture".into())
+    }
+}
+
 /// Capture devices for the Settings dropdowns ({kind, label}), enumerated in
 /// the backend (gst DeviceMonitor) so no webview media permission is needed
 /// and labels match what `resolve_mic_source` resolves at record time.

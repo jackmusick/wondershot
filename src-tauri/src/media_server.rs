@@ -101,7 +101,76 @@ pub fn start() -> u16 {
     port
 }
 
+/// Streams MJPEG parts from a backend camera pipeline. tiny_http pulls this
+/// Reader until the client disconnects; dropping it tears the pipeline down.
+struct MjpegReader {
+    stream: wondershot_core::camera::CameraStream,
+    buf: Vec<u8>,
+    pos: usize,
+}
+
+impl std::io::Read for MjpegReader {
+    fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
+        if self.pos >= self.buf.len() {
+            let Some(jpeg) = self.stream.next_jpeg() else {
+                return Ok(0); // camera gone / timeout → end the stream
+            };
+            self.buf = format!(
+                "--wsframe\r\nContent-Type: image/jpeg\r\nContent-Length: {}\r\n\r\n",
+                jpeg.len()
+            )
+            .into_bytes();
+            self.buf.extend_from_slice(&jpeg);
+            self.buf.extend_from_slice(b"\r\n");
+            self.pos = 0;
+        }
+        let n = (self.buf.len() - self.pos).min(out.len());
+        out[..n].copy_from_slice(&self.buf[self.pos..self.pos + n]);
+        self.pos += n;
+        Ok(n)
+    }
+}
+
+/// `/camera?label=<urlencoded gst display name>` → live MJPEG of that camera
+/// (empty label = first available). Runs on its own thread — the stream lives
+/// as long as the bubble's <img> keeps the connection open, and must not
+/// occupy a worker-pool slot.
+fn camera_handle(request: tiny_http::Request) {
+    let url = request.url().to_string();
+    let label = url
+        .split_once("label=")
+        .map(|(_, v)| urlencoding_decode(v.split('&').next().unwrap_or(v)))
+        .unwrap_or_default();
+    match wondershot_core::camera::open(&label) {
+        Ok(stream) => {
+            let ctype = tiny_http::Header::from_bytes(
+                &b"Content-Type"[..],
+                &b"multipart/x-mixed-replace; boundary=wsframe"[..],
+            )
+            .unwrap();
+            let reader = MjpegReader { stream, buf: Vec::new(), pos: 0 };
+            let _ = request.respond(tiny_http::Response::new(
+                tiny_http::StatusCode(200),
+                vec![ctype],
+                Box::new(reader) as Box<dyn std::io::Read + Send>,
+                None, // chunked — the stream has no length
+                None,
+            ));
+        }
+        Err(e) => {
+            eprintln!("camera stream unavailable: {e}");
+            let _ = request.respond(tiny_http::Response::empty(503));
+        }
+    }
+}
+
 fn handle(request: tiny_http::Request) {
+    // Camera streams are long-lived: hand them their own thread instead of
+    // pinning a worker-pool slot for the bubble's whole lifetime.
+    if request.url().starts_with("/camera") {
+        std::thread::spawn(move || camera_handle(request));
+        return;
+    }
     // ?path=<urlencoded absolute path>
     let url = request.url().to_string();
     let path = url
