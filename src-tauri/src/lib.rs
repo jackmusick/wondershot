@@ -161,6 +161,7 @@ pub fn run() {
             commands::crop_base,
             commands::cutout_base,
             commands::bg_model_available,
+            commands::bg_model_download,
             commands::remove_background,
             commands::ai_redact,
             commands::ai_simplify,

@@ -87,23 +87,28 @@
   // mount. The button is disabled until a canvas is mounted AND the model is
   // installed. `bgBusy` guards against double-clicks during inference.
   let bgBusy = $state(false);
+  let bgPct = $state(-1); // ≥0 while the first-use model download runs
   let bgEnabled = $derived(!!$bgApi?.available && !bgBusy);
   let bgTip = $derived(
     !$bgApi
       ? 'Remove background'
-      : $bgApi.available
+      : $bgApi.modelReady
         ? 'Remove background (AI)'
-        : 'Background-removal model not installed'
+        : 'Remove background — downloads the AI model (~170 MB) on first use'
+  );
+  let bgLabel = $derived(
+    bgPct >= 0 ? `Model ${bgPct}%` : bgBusy ? 'Removing…' : 'Remove BG'
   );
   async function removeBg() {
     if (!$bgApi?.available || bgBusy) return;
     bgBusy = true;
     try {
-      await $bgApi.removeBackground();
+      await $bgApi.removeBackground((pct) => (bgPct = pct));
     } catch (e) {
       console.error('remove background failed:', e);
     } finally {
       bgBusy = false;
+      bgPct = -1;
     }
   }
 </script>
@@ -201,7 +206,7 @@
       {@render sparkle()}<span class="tlabel">{aiBusy === 'simplify' ? 'Working…' : 'Simplify'}</span>
     </button>
     <button class="tool ai" title={bgTip} aria-label="Remove background" onclick={removeBg} disabled={!bgEnabled}>
-      {@render sparkle()}<span class="tlabel">{bgBusy ? 'Removing…' : 'Remove BG'}</span>
+      {@render sparkle()}<span class="tlabel">{bgLabel}</span>
     </button>
   </div>
 

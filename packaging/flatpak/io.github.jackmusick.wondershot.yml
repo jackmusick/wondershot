@@ -62,8 +62,8 @@ finish-args:
   # Portals (screenshot/screencast) ride the session bus
   - --talk-name=org.freedesktop.portal.Desktop
   - --talk-name=org.freedesktop.portal.OpenURI
-  # AI background removal loads the bundled u2net model from /app/share
-  - --env=WONDERSHOT_U2NET=/app/share/wondershot/u2net.onnx
+  # AI background removal downloads u2net to ~/.cache/wondershot on first use
+  # (168 MB — deliberately NOT bundled; it would dominate the bundle size).
 
 modules:
   # libx264: not in the GNOME SDK; ffmpeg below (and the video render path)
@@ -120,15 +120,8 @@ modules:
         url: https://github.com/microsoft/onnxruntime/releases/download/v1.26.0/onnxruntime-linux-x64-1.26.0.tgz
         sha256: 1254da24fb389cf39dc0ff3451ab48301740ffbfcbaf646849df92f80ee92c57
 
-  # u2net model (bundled; offline-safe). Resolved via WONDERSHOT_U2NET above.
-  - name: u2net-model
-    buildsystem: simple
-    build-commands:
-      - install -Dm644 u2net.onnx /app/share/wondershot/u2net.onnx
-    sources:
-      - type: file
-        url: https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2net.onnx
-        sha256: 8d10d2f3bb75ae3b6d527c77944fc5e7dcd94b29809d47a739a7a728a912b491
+  # u2net model: NOT bundled — the app downloads it (sha256-verified) to
+  # ~/.cache/wondershot/u2net.onnx on the first Remove BG (commands::bg_model_download).
 
   # The Tauri app: unpack the prebuilt .deb (ar -> data.tar.* -> usr/ tree).
   - name: wondershot

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import type Konva from 'konva';
-  import { imageDataSrc, ipcInvoke } from '$lib/ipc';
+  import { imageDataSrc, ipcInvoke, ipcListen } from '$lib/ipc';
   import { activeTool, toolForKey, type ToolId } from './tools';
   import type { Item, Vec2 } from './model';
   import { History } from './history';
@@ -563,8 +563,19 @@
    * new alpha'd base is loaded and history is pushed. Throws if the model /
    * runtime is unavailable so the toolbar can surface the failure.
    */
-  async function removeBackground(): Promise<void> {
+  async function removeBackground(onProgress?: (pct: number) => void): Promise<void> {
     if (!stage || imgW === 0 || imgH === 0) return;
+    // First use: the u2net model (~168 MB) is downloaded on demand rather
+    // than bundled. Progress streams to the toolbar via the callback.
+    const ready = await ipcInvoke<boolean>('bg_model_available').catch(() => false);
+    if (!ready) {
+      const un = await ipcListen<number>('bg-model://progress', (p) => onProgress?.(p));
+      try {
+        await ipcInvoke('bg_model_download');
+      } finally {
+        un();
+      }
+    }
     const b64 = await ipcInvoke<string>('remove_background', { path });
     if (!b64) throw new Error('background removal returned no image');
     const newSrc = `data:image/png;base64,${b64}`;
@@ -1282,16 +1293,16 @@
     saveApi.set(save);
     syncHistoryApi();
 
-    // Background-removal bridge: probe the model once on mount; the toolbar
-    // disables the button when the model is absent. Failures default to false.
+    // Background-removal bridge: the button is always usable (the model
+    // downloads on first use); the probe only drives the tooltip.
     (async () => {
-      let available = false;
+      let modelReady = false;
       try {
-        available = await ipcInvoke<boolean>('bg_model_available');
+        modelReady = await ipcInvoke<boolean>('bg_model_available');
       } catch {
-        available = false;
+        modelReady = false;
       }
-      bgApi.set({ removeBackground, available });
+      bgApi.set({ removeBackground, available: true, modelReady });
     })();
 
     // AI Redact/Simplify bridge: enabled when an endpoint + model are set.

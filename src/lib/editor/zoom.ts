@@ -56,8 +56,11 @@ export const historyApi = writable<HistoryApi | null>(null);
  * button). Null when no canvas is mounted, so the button no-ops gracefully.
  */
 export interface BgApi {
-  removeBackground: () => Promise<void>;
+  removeBackground: (onProgress?: (pct: number) => void) => Promise<void>;
+  /** The button is usable (the model downloads on demand). */
   available: boolean;
+  /** Model already on disk — affects the tooltip, not the enabled state. */
+  modelReady: boolean;
 }
 
 export const bgApi = writable<BgApi | null>(null);

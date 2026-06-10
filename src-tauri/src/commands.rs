@@ -351,7 +351,9 @@ pub fn bg_model_available() -> bool {
 /// is missing or the ONNX runtime was not compiled in (`bgremove-onnx` feature).
 #[tauri::command]
 pub fn remove_background(path: String) -> Result<String, String> {
-    let img = image::open(&path).map_err(|e| e.to_string())?.to_rgba8();
+    // The EDITABLE base (base.0 when present), like the pixelate/blur patches —
+    // the flattened library file would bake existing annotations into the new base.
+    let img = open_patch_source(&path)?;
     let model = bgremove::resolved_model_path()
         .ok_or_else(|| "background-removal model not installed".to_string())?;
     let out = bgremove::remove_background(&img, &model)?;
@@ -1306,6 +1308,78 @@ pub async fn share_capture(path: String) -> Result<serde_json::Value, String> {
             .and_then(|mut cb| cb.set_text(url.clone()))
             .is_ok();
     Ok(serde_json::json!({ "url": url, "provider": provider, "copied": copied }))
+}
+
+// --- u2net model download (first Remove BG) ---------------------------------
+
+/// Where the model comes from + what it must hash to (same source the
+/// Flatpak used to bundle; rembg's canonical release asset).
+const U2NET_URL: &str = "https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2net.onnx";
+const U2NET_SHA256: &str = "8d10d2f3bb75ae3b6d527c77944fc5e7dcd94b29809d47a739a7a728a912b491";
+
+/// Download u2net (~168 MB) to `~/.cache/wondershot/u2net.onnx`, emitting
+/// `bg-model://progress` (0–100) along the way. sha256-verified, atomic
+/// rename — a torn download can never be mistaken for the model. No-op if
+/// the model already resolves.
+#[tauri::command]
+pub async fn bg_model_download(app: tauri::AppHandle) -> Result<(), String> {
+    if bgremove::model_available() {
+        return Ok(());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        use sha2::Digest;
+        use std::io::{Read, Write};
+        use tauri::Emitter;
+
+        let dest = bgremove::model_path();
+        if let Some(parent) = dest.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        let tmp = dest.with_extension("onnx.part");
+
+        let resp = ureq::get(U2NET_URL)
+            .timeout(std::time::Duration::from_secs(1800))
+            .call()
+            .map_err(|e| format!("model download failed: {e}"))?;
+        let total: u64 = resp
+            .header("Content-Length")
+            .and_then(|h| h.parse().ok())
+            .unwrap_or(0);
+
+        let mut reader = resp.into_reader();
+        let mut out = std::fs::File::create(&tmp).map_err(|e| e.to_string())?;
+        let mut hasher = sha2::Sha256::new();
+        let mut buf = [0u8; 64 * 1024];
+        let mut done: u64 = 0;
+        let mut last_pct: u64 = 0;
+        loop {
+            let n = reader.read(&mut buf).map_err(|e| format!("model download failed: {e}"))?;
+            if n == 0 {
+                break;
+            }
+            out.write_all(&buf[..n]).map_err(|e| e.to_string())?;
+            hasher.update(&buf[..n]);
+            done += n as u64;
+            if total > 0 {
+                let pct = done * 100 / total;
+                if pct != last_pct {
+                    last_pct = pct;
+                    let _ = app.emit("bg-model://progress", pct);
+                }
+            }
+        }
+        drop(out);
+
+        let got = format!("{:x}", hasher.finalize());
+        if got != U2NET_SHA256 {
+            let _ = std::fs::remove_file(&tmp);
+            return Err("model download corrupted (checksum mismatch) — try again".into());
+        }
+        std::fs::rename(&tmp, &dest).map_err(|e| e.to_string())?;
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// The exact command a desktop shortcut should run to trigger a capture in
