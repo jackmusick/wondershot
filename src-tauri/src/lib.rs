@@ -1,5 +1,6 @@
 mod commands;
 mod graph;
+mod media_server;
 mod watcher;
 
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
@@ -64,6 +65,7 @@ pub fn run() {
         .plugin(tauri_plugin_drag::init())
         .manage(commands::RecState::default())
         .manage(watcher::LibWatch::default())
+        .manage(media_server::MediaServer(media_server::start()))
         .setup(move |app| {
             use tauri::{Listener, Manager};
 
@@ -142,6 +144,7 @@ pub fn run() {
             commands::pause_recording,
             commands::resume_recording,
             commands::video_thumb,
+            media_server::media_server_port,
             commands::grab_frame,
             commands::apply_blur,
             commands::export_gif,

@@ -28,6 +28,10 @@ tauri-plugin-drag = "2"
 # Live library-folder watching (Qt parity: externally created captures appear
 # in the filmstrip without a restart).
 notify = "8"
+# Loopback media streamer: WebKitGTK's GStreamer pipeline cannot stream from
+# the asset:// custom scheme (MEDIA_ERR_SRC_NOT_SUPPORTED), so <video> plays
+# from http://127.0.0.1:<port> with Range support instead.
+tiny_http = "0.12"
 
 [features]
 # Opt-in AI background removal — forwards to wondershot-core's ONNX inference

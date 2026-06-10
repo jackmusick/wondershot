@@ -25,6 +25,19 @@ export async function imageDataSrc(path: string): Promise<string> {
   return `data:image/png;base64,${b64}`;
 }
 
+/**
+ * A `<video>`-playable src for a media file. NOT assetSrc: WebKitGTK plays
+ * media through GStreamer, whose HTTP source can't read the asset:// custom
+ * scheme (MEDIA_ERR_SRC_NOT_SUPPORTED) — so the backend streams media over a
+ * loopback HTTP server with Range support and we point the player there.
+ */
+export async function mediaSrc(path: string): Promise<string> {
+  if (USE_MOCK) return path;
+  const port = await ipcInvoke<number>('media_server_port');
+  if (!port) return assetSrc(path); // server failed to start; degrade
+  return `http://127.0.0.1:${port}/media?path=${encodeURIComponent(path)}`;
+}
+
 /** Ensure every capture has a loadable `thumbnail` (real list_library omits it).
  *  Images use the asset protocol; videos get an ffmpeg-extracted poster frame
  *  (backend-cached) — an <img> pointed at an .mp4 renders as a broken icon. */

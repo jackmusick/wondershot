@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { assetSrc, ipcInvoke } from '$lib/ipc';
+  import { mediaSrc, ipcInvoke } from '$lib/ipc';
   import { loadLibrary, captures, activeItem } from '$lib/stores';
   import { get } from 'svelte/store';
 
@@ -16,10 +16,10 @@
   let current = $state(0);
   let duration = $state(0);
 
-  // Resolve the webview-loadable src for the path (re-resolves if path changes).
+  // Resolve the playable src for the path (re-resolves if path changes).
   $effect(() => {
     let cancelled = false;
-    assetSrc(path).then((s) => {
+    mediaSrc(path).then((s) => {
       if (!cancelled) src = s;
     });
     return () => {
@@ -231,6 +231,7 @@
       onpause={() => (playing = false)}
       ontimeupdate={() => (current = videoEl?.currentTime ?? 0)}
       onloadedmetadata={() => (duration = videoEl?.duration ?? 0)}
+      onerror={() => console.error('video error', videoEl?.error?.code, videoEl?.error?.message)}
       onclick={togglePlay}
     ></video>
 
