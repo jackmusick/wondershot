@@ -883,7 +883,8 @@ pub fn install_desktop() -> Result<(), String> {
         "[Desktop Entry]\nType=Application\nName=Wondershot\n\
          Comment=Screenshot & screen-recording with annotation\n\
          Exec={} %U\nIcon=io.github.jackmusick.wondershot\nTerminal=false\n\
-         Categories=Utility;Graphics;\nStartupNotify=true\n",
+         Categories=Utility;Graphics;\nStartupNotify=true\n\
+         MimeType=x-scheme-handler/wondershot;\n",
         exe.display()
     );
     let path = apps.join("io.github.jackmusick.wondershot.desktop");
@@ -1053,7 +1054,93 @@ fn open_target(target: &str) -> Result<(), String> {
     res.map(|_| ()).map_err(|e| e.to_string())
 }
 
-// --- OneDrive / SharePoint (Microsoft Graph, device-code OAuth) -------------
+// --- OneDrive / SharePoint (Microsoft Graph) --------------------------------
+
+/// Fans `wondershot://auth` callback URLs out to whichever interactive login
+/// is currently awaiting one (wonderblob's DeepLinkRouter pattern). The OS
+/// protocol handler relaunches wondershot with the URL; single-instance
+/// forwards it to dispatch_cli, which delivers here.
+pub struct AuthRouter(tokio::sync::broadcast::Sender<String>);
+
+impl Default for AuthRouter {
+    fn default() -> Self {
+        let (tx, _rx) = tokio::sync::broadcast::channel(16);
+        AuthRouter(tx)
+    }
+}
+
+impl AuthRouter {
+    pub fn deliver(&self, url: String) {
+        let _ = self.0.send(url);
+    }
+}
+
+/// Interactive OneDrive sign-in: PKCE + system browser + custom-scheme
+/// redirect. Returns the connected account label. The device-code flow stays
+/// available as the fallback (e.g. when `wondershot://auth` isn't registered
+/// for a custom client id, or no browser can reach back to this instance).
+#[tauri::command]
+pub async fn graph_connect_interactive(
+    router: tauri::State<'_, AuthRouter>,
+    client_id: String,
+) -> Result<String, String> {
+    let cid = if client_id.trim().is_empty() {
+        graph::DEFAULT_CLIENT_ID.to_string()
+    } else {
+        client_id.trim().to_string()
+    };
+    let (verifier, challenge) = graph::pkce();
+    let state = uuid_state();
+    let url = graph::authorize_url(&cid, &challenge, &state);
+
+    // Subscribe BEFORE opening the browser so a fast redirect can't be missed.
+    let mut rx = router.0.subscribe();
+    open_target(&url)?;
+
+    // Await OUR callback (matching state), bounded so an abandoned browser
+    // sign-in can't hang the command forever.
+    let callback = tokio::time::timeout(std::time::Duration::from_secs(10 * 60), async {
+        loop {
+            let cb = rx
+                .recv()
+                .await
+                .map_err(|_| "sign-in channel closed".to_string())?;
+            match graph::parse_callback(&cb) {
+                Ok((code, got)) if got == state => return Ok(code),
+                Ok(_) => continue, // stale callback from an older attempt
+                Err(e) if cb.contains("error=") => return Err(e),
+                Err(_) => continue,
+            }
+        }
+    })
+    .await
+    .map_err(|_| "sign-in timed out waiting for the browser redirect".to_string())??;
+
+    let cid2 = cid.clone();
+    let tokens = tauri::async_runtime::spawn_blocking(move || {
+        graph::exchange_code(&cid2, &callback, &verifier)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    let token = tokens
+        .get("access_token")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let account = tauri::async_runtime::spawn_blocking(move || graph::whoami(&token))
+        .await
+        .map_err(|e| e.to_string())?
+        .unwrap_or_else(|_| "connected".into());
+    graph::save_tokens(&tokens, &cid, &account)?;
+    Ok(account)
+}
+
+/// CSRF state — random urlsafe via the PKCE helper's RNG path.
+fn uuid_state() -> String {
+    graph::pkce().0.chars().take(32).collect()
+}
+
+// --- (device-code OAuth, kept as the fallback path) --------------------------
 
 /// Connected account label ('' when not signed in). Drives the Sharing → OneDrive
 /// "Status:" row.

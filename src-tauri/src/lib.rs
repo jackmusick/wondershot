@@ -35,6 +35,11 @@ fn dispatch_cli(app: &tauri::AppHandle, action: CliAction) {
         CliAction::InstallDesktop => {
             let _ = commands::install_desktop();
         }
+        // OAuth callback deep link (wondershot://auth?code=…): hand it to the
+        // awaiting interactive sign-in. Other URLs just focus (above).
+        CliAction::OpenUrl(url) if url.starts_with("wondershot://auth") => {
+            app.state::<commands::AuthRouter>().deliver(url);
+        }
         // Version is handled before the GUI starts; URL/Launch just focus.
         CliAction::Version | CliAction::OpenUrl(_) | CliAction::Launch => {}
     }
@@ -65,6 +70,7 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_drag::init())
         .manage(commands::RecState::default())
+        .manage(commands::AuthRouter::default())
         .manage(watcher::LibWatch::default())
         .manage(media_server::MediaServer(media_server::start()))
         .setup(move |app| {
@@ -147,6 +153,7 @@ pub fn run() {
             commands::pause_recording,
             commands::resume_recording,
             commands::video_thumb,
+            commands::graph_connect_interactive,
             media_server::media_server_port,
             commands::grab_frame,
             commands::apply_blur,

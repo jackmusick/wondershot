@@ -105,6 +105,9 @@
     if (!clientCustom) s.graph_client_id = '';
   }
 
+  /** Primary sign-in: PKCE in the system browser; the redirect comes back as a
+   *  wondershot://auth deep link (wonderblob's flow). The device-code path
+   *  stays available via the "Use a device code instead" link. */
   async function graphConnect() {
     if (connecting) { connectGen++; connecting = false; connectMsg = ''; return; }   // cancel
     if (graphAccount) {                                                              // disconnect
@@ -112,6 +115,27 @@
       graphAccount = '';
       return;
     }
+    const gen = ++connectGen;
+    connecting = true;
+    connectMsg = 'Opening your browser — finish signing in there…';
+    try {
+      const account = await ipcInvoke<string>('graph_connect_interactive', { clientId: clientId() });
+      if (connectGen !== gen) return;
+      graphAccount = account || 'connected';
+      connecting = false; connectMsg = '';
+    } catch (e) {
+      if (connectGen === gen) {
+        const msg = e instanceof Error ? e.message : String(e);
+        connectMsg = `${msg} — you can retry, or use a device code instead.`;
+        connecting = false;
+      }
+    }
+  }
+
+  /** Fallback: OAuth device-code flow (no redirect URI / protocol handler
+   *  needed — e.g. custom client ids without wondershot://auth registered). */
+  async function graphConnectDeviceCode() {
+    if (connecting || graphAccount) return;
     const gen = ++connectGen;
     connecting = true;
     connectMsg = 'Starting sign-in…';
@@ -439,6 +463,9 @@
               </button>
             </div>
             {#if connectMsg}<div class="connect-msg">{connectMsg}</div>{/if}
+            {#if !graphAccount && !connecting}
+              <button class="linklike" onclick={graphConnectDeviceCode}>Use a device code instead</button>
+            {/if}
 
             <div class="od-row">
               <span class="od-label">Save to</span>
@@ -696,6 +723,16 @@
     background: var(--bg-field);
   }
   .err { color: var(--danger); }
+  .linklike {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--accent);
+    font-size: var(--text-small);
+    cursor: pointer;
+    text-align: left;
+    text-decoration: underline;
+  }
   .group-label {
     font-weight: 600;
     color: var(--fg-primary);

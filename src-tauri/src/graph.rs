@@ -235,3 +235,160 @@ fn urlencoding_minimal(s: &str) -> String {
     }
     out
 }
+
+// -- interactive auth-code + PKCE flow (browser redirect) ---------------------
+//
+// Pattern ported from wonderblob's onedrive_auth.rs: open the system browser
+// to the authorize URL with a CUSTOM-SCHEME redirect (`wondershot://auth`),
+// catch the callback via the OS protocol handler (the .desktop registers
+// x-scheme-handler/wondershot; the second invocation forwards the URL through
+// the single-instance plugin), validate `state`, and exchange code+verifier.
+// The redirect URI must be registered in the Entra app under "Mobile and
+// desktop applications" for the client id in use.
+
+/// The custom-scheme redirect registered in Entra.
+pub const REDIRECT_URI: &str = "wondershot://auth";
+
+/// A URL-safe random string (PKCE verifier / CSRF state) from the OS RNG.
+fn random_urlsafe(len: usize) -> String {
+    use base64::Engine;
+    let mut bytes = vec![0u8; len];
+    let _ = getrandom::getrandom(&mut bytes);
+    let s = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(&bytes);
+    s.chars().take(len).collect()
+}
+
+/// (verifier, S256 challenge): challenge = base64url(SHA256(verifier)).
+pub fn pkce() -> (String, String) {
+    use base64::Engine;
+    use sha2::Digest;
+    let verifier = random_urlsafe(64);
+    let challenge = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .encode(sha2::Sha256::digest(verifier.as_bytes()));
+    (verifier, challenge)
+}
+
+/// Build the authorize URL for the browser.
+pub fn authorize_url(client_id: &str, challenge: &str, state: &str) -> String {
+    format!(
+        "{AUTH_BASE}/authorize?client_id={client_id}&response_type=code\
+         &redirect_uri={}&response_mode=query&scope={}\
+         &code_challenge={challenge}&code_challenge_method=S256&state={state}",
+        urlencoding_minimal(REDIRECT_URI),
+        urlencoding_minimal(SCOPE),
+    )
+}
+
+/// Minimal x-www-form-urlencoded percent-decoder (also handles `+`).
+fn percent_decode(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'%' if i + 3 <= bytes.len() => {
+                if let Ok(b) = u8::from_str_radix(
+                    std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or(""),
+                    16,
+                ) {
+                    out.push(b);
+                    i += 3;
+                    continue;
+                }
+                out.push(bytes[i]);
+                i += 1;
+            }
+            b'+' => {
+                out.push(b' ');
+                i += 1;
+            }
+            b => {
+                out.push(b);
+                i += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// Extract `(code, state)` from a `wondershot://auth?code=…&state=…` callback.
+/// An `error=` redirect surfaces as Err.
+pub fn parse_callback(url: &str) -> Result<(String, String), String> {
+    let query = url.split_once('?').map(|(_, q)| q).unwrap_or("");
+    let (mut code, mut state, mut error, mut error_desc) = (None, None, None, None);
+    for pair in query.split('&') {
+        let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
+        let v = percent_decode(v);
+        match k {
+            "code" => code = Some(v),
+            "state" => state = Some(v),
+            "error" => error = Some(v),
+            "error_description" => error_desc = Some(v),
+            _ => {}
+        }
+    }
+    if let Some(e) = error {
+        return Err(format!(
+            "authorization error: {e}{}",
+            error_desc.map(|d| format!(": {d}")).unwrap_or_default()
+        ));
+    }
+    match (code, state) {
+        (Some(c), Some(s)) => Ok((c, s)),
+        _ => Err("redirect missing code/state".into()),
+    }
+}
+
+/// Exchange the auth code + PKCE verifier for tokens at the token endpoint.
+pub fn exchange_code(client_id: &str, code: &str, verifier: &str) -> Result<Value, String> {
+    let out = post_form(
+        &format!("{AUTH_BASE}/token"),
+        &[
+            ("client_id", client_id),
+            ("grant_type", "authorization_code"),
+            ("code", code),
+            ("redirect_uri", REDIRECT_URI),
+            ("code_verifier", verifier),
+            ("scope", SCOPE),
+        ],
+    )?;
+    if out.get("access_token").is_none() {
+        return Err(err_of(&out, "token exchange failed"));
+    }
+    Ok(out)
+}
+
+#[cfg(test)]
+mod auth_tests {
+    use super::*;
+
+    #[test]
+    fn pkce_challenge_is_s256() {
+        use base64::Engine;
+        use sha2::Digest;
+        let (v, c) = pkce();
+        assert_eq!(v.len(), 64);
+        assert_eq!(
+            c,
+            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(sha2::Sha256::digest(v.as_bytes()))
+        );
+    }
+
+    #[test]
+    fn authorize_url_params() {
+        let url = authorize_url("CID", "CHAL", "STATE");
+        assert!(url.contains("client_id=CID"));
+        assert!(url.contains("code_challenge=CHAL"));
+        assert!(url.contains("code_challenge_method=S256"));
+        assert!(url.contains("redirect_uri=wondershot%3A%2F%2Fauth"));
+        assert!(url.contains("response_type=code"));
+    }
+
+    #[test]
+    fn callback_parses_and_surfaces_errors() {
+        let (c, s) = parse_callback("wondershot://auth?code=abc&state=xyz&extra=1").unwrap();
+        assert_eq!((c.as_str(), s.as_str()), ("abc", "xyz"));
+        assert!(parse_callback("wondershot://auth?error=access_denied").is_err());
+        assert!(parse_callback("wondershot://auth").is_err());
+    }
+}

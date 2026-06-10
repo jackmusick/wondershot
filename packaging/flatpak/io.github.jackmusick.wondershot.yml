@@ -124,10 +124,17 @@ modules:
       - tar -xf data.tar.* -C deb-root
       - install -Dm755 deb-root/usr/bin/wondershot ${FLATPAK_DEST}/bin/wondershot
       # Desktop file, renamed to the app-id with Icon= pointed at the app-id.
+      # Ensure Exec passes URLs (%U) and the wondershot:// scheme is handled —
+      # the interactive OneDrive sign-in redirects to wondershot://auth and the
+      # OS protocol handler must relaunch this app with the callback URL.
       - |
         src_desktop=$(ls deb-root/usr/share/applications/*.desktop | head -n1)
-        sed 's/^Icon=.*/Icon=io.github.jackmusick.wondershot/' "$src_desktop" \
+        sed -e 's/^Icon=.*/Icon=io.github.jackmusick.wondershot/' \
+            -e 's/^Exec=\([^ %]*\).*/Exec=\1 %U/' "$src_desktop" \
           > ${FLATPAK_ID}.desktop
+        grep -q '^MimeType=' ${FLATPAK_ID}.desktop \
+          && sed -i 's|^MimeType=.*|&x-scheme-handler/wondershot;|' ${FLATPAK_ID}.desktop \
+          || echo 'MimeType=x-scheme-handler/wondershot;' >> ${FLATPAK_ID}.desktop
         install -Dm644 ${FLATPAK_ID}.desktop \
           ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
       # Icons: copy every size/format the deb shipped, renamed to the app-id.
