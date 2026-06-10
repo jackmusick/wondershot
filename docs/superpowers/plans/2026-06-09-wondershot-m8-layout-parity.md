@@ -248,3 +248,36 @@ propagated to the X window title by Tauri (don't use it as a probe).
 **Open after this round:** capture/record flows need a real KDE/Wayland session
 (Jack's laptop); AI inference + mic-device mapping + OneDrive round-trip
 unchanged from QA3.
+
+---
+
+## QA round 5 (Jack's laptop feedback — 2026-06-10)
+
+Jack's laptop drive surfaced editor-interaction + integration gaps; all fixed
+and verified live on the dev box:
+
+- ✅ **Handles "missing" on every tool but blur**: three stacked causes — no
+  auto-select after drawing (Qt `_select_only` parity), selection only
+  possible via the Select tool (Qt: any tool manipulates an existing object,
+  editor.py:390), and zoom-shrunk hit areas on stroke-only shapes
+  (hitStrokeWidth now ≥12 *screen* px). Drawing anything now shows its
+  transformer (or grips) immediately; clicking an object with any tool
+  selects/moves it; clicking empty canvas draws.
+- ✅ **Arrow/line endpoint grips** (drag ends to re-aim, shaft to move) —
+  `fromNode` reads live points so re-aims persist; Delete works on
+  grip-selected nodes.
+- ✅ **Camera/mic selection didn't propagate**: settings stored volatile
+  webview deviceIds; now stores device LABELS (= Qt descriptions, shared
+  conf compatible). Bubble resolves label→deviceId; recordings resolve the
+  description→pulse source via gst DeviceMonitor (`resolve_mic_source`) —
+  the deferred mic-mapping gap is closed.
+- ✅ **AI Redact/Simplify implemented** (`src-tauri/src/ai.rs`, full port of
+  aiclient/redact/simplify/ocr): tesseract span-matching primary (host
+  fallback via flatpak-spawn in the sandbox), bbox fallback; simplify with
+  dominant-color fills. Buttons enable when endpoint+model configured;
+  verified against a mock OpenAI server (email+phone pixelated exactly).
+- ✅ **OneDrive Connect = browser PKCE redirect** (wonderblob's deep-link
+  router pattern over wondershot's single-instance CLI forwarding);
+  device-code kept as an explicit fallback link. ⚠️ Requires adding
+  `wondershot://auth` to the Entra app registration (Mobile & desktop
+  redirect URIs) for the built-in client before the browser flow completes.
