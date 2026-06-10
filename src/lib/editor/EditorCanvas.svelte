@@ -291,6 +291,9 @@
       if (item) {
         items = [...items, item];
         pushHistory();
+        // Qt parity (_select_only): a finished draw is selected immediately,
+        // so the resize/rotate handles (or endpoint grips) appear right away.
+        selectItemNode(item);
       }
     }
   }
@@ -331,6 +334,8 @@
   function rebuildAnnotations() {
     if (!KonvaMod || !annotationsLayer) return;
     transformer.nodes([]);
+    clearGrips();
+    selectedNode = null;
     annotationsLayer.find(`.${WS_NODE_NAME}`).forEach((n) => n.destroy());
     const ctx = drawCtx(KonvaMod);
     for (const item of items) {
@@ -817,6 +822,7 @@
       items = [...items, item];
       pushHistory();
       annotationsLayer.batchDraw();
+      selectItemNode(item);
     });
   }
 
@@ -836,6 +842,7 @@
     items = [...items, item];
     pushHistory();
     annotationsLayer.batchDraw();
+    selectItemNode(item);
   }
 
   /** Re-open the editor for an existing text node (double-click). On commit,
@@ -886,24 +893,124 @@
     transformer.borderStrokeWidth(1 / s);
     transformer.rotateAnchorOffset(24 / s);
     transformer.forceUpdate();
+    styleGrips();
+    updateHitWidths();
   }
+
+  /** Keep stroke-only shapes clickable at any zoom: hitStrokeWidth lives in
+   *  IMAGE coordinates, so at fit-zoom on a large screenshot a 10px hit band
+   *  renders ~3 screen px — practically unselectable. Hold it at ≥12 SCREEN px. */
+  function updateHitWidths() {
+    if (!annotationsLayer || !stage) return;
+    const s = stage.scaleX() || 1;
+    annotationsLayer.find(`.${WS_NODE_NAME}`).forEach((n) => {
+      const sh = n as Konva.Shape;
+      if (typeof sh.stroke === 'function' && sh.stroke() && typeof sh.hitStrokeWidth === 'function') {
+        sh.hitStrokeWidth(Math.max(Number(sh.strokeWidth?.() ?? 0), 12 / s));
+      }
+    });
+  }
+
+  // --- Endpoint grips for two-point items (arrow/line) — Qt parity: drag
+  // either end to re-aim, drag the shaft to move. These shapes keep the box
+  // transformer OFF (resize/rotate make no sense for a 2-point item).
+  let gripNodes: Konva.Circle[] = [];
+  let gripTarget: Konva.Shape | null = null;
+
+  function clearGrips() {
+    gripNodes.forEach((g) => g.destroy());
+    gripNodes = [];
+    gripTarget = null;
+  }
+
+  /** Re-place the grips over the target's current endpoints (+ drag offset). */
+  function positionGrips() {
+    const node = gripTarget;
+    if (!node || gripNodes.length !== 2) return;
+    const pts = (node as unknown as Konva.Line).points();
+    gripNodes[0].position({ x: pts[0] + node.x(), y: pts[1] + node.y() });
+    gripNodes[1].position({ x: pts[2] + node.x(), y: pts[3] + node.y() });
+    overlayLayer.batchDraw();
+  }
+
+  /** Constant screen-size grips, like the transformer anchors. */
+  function styleGrips() {
+    if (!stage || gripNodes.length === 0) return;
+    const s = stage.scaleX() || 1;
+    gripNodes.forEach((g) => {
+      g.radius(6 / s);
+      g.strokeWidth(1.5 / s);
+    });
+    positionGrips();
+  }
+
+  function buildGrips(node: Konva.Shape) {
+    clearGrips();
+    if (!KonvaMod || !stage) return;
+    gripTarget = node;
+    for (const end of [0, 1] as const) {
+      const grip = new KonvaMod.Circle({
+        radius: 6,
+        fill: '#ffffff',
+        stroke: '#0d99ff',
+        strokeWidth: 1.5,
+        draggable: true,
+      });
+      grip.on('dragmove', () => {
+        // Live re-aim: write the grip position back into the node's points.
+        const pts = (node as unknown as Konva.Line).points().slice();
+        pts[end * 2] = grip.x() - node.x();
+        pts[end * 2 + 1] = grip.y() - node.y();
+        (node as unknown as Konva.Line).points(pts);
+        annotationsLayer.batchDraw();
+      });
+      grip.on('dragend', () => {
+        persistNode(node); // bakes points+offset into the item + history
+        positionGrips();
+      });
+      overlayLayer.add(grip);
+      gripNodes.push(grip);
+    }
+    styleGrips();
+  }
+
+  /** The currently selected annotation node (transformer- OR grip-selected). */
+  let selectedNode: Konva.Node | null = null;
 
   function select(node: Konva.Node | null) {
     if (!transformer) return;
-    // Two-point items (arrow/line) are moved by dragging — they show no resize
-    // or rotate handles, matching the Python editor. Other items get the full
-    // box transformer. The node stays draggable either way.
+    selectedNode = node;
+    // Two-point items (arrow/line) get endpoint grips instead of resize/rotate
+    // handles, matching the Python editor. Other items get the full box
+    // transformer. The node stays draggable either way.
     const item = node ? nodeToItemRef(node) : undefined;
     const dragOnly = !!item && DRAG_ONLY_TYPES.has(item.type);
+    const gripped = !!item && (item.type === 'arrow' || item.type === 'line');
     transformer.resizeEnabled(!dragOnly);
     transformer.rotateEnabled(!dragOnly);
-    transformer.nodes(node ? [node] : []);
+    // Arrow/line selection is shown by the endpoint grips alone (Qt look) —
+    // the transformer's bounding border would just add noise.
+    transformer.nodes(node && !gripped ? [node] : []);
+    clearGrips();
+    if (node && gripped) {
+      buildGrips(node as Konva.Shape);
+    }
     updateTransformerScale();
     overlayLayer.batchDraw();
   }
 
+  /** Select the (freshly rendered) node for `item` — Qt parity: a finished
+   *  draw is immediately selected so its handles are usable right away. */
+  function selectItemNode(item: Item) {
+    const n = annotationsLayer
+      .find(`.${WS_NODE_NAME}`)
+      .find((c) => nodeToItemRef(c) === item);
+    if (n) select(n);
+  }
+
   function deleteSelected() {
-    const nodes = transformer.nodes();
+    // Grip-selected nodes (arrow/line) aren't in the transformer, so merge.
+    const nodes = [...new Set([...transformer.nodes(), ...(selectedNode ? [selectedNode] : [])])];
     if (nodes.length) {
       // Look up each selected node's item and remove from model if found.
       let changed = false;
@@ -920,6 +1027,8 @@
         pushHistory();
       }
       transformer.nodes([]);
+      clearGrips();
+      selectedNode = null;
       annotationsLayer.batchDraw();
       overlayLayer.batchDraw();
     }
@@ -936,8 +1045,11 @@
    *  AND placing a new one). Re-run on tool change and after each new node. */
   function syncDraggable() {
     if (!annotationsLayer) return;
-    const on = currentTool === 'select';
-    annotationsLayer.find(`.${WS_NODE_NAME}`).forEach((n) => n.draggable(on));
+    // Snagit behavior (Qt parity): an existing object is always movable, no
+    // matter which tool is active. The mousedown passthrough below makes a
+    // click on an object select/manipulate it instead of drawing, so a draw
+    // tool can't accidentally stamp + drag at once (the old QA3 bug).
+    annotationsLayer.find(`.${WS_NODE_NAME}`).forEach((n) => n.draggable(true));
   }
 
   function isEditableTarget(t: EventTarget | null): boolean {
@@ -1010,25 +1122,29 @@
 
     // --- Pointer handling: select tool vs. drawing tools ---
     stage.on('pointerdown', (e) => {
-      if (currentTool === 'select') {
-        if (e.target === stage || e.target === imageNode) {
-          select(null);
-          return;
-        }
-        // only annotation-layer nodes are selectable
-        if (e.target.getLayer() === annotationsLayer) {
-          select(e.target);
-        }
-        return;
-      }
-      // Text is click-placed with an inline editor, not dragged to size.
-      if (currentTool === 'text') {
-        // Clicking an existing text node re-opens its editor instead of placing
-        // a new one stacked on top.
-        if (e.target.getLayer() === annotationsLayer && e.target.getClassName() === 'Text') {
+      // Transformer anchors + endpoint grips live on the overlay layer and
+      // handle their own dragging — never treat them as a draw/select click.
+      if (e.target.getLayer() === overlayLayer) return;
+      // Snagit behavior (editor.py:390): clicking an EXISTING object selects /
+      // manipulates it no matter which tool is active; only empty canvas draws.
+      if (e.target.getLayer() === annotationsLayer) {
+        if (currentTool === 'text' && e.target.getClassName() === 'Text') {
+          // Text tool on an existing text node re-opens its editor.
           editText(e.target as Konva.Text);
           return;
         }
+        select(e.target);
+        return; // the node is draggable — Konva takes over the move
+      }
+      if (currentTool === 'select') {
+        if (e.target === stage || e.target === imageNode) select(null);
+        return;
+      }
+      // Drawing on empty canvas: drop any prior selection so its handles
+      // don't linger under the new shape (the finished draw selects itself).
+      select(null);
+      // Text is click-placed with an inline editor, not dragged to size.
+      if (currentTool === 'text') {
         const tp = stagePointer();
         if (tp) placeText([tp.x, tp.y]);
         return;
@@ -1080,6 +1196,10 @@
     // Delegated on the annotations layer so it also covers nodes recreated by
     // rebuildAnnotations(). A `dragend` fires when the user finishes moving a
     // node; `transformend` when a box-transform (resize/rotate) completes.
+    // Endpoint grips ride along while the shaft itself is dragged.
+    annotationsLayer.on('dragmove', (e) => {
+      if (e.target === gripTarget) positionGrips();
+    });
     annotationsLayer.on('dragend', (e) => {
       if (e.target.hasName(WS_NODE_NAME)) persistNode(e.target);
     });

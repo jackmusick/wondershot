@@ -162,15 +162,25 @@ function makeTwoPointTool(
       return n;
     },
     fromNode(_ctx, node, prev) {
-      // Two-point items are edited by dragging the whole node; bake the drag
-      // offset (node.x/y) into both endpoints, then reset the node position so
-      // its points stay in absolute image coords and subsequent drags compound
-      // from zero. Any stray Transformer scale is discarded (these nodes are
-      // not box-resizable — see EditorCanvas Transformer config).
-      const dx = node.x();
-      const dy = node.y();
-      const updated = translateTwoPoint(prev as ArrowItem | LineItem, dx, dy);
+      // Two-point items are edited by dragging the whole node (offset lands in
+      // node.x/y) OR by dragging an endpoint grip (rewrites points[] in place).
+      // Read the LIVE points + offset so both kinds of edit persist, then
+      // reset the node so its points stay in absolute image coords and
+      // subsequent drags compound from zero. Any stray Transformer scale is
+      // discarded (these nodes are not box-resizable).
       const shape = node as Konva.Arrow | Konva.Line;
+      const pts = shape.points();
+      const dx = shape.x();
+      const dy = shape.y();
+      const p = prev as ArrowItem | LineItem;
+      const updated = {
+        ...p,
+        p1: [pts[0] + dx, pts[1] + dy] as Vec2,
+        p2: [pts[2] + dx, pts[3] + dy] as Vec2,
+        pos: [0, 0] as Vec2,
+        rotation: 0,
+        origin: [0, 0] as Vec2,
+      };
       shape.position({ x: 0, y: 0 });
       shape.scale({ x: 1, y: 1 });
       shape.rotation(0);
