@@ -95,28 +95,40 @@ function intRect(rect: Vec4): Vec4 {
 function fillPatch(ctx: DrawCtx, node: Konva.Rect, kind: RedactKind, rect: Vec4, param: number): void {
   if (!ctx.patch) return; // no fetcher (e.g. unit tests) — keep the gray box
   const req = intRect(rect);
-  ctx.patch(kind, req, param)
-    .then((dataUrl) => {
-      if (!dataUrl) return; // null → mock/error: keep the gray placeholder
-      // The node may have been destroyed (deleted, undo) while we awaited.
-      if (!node.getLayer()) return;
-      const img = new Image();
-      img.onload = () => {
-        if (!node.getLayer()) return;
-        node.fillPriority('pattern');
-        node.fillPatternImage(img);
-        node.fillPatternRepeat('no-repeat');
-        // Stretch the (req.w × req.h) patch to cover the node's current box.
-        node.fillPatternScaleX(node.width() / img.width);
-        node.fillPatternScaleY(node.height() / img.height);
-        node.opacity(1);
-        node.getLayer()?.batchDraw();
-      };
-      img.src = dataUrl;
-    })
+  const done = ctx
+    .patch(kind, req, param)
+    .then(
+      (dataUrl) =>
+        new Promise<void>((resolve) => {
+          if (!dataUrl) return resolve(); // null → mock/error: keep the gray placeholder
+          // The node may have been destroyed (deleted, undo) while we awaited.
+          if (!node.getLayer()) return resolve();
+          const img = new Image();
+          img.onerror = () => {
+            console.error(`${kind} patch image failed to decode`);
+            resolve();
+          };
+          img.onload = () => {
+            if (node.getLayer()) {
+              node.fillPriority('pattern');
+              node.fillPatternImage(img);
+              node.fillPatternRepeat('no-repeat');
+              // Stretch the (req.w × req.h) patch to cover the node's current box.
+              node.fillPatternScaleX(node.width() / img.width);
+              node.fillPatternScaleY(node.height() / img.height);
+              node.opacity(1);
+              node.getLayer()?.batchDraw();
+            }
+            resolve();
+          };
+          img.src = dataUrl;
+        }),
+    )
     .catch(() => {
       // Network/backend error: keep the gray placeholder, never throw.
     });
+  // Let save/flatten wait for this fill so the placeholder is never baked.
+  ctx.trackPending?.(done as Promise<void>);
 }
 
 /**

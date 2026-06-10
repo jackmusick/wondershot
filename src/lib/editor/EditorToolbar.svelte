@@ -3,6 +3,7 @@
   import { activeTool, SHORTCUTS, type ToolId } from './tools';
   import { bgApi } from './zoom';
   import { ipcInvoke } from '$lib/ipc';
+  import { autosaveState } from '$lib/stores';
 
   // Whether an AI endpoint is configured (Settings → AI). Gates the messaging on
   // the AI Redact / Simplify buttons. The inference pipeline itself is a separate
@@ -169,7 +170,13 @@
   </div>
 
   <div class="spacer"></div>
-  <span class="autosave" title="Edits save automatically">Auto-saved</span>
+  {#if $autosaveState === 'error'}
+    <span class="autosave error" title="The last save failed — edits are NOT on disk. Check the log.">Save failed</span>
+  {:else if $autosaveState === 'saving'}
+    <span class="autosave" title="Saving…">Saving…</span>
+  {:else}
+    <span class="autosave" title="Edits save automatically">Auto-saved</span>
+  {/if}
 </header>
 
 <style>
@@ -255,6 +262,10 @@
     color: var(--fg-secondary);
     flex-shrink: 0;
     padding: 0 6px;
+  }
+  .autosave.error {
+    color: var(--danger, #ff5555);
+    font-weight: 600;
   }
 
 </style>

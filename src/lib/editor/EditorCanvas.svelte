@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import type Konva from 'konva';
-  import { assetSrc, ipcInvoke } from '$lib/ipc';
+  import { imageDataSrc, ipcInvoke } from '$lib/ipc';
   import { activeTool, toolForKey, type ToolId } from './tools';
   import type { Item, Vec2 } from './model';
   import { History } from './history';
@@ -44,6 +44,7 @@
   import type { TextItem } from './model';
   import { serializeItem, deserializeItem } from './model';
   import { effects, type Effects } from './effects';
+  import { autosaveState } from '$lib/stores';
   import { get } from 'svelte/store';
 
   let { path }: { path: string } = $props();
@@ -231,21 +232,30 @@
     rect: [number, number, number, number],
     param: number,
   ): Promise<string | null> {
+    const cmd = kind === 'pixelate' ? 'pixelate_patch' : 'blur_patch';
     try {
-      const cmd = kind === 'pixelate' ? 'pixelate_patch' : 'blur_patch';
       const args =
         kind === 'pixelate' ? { path, rect, block: param } : { path, rect, radius: param };
       const b64 = await ipcInvoke<string>(cmd, args);
       if (!b64) return null;
       return `data:image/png;base64,${b64}`;
-    } catch {
+    } catch (e) {
+      console.error(`${cmd} failed`, e);
       return null;
     }
   }
 
+  /** In-flight async node fills (redact patches). save() awaits these so a
+   *  flatten can never bake a still-loading gray placeholder into the PNG. */
+  const pendingFills = new Set<Promise<void>>();
+  function trackPending(p: Promise<void>): void {
+    pendingFills.add(p);
+    void p.finally(() => pendingFills.delete(p));
+  }
+
   /** Build the DrawCtx handed to every tool. */
   function drawCtx(Konva: typeof import('konva').default): DrawCtx {
-    return { layer: annotationsLayer, Konva, style: currentStyle, patch: fetchPatch };
+    return { layer: annotationsLayer, Konva, style: currentStyle, patch: fetchPatch, trackPending };
   }
 
   let KonvaMod: typeof import('konva').default | null = null;
@@ -397,6 +407,11 @@
     stage.position(prevPos);
     overlayLayer.visible(overlayVisible);
     stage.batchDraw();
+    // A tainted canvas (cross-origin base image) exports `data:,`. Surface it
+    // loudly — passing it on would hand save() an empty payload.
+    if (!url.startsWith('data:image/png;base64,') || url.length < 64) {
+      throw new Error(`flattenStage: empty canvas export (${url.slice(0, 32)}…) — tainted canvas?`);
+    }
     return url;
   }
 
@@ -418,19 +433,35 @@
    * (getBasePushes) is DEFERRED. Marks history clean so the dirty indicator clears.
    */
   export async function save(): Promise<void> {
-    const flat = flattenStage();
-    await ipcInvoke('flatten_save', { path, pngB64: bareBase64(flat) });
-    const doc = {
-      version: 1,
-      bases: 1,
-      items: items.map(serializeItem),
-      effects: get(effects),
-    };
-    await ipcInvoke('save_sidecar', { path, doc });
-    if (currentBaseSrc) {
-      await ipcInvoke('write_base', { path, n: 0, pngB64: bareBase64(currentBaseSrc) });
+    try {
+      autosaveState.set('saving');
+      // Wait out any in-flight redact-patch fills — flattening now would bake
+      // their gray placeholders into the library PNG.
+      while (pendingFills.size > 0) {
+        await Promise.all([...pendingFills]);
+      }
+      // Flatten first so a failed export aborts the whole save before anything
+      // touches disk; then persist the recoverable artifacts (sidecar + base.0)
+      // BEFORE overwriting the library PNG — if the overwrite fails midway the
+      // original is still reconstructable from base.0 + items.
+      const flat = flattenStage();
+      const doc = {
+        version: 1,
+        bases: 1,
+        items: items.map(serializeItem),
+        effects: get(effects),
+      };
+      await ipcInvoke('save_sidecar', { path, doc });
+      if (currentBaseSrc) {
+        await ipcInvoke('write_base', { path, n: 0, pngB64: bareBase64(currentBaseSrc) });
+      }
+      await ipcInvoke('flatten_save', { path, pngB64: bareBase64(flat) });
+      history.markClean();
+      autosaveState.set('saved');
+    } catch (e) {
+      console.error('save failed', e);
+      autosaveState.set('error');
     }
-    history.markClean();
   }
 
   /**
@@ -1082,7 +1113,7 @@
     // --- Load the base image ---
     let cancelled = false;
     (async () => {
-      const src = await assetSrc(path);
+      const src = await imageDataSrc(path);
       const imageObj = new Image();
       imageObj.onload = () => {
         if (cancelled || !stage) return;

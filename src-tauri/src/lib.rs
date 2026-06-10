@@ -130,6 +130,7 @@ pub fn run() {
             commands::flatten_save,
             commands::write_base,
             commands::read_base,
+            commands::read_image_b64,
             commands::start_recording,
             commands::stop_recording,
             commands::pause_recording,

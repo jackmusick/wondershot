@@ -12,6 +12,19 @@ export async function assetSrc(path: string): Promise<string> {
   return convertFileSrc(path);
 }
 
+/**
+ * A canvas-safe (same-origin) src for an image file: a `data:` URL read via the
+ * backend in real mode, the path as-is in mock. The editor must NOT use
+ * `assetSrc` for its base image — WebKit treats `asset.localhost` as
+ * cross-origin (a plain `Image` never makes a CORS fetch), which taints the
+ * Konva canvas and silently breaks `stage.toDataURL()`, and with it save.
+ */
+export async function imageDataSrc(path: string): Promise<string> {
+  if (USE_MOCK) return path;
+  const b64 = await ipcInvoke<string>('read_image_b64', { path });
+  return `data:image/png;base64,${b64}`;
+}
+
 /** Ensure every capture has a loadable `thumbnail` (real list_library omits it). */
 export async function normalizeCaptures(caps: Capture[]): Promise<Capture[]> {
   return Promise.all(

@@ -12,6 +12,9 @@ export const settingsOpen = writable<boolean>(false);
 export const capturePanelOpen = writable<boolean>(false);
 /** Pinned capture paths (filmstrip pin affordance). */
 export const pinned = writable<string[]>([]);
+/** Editor autosave status — drives the toolbar indicator ('error' = the last
+ *  save failed and the on-disk file does NOT reflect the canvas). */
+export const autosaveState = writable<'saved' | 'saving' | 'error'>('saved');
 
 export async function loadLibrary(): Promise<void> {
   const caps = await ipcInvoke<Capture[]>('list_library');

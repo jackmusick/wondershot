@@ -10,6 +10,10 @@ export interface DrawCtx {
    *  kind 'pixelate' uses `param` as block size; 'blur' uses it as radius.
    *  Returns null if unavailable. Provided by the canvas (wraps the Tauri command). */
   patch?(kind: 'pixelate' | 'blur', rect: [number, number, number, number], param: number): Promise<string | null>;
+  /** Register an in-flight async fill (e.g. a redact patch) so save/flatten can
+   *  await it — flattening mid-fetch would bake the gray placeholder into the
+   *  library PNG. The promise must resolve once the node is fully painted. */
+  trackPending?(p: Promise<void>): void;
 }
 
 /** A drawing tool: begins on pointerdown, updates on move, finishes on up.

@@ -279,10 +279,22 @@ fn encode_png_b64(img: &image::RgbaImage) -> Result<String, String> {
     Ok(base64::engine::general_purpose::STANDARD.encode(&buf))
 }
 
+/// The image pixelate/blur patches must be computed from: the EDITABLE base
+/// (`.wondershot/<name>.base.0.png`) when one exists, not the flattened
+/// library PNG — after a save the library file has annotations (including the
+/// redact boxes themselves) baked in, so patching from it would blur the
+/// already-redacted pixels instead of the original image.
+fn open_patch_source(path: &str) -> Result<image::RgbaImage, String> {
+    let p = Path::new(path);
+    let base0 = sidecar::base_path(p, 0);
+    let src = if base0.exists() { base0 } else { p.to_path_buf() };
+    Ok(image::open(&src).map_err(|e| e.to_string())?.to_rgba8())
+}
+
 /// Pixelate the rect region of the base PNG; returns the patch as base64 PNG.
 #[tauri::command]
 pub fn pixelate_patch(path: String, rect: (u32, u32, u32, u32), block: u32) -> Result<String, String> {
-    let img = image::open(&path).map_err(|e| e.to_string())?.to_rgba8();
+    let img = open_patch_source(&path)?;
     let patch = wondershot_core::imageops::pixelated_patch(&img, rect, block);
     encode_png_b64(&patch)
 }
@@ -290,7 +302,7 @@ pub fn pixelate_patch(path: String, rect: (u32, u32, u32, u32), block: u32) -> R
 /// Gaussian-blur the rect region of the base PNG; returns the patch as base64 PNG.
 #[tauri::command]
 pub fn blur_patch(path: String, rect: (u32, u32, u32, u32), radius: u32) -> Result<String, String> {
-    let img = image::open(&path).map_err(|e| e.to_string())?.to_rgba8();
+    let img = open_patch_source(&path)?;
     let patch = wondershot_core::imageops::blurred_patch(&img, rect, radius);
     encode_png_b64(&patch)
 }
@@ -341,15 +353,44 @@ pub fn remove_background(path: String) -> Result<String, String> {
 
 // --- save / flatten / base persistence (T14) -------------------------------
 
-/// Base64-decode `png_b64` and write the raw PNG bytes to the library image at
-/// `path` (the flattened, annotations-baked result). Overwrites in place.
-#[tauri::command]
-pub fn flatten_save(path: String, png_b64: String) -> Result<(), String> {
+/// Decode a base64 PNG body, refusing payloads that aren't a real PNG. A
+/// tainted/failed canvas export reaches us as zero bytes (`data:,`) — writing
+/// that through would truncate the user's original screenshot.
+fn decode_png_b64(png_b64: &str) -> Result<Vec<u8>, String> {
     use base64::Engine;
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(png_b64.as_bytes())
         .map_err(|e| e.to_string())?;
-    std::fs::write(&path, bytes).map_err(|e| e.to_string())
+    const PNG_MAGIC: [u8; 8] = [0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1a, b'\n'];
+    if bytes.len() < PNG_MAGIC.len() || bytes[..PNG_MAGIC.len()] != PNG_MAGIC {
+        return Err(format!(
+            "refusing to write a non-PNG payload ({} bytes) — canvas export failed?",
+            bytes.len()
+        ));
+    }
+    Ok(bytes)
+}
+
+/// Write via a temp file + rename so an interrupted save can never leave a
+/// truncated image behind.
+fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(".tmp-wondershot");
+    let tmp = std::path::PathBuf::from(tmp);
+    std::fs::write(&tmp, bytes).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, path).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        e.to_string()
+    })
+}
+
+/// Base64-decode `png_b64` and write the raw PNG bytes to the library image at
+/// `path` (the flattened, annotations-baked result). Overwrites in place —
+/// atomically, and only after the payload validates as a real PNG.
+#[tauri::command]
+pub fn flatten_save(path: String, png_b64: String) -> Result<(), String> {
+    let bytes = decode_png_b64(&png_b64)?;
+    write_atomic(Path::new(&path), &bytes)
 }
 
 /// Base64-decode `png_b64` and write it as base `n` in the sidecar dir,
@@ -357,16 +398,25 @@ pub fn flatten_save(path: String, png_b64: String) -> Result<(), String> {
 /// reopens (base + items), distinct from the flattened library image.
 #[tauri::command]
 pub fn write_base(path: String, n: u32, png_b64: String) -> Result<(), String> {
-    use base64::Engine;
-    let bytes = base64::engine::general_purpose::STANDARD
-        .decode(png_b64.as_bytes())
-        .map_err(|e| e.to_string())?;
+    let bytes = decode_png_b64(&png_b64)?;
     let p = Path::new(&path);
     let base = sidecar::base_path(p, n);
     if let Some(parent) = base.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    std::fs::write(&base, bytes).map_err(|e| e.to_string())
+    write_atomic(&base, &bytes)
+}
+
+/// Read an image file, returning its base64 body (no `data:` prefix). The
+/// editor loads its base image through this rather than the asset protocol:
+/// WebKit treats `asset.localhost` as cross-origin (no CORS fetch on a plain
+/// `Image`), which taints the Konva canvas and silently breaks
+/// `stage.toDataURL()` — and with it save/flatten.
+#[tauri::command]
+pub fn read_image_b64(path: String) -> Result<String, String> {
+    use base64::Engine;
+    let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+    Ok(base64::engine::general_purpose::STANDARD.encode(&bytes))
 }
 
 /// Read base `n` from the sidecar dir, returning it as base64 PNG body (no
@@ -1053,4 +1103,73 @@ pub fn trash_item(path: String) -> Result<(), String> {
         }
     }
     trash::delete(p).map_err(|e| format!("could not trash {}: {e}", path))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use base64::Engine;
+
+    /// 1x1 transparent PNG.
+    fn png_b64() -> String {
+        base64::engine::general_purpose::STANDARD.encode([
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48,
+            0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00,
+            0x00, 0x1F, 0x15, 0xC4, 0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41, 0x54, 0x78,
+            0x9C, 0x63, 0x00, 0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00,
+            0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+        ])
+    }
+
+    #[test]
+    fn flatten_save_rejects_empty_payload() {
+        // A tainted canvas exports `data:,` → empty base64. The original file
+        // must survive untouched.
+        let dir = std::env::temp_dir().join("ws-flatten-guard");
+        std::fs::create_dir_all(&dir).unwrap();
+        let target = dir.join("orig.png");
+        std::fs::write(&target, b"ORIGINAL").unwrap();
+        let err = flatten_save(target.to_string_lossy().into(), String::new());
+        assert!(err.is_err(), "empty payload must be rejected");
+        assert_eq!(std::fs::read(&target).unwrap(), b"ORIGINAL");
+    }
+
+    #[test]
+    fn flatten_save_rejects_non_png() {
+        let dir = std::env::temp_dir().join("ws-flatten-guard2");
+        std::fs::create_dir_all(&dir).unwrap();
+        let target = dir.join("orig.png");
+        std::fs::write(&target, b"ORIGINAL").unwrap();
+        let not_png = base64::engine::general_purpose::STANDARD.encode(b"hello");
+        let err = flatten_save(target.to_string_lossy().into(), not_png);
+        assert!(err.is_err(), "non-PNG payload must be rejected");
+        assert_eq!(std::fs::read(&target).unwrap(), b"ORIGINAL");
+    }
+
+    #[test]
+    fn flatten_save_writes_valid_png_atomically() {
+        let dir = std::env::temp_dir().join("ws-flatten-ok");
+        std::fs::create_dir_all(&dir).unwrap();
+        let target = dir.join("orig.png");
+        std::fs::write(&target, b"ORIGINAL").unwrap();
+        flatten_save(target.to_string_lossy().into(), png_b64()).unwrap();
+        let written = std::fs::read(&target).unwrap();
+        assert_eq!(&written[..4], &[0x89, 0x50, 0x4E, 0x47]);
+        // No stray temp file left behind.
+        assert!(!dir.join("orig.png.tmp-wondershot").exists());
+    }
+
+    #[test]
+    fn read_image_b64_round_trips() {
+        let dir = std::env::temp_dir().join("ws-read-b64");
+        std::fs::create_dir_all(&dir).unwrap();
+        let target = dir.join("img.png");
+        let body = png_b64();
+        std::fs::write(
+            &target,
+            base64::engine::general_purpose::STANDARD.decode(&body).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(read_image_b64(target.to_string_lossy().into()).unwrap(), body);
+    }
 }
