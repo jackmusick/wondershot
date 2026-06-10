@@ -47,11 +47,28 @@ pub fn open(label: &str) -> Result<CameraStream, String> {
                     && (n == label || n.starts_with(label) || label.starts_with(n.as_str()))
             })
             .or_else(|| devices.first());
-        match device {
-            Some(d) => d
+        let Some(device) = device else {
+            return Err("no camera found".into());
+        };
+        // Prefer plain v4l2src on the device node: the PipeWire provider's
+        // pipewiresrc needs a working portal/session inside the Flatpak and
+        // fails to reach PLAYING there, while --device=all means /dev/video*
+        // is always directly readable. The PipeWire device's properties carry
+        // the node path.
+        let v4l2_path = device.properties().and_then(|p| {
+            ["api.v4l2.path", "device.path"]
+                .into_iter()
+                .find_map(|k| p.get::<String>(k).ok())
+                .filter(|v| v.starts_with("/dev/video"))
+        });
+        match v4l2_path {
+            Some(path) => gst::ElementFactory::make("v4l2src")
+                .property("device", &path)
+                .build()
+                .map_err(|e| e.to_string())?,
+            None => device
                 .create_element(None)
                 .map_err(|e| format!("camera element failed: {e}"))?,
-            None => return Err("no camera found".into()),
         }
     };
 
@@ -86,9 +103,19 @@ pub fn open(label: &str) -> Result<CameraStream, String> {
     enc.link(appsink.upcast_ref::<gst::Element>())
         .map_err(|_| "link jpegenc→appsink failed".to_string())?;
 
-    pipeline
-        .set_state(gst::State::Playing)
-        .map_err(|e| format!("camera pipeline would not start: {e}"))?;
+    if let Err(e) = pipeline.set_state(gst::State::Playing) {
+        // The state error is generic — the bus carries the real reason.
+        let detail = pipeline
+            .bus()
+            .and_then(|b| b.timed_pop_filtered(gst::ClockTime::from_mseconds(200), &[gst::MessageType::Error]))
+            .and_then(|m| match m.view() {
+                gst::MessageView::Error(err) => Some(format!("{} ({})", err.error(), err.debug().unwrap_or_default())),
+                _ => None,
+            })
+            .unwrap_or_default();
+        let _ = pipeline.set_state(gst::State::Null);
+        return Err(format!("camera pipeline would not start: {e} {detail}"));
+    }
     Ok(CameraStream { pipeline, appsink })
 }
 

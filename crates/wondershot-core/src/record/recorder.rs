@@ -473,15 +473,28 @@ pub fn resolve_mic_source(description: &str) -> String {
     for d in devices {
         let name = d.display_name();
         if name == description || name.starts_with(description) || description.starts_with(name.as_str()) {
-            // The provider-configured element carries the real source name in
-            // its `device` property — more reliable than guessing prop keys.
-            if let Some(elem) = d.create_element(None).ok() {
-                let v = elem.property_value("device");
-                if let Ok(Some(s)) = v.get::<Option<String>>() {
-                    return s;
+            // PipeWire-provider devices: `node.name` IS the pulse-compatible
+            // source name (pipewire-pulse maps them 1:1) — and their element
+            // (pipewiresrc) has no `device` property at all (reading it via
+            // glib PANICS, it doesn't error).
+            if let Some(props) = d.properties() {
+                if let Ok(node) = props.get::<String>("node.name") {
+                    if !node.is_empty() {
+                        return node;
+                    }
                 }
-                if let Ok(s) = v.get::<String>() {
-                    return s;
+            }
+            // Pulse-provider devices: the configured element carries the
+            // source name in `device` — guarded, never assumed to exist.
+            if let Ok(elem) = d.create_element(None) {
+                if elem.find_property("device").is_some() {
+                    let v = elem.property_value("device");
+                    if let Ok(Some(s)) = v.get::<Option<String>>() {
+                        return s;
+                    }
+                    if let Ok(s) = v.get::<String>() {
+                        return s;
+                    }
                 }
             }
         }
