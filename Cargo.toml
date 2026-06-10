@@ -1,3 +1,11 @@
 [workspace]
 members = ["src-tauri", "crates/wondershot-core"]
 resolver = "2"
+
+# Smaller, faster release binaries for everything in the workspace: thin LTO +
+# one codegen unit shrink the Tauri/gst dependency graph meaningfully; symbols
+# are stripped at link time (the deb was shipping a 25 MB binary).
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
