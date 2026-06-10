@@ -56,6 +56,18 @@ struct PauseState {
     paused_offset_ns: AtomicI64,
     /// Clock time captured when the current pause began (record.py:258-259).
     pause_started_ns: AtomicI64,
+    /// Unix millis of the last buffer through the probe. The watchdog uses
+    /// it to detect an externally-terminated cast: when the user stops the
+    /// share from the compositor's tray indicator, pipewiresrc posts NO bus
+    /// message — frames just stop arriving.
+    last_buffer_unix_ms: AtomicI64,
+}
+
+fn unix_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
 }
 
 pub struct Recorder {
@@ -98,6 +110,7 @@ impl Recorder {
             dropping: AtomicBool::new(false),
             paused_offset_ns: AtomicI64::new(0),
             pause_started_ns: AtomicI64::new(0),
+            last_buffer_unix_ms: AtomicI64::new(unix_ms()),
         });
 
         // Install the pause probe on identity:src (record.py:262-264). The
@@ -303,6 +316,7 @@ impl Recorder {
 /// The BUFFER pad probe (record.py:273-285). Drops while paused, otherwise
 /// rewrites PTS/DTS by the accumulated paused offset.
 fn pause_probe(pause: &PauseState, info: &mut gst::PadProbeInfo) -> gst::PadProbeReturn {
+    pause.last_buffer_unix_ms.store(unix_ms(), Ordering::SeqCst);
     if pause.dropping.load(Ordering::SeqCst) {
         return gst::PadProbeReturn::Drop;
     }
@@ -377,6 +391,21 @@ fn spawn_watchdog(
             if stopping.load(Ordering::SeqCst) {
                 std::thread::sleep(Duration::from_millis(20));
                 continue;
+            }
+
+            // Externally-terminated cast (e.g. "stop sharing" in the
+            // compositor's tray indicator): pipewiresrc posts neither EOS nor
+            // ERROR — frames just stop. Latch it as an error so the salvage
+            // path below finalizes what was captured and tells the UI.
+            const STALL_MS: i64 = 4000;
+            let last = pause.last_buffer_unix_ms.load(Ordering::SeqCst);
+            if unix_ms() - last > STALL_MS {
+                let mut err = bus_state.error.lock().unwrap();
+                if err.is_none() {
+                    *err = Some(
+                        "screen cast ended (no frames — stopped from the system tray?)".to_string(),
+                    );
+                }
             }
 
             // A bus ERROR while recording == watchdog death: salvage + Failed
@@ -502,10 +531,12 @@ pub fn resolve_mic_source(description: &str) -> String {
     String::new()
 }
 
-/// Open the mic (`source` = pulse/pipewire source name, "" = default) and
-/// confirm it actually produces audio buffers — the GUI-free half of a
-/// recording's audio path, used by `wondershot --media-check`.
-pub fn mic_probe(source: &str) -> Result<(), String> {
+/// Open the mic (`source` = pulse/pipewire source name, "" = default), pull
+/// ~1s of audio, and return the PEAK level as a 0.0–1.0 fraction — the
+/// GUI-free half of a recording's audio path, used by `wondershot
+/// --media-check`. A peak of ~0 with a working open usually means the wrong
+/// source is selected (e.g. a monitor/loopback instead of the microphone).
+pub fn mic_probe(source: &str) -> Result<f64, String> {
     use gst::prelude::*;
     gst::init().map_err(|e| e.to_string())?;
     let dev = if source.is_empty() {
@@ -513,7 +544,10 @@ pub fn mic_probe(source: &str) -> Result<(), String> {
     } else {
         format!("device={source} ")
     };
-    let desc = format!("pulsesrc {dev}! audioconvert ! appsink name=probe max-buffers=2 drop=true");
+    let desc = format!(
+        "pulsesrc {dev}! audioconvert ! audio/x-raw,format=S16LE ! \
+         appsink name=probe max-buffers=8 drop=true"
+    );
     let pipeline = gst::parse::launch(&desc).map_err(|e| format!("mic pipeline: {e}"))?;
     let pipeline = pipeline
         .downcast::<gst::Pipeline>()
@@ -525,10 +559,34 @@ pub fn mic_probe(source: &str) -> Result<(), String> {
     pipeline
         .set_state(gst::State::Playing)
         .map_err(|e| format!("mic would not start: {e}"))?;
-    let got = sink.try_pull_sample(gst::ClockTime::from_seconds(5)).is_some();
+
+    let mut peak: i16 = 0;
+    let mut got_any = false;
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < deadline {
+        let Some(sample) = sink.try_pull_sample(gst::ClockTime::from_mseconds(500)) else {
+            if got_any {
+                break; // had audio, stream ended/quieted — enough
+            }
+            continue;
+        };
+        got_any = true;
+        if let Some(buf) = sample.buffer() {
+            if let Ok(map) = buf.map_readable() {
+                for chunk in map.as_slice().chunks_exact(2) {
+                    let v = i16::from_le_bytes([chunk[0], chunk[1]]).unsigned_abs() as i16;
+                    peak = peak.max(v);
+                }
+            }
+        }
+        // ~1s of audio is plenty for a level reading.
+        if got_any && Instant::now() + Duration::from_secs(4) > deadline {
+            break;
+        }
+    }
     let _ = pipeline.set_state(gst::State::Null);
-    if got {
-        Ok(())
+    if got_any {
+        Ok(peak as f64 / i16::MAX as f64)
     } else {
         Err("mic started but produced no audio in 5s".into())
     }

@@ -108,8 +108,15 @@ fn media_check() {
     } else {
         println!("[PASS] mic resolves: {:?} -> {source}", s.mic_device);
     }
+    println!("       (speak into the mic now — sampling ~1s)");
     match recorder::mic_probe(&source) {
-        Ok(()) => println!("[PASS] mic opens + produces audio buffers"),
+        Ok(peak) if peak >= 0.01 => {
+            println!("[PASS] mic opens; peak level {:.0}% — audio is real", peak * 100.0)
+        }
+        Ok(peak) => println!(
+            "[WARN] mic opens but is near-silent (peak {:.2}%) — wrong source selected, muted, or a monitor/loopback",
+            peak * 100.0
+        ),
         Err(e) => println!("[FAIL] mic open: {e}"),
     }
 }
@@ -258,6 +265,7 @@ pub fn run() {
             commands::install_desktop,
             commands::import_files,
             commands::toggle_camera_bubble,
+            commands::set_camera_bubble,
             commands::trash_item,
             commands::list_pinned,
             commands::set_pinned,

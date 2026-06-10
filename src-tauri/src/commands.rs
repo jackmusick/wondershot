@@ -445,11 +445,28 @@ pub fn read_base(path: String, n: u32) -> Result<Option<String>, String> {
 
 /// Managed Tauri state holding the live recorder. `Recorder` is not `Clone`
 /// and `stop(self)` consumes it, so we store an `Option` and `.take()` on stop.
-pub struct RecState(pub Mutex<Option<recorder::Recorder>>);
+pub struct RecState {
+    pub recorder: Mutex<Option<recorder::Recorder>>,
+    /// The live portal session — closed when the recording ends (any way it
+    /// ends), or the compositor keeps showing its "screen is being shared"
+    /// indicator and every new recording stacks another one.
+    pub session: Mutex<Option<portal::CastSession>>,
+}
 
 impl Default for RecState {
     fn default() -> Self {
-        RecState(Mutex::new(None))
+        RecState { recorder: Mutex::new(None), session: Mutex::new(None) }
+    }
+}
+
+/// Close (best-effort) the stored portal session, asynchronously.
+fn close_cast_session(app: &tauri::AppHandle) {
+    use tauri::Manager;
+    let taken = app.state::<RecState>().session.lock().ok().and_then(|mut s| s.take());
+    if let Some(session) = taken {
+        tauri::async_runtime::spawn(async move {
+            portal::close_session(&session).await;
+        });
     }
 }
 
@@ -486,6 +503,11 @@ fn emit_rec_event(app: &tauri::AppHandle, ev: recorder::RecEvent) {
             let _ = app.emit("recording://tick", elapsed);
         }
         RecEvent::Finished(path) => {
+            close_cast_session(app);
+            // External terminations finalize via the watchdog without a
+            // stop_recording call — drop the recorder handle too so the next
+            // start doesn't think one is live.
+            drop_recorder_handle(app);
             let _ = app.emit("recording://done", path.to_string_lossy().to_string());
             let _ = app.emit(
                 "recording://state",
@@ -493,12 +515,25 @@ fn emit_rec_event(app: &tauri::AppHandle, ev: recorder::RecEvent) {
             );
         }
         RecEvent::Failed(msg) => {
+            close_cast_session(app);
+            drop_recorder_handle(app);
             let _ = app.emit("recording://failed", msg);
             let _ = app.emit(
                 "recording://state",
                 serde_json::json!({ "status": "idle", "paused": false }),
             );
         }
+    }
+}
+
+/// Clear the stored Recorder without running stop() — used when the watchdog
+/// already finalized (external termination). Dropping the handle is safe: the
+/// pipeline was already set to NULL by the salvage path and the watchdog
+/// thread exits after emitting the terminal event.
+fn drop_recorder_handle(app: &tauri::AppHandle) {
+    use tauri::Manager;
+    if let Ok(mut r) = app.state::<RecState>().recorder.lock() {
+        let _ = r.take();
     }
 }
 
@@ -543,7 +578,7 @@ pub async fn start_recording(
 
     // Portal: pick a screen/window and obtain the PipeWire fd + node id. KEEP
     // `fd` (OwnedFd) alive across launch — pipewiresrc dups it during launch.
-    let (fd, node) = portal::open_screencast().await?;
+    let (fd, node, session) = portal::open_screencast().await?;
 
     // Same base name for tmp and out; the out path is uniquified.
     let name = files::recording_name();
@@ -578,17 +613,23 @@ pub async fn start_recording(
     // so it may drop now.
     drop(fd);
 
-    *state.0.lock().map_err(|e| e.to_string())? = Some(rec);
+    *state.recorder.lock().map_err(|e| e.to_string())? = Some(rec);
+    *state.session.lock().map_err(|e| e.to_string())? = Some(session);
     Ok(())
 }
 
 /// Stop the active recording. `stop()` consumes the recorder and emits
-/// `Finished`/`Failed` through the event callback.
+/// `Finished`/`Failed` through the event callback (which also closes the
+/// portal session). Async + off-thread: a wedged pipeline's EOS escalation
+/// can take up to KILL_MS, and that wait must never block the main thread —
+/// that was the "stop freezes the whole app" bug.
 #[tauri::command]
-pub fn stop_recording(state: tauri::State<'_, RecState>) -> Result<(), String> {
-    let rec = state.0.lock().map_err(|e| e.to_string())?.take();
+pub async fn stop_recording(state: tauri::State<'_, RecState>) -> Result<(), String> {
+    let rec = state.recorder.lock().map_err(|e| e.to_string())?.take();
     if let Some(rec) = rec {
-        rec.stop();
+        tauri::async_runtime::spawn_blocking(move || rec.stop())
+            .await
+            .map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -596,7 +637,7 @@ pub fn stop_recording(state: tauri::State<'_, RecState>) -> Result<(), String> {
 /// Pause the active recording (drops frames until resumed).
 #[tauri::command]
 pub fn pause_recording(state: tauri::State<'_, RecState>) -> Result<(), String> {
-    if let Some(rec) = state.0.lock().map_err(|e| e.to_string())?.as_ref() {
+    if let Some(rec) = state.recorder.lock().map_err(|e| e.to_string())?.as_ref() {
         rec.pause();
     }
     Ok(())
@@ -605,7 +646,7 @@ pub fn pause_recording(state: tauri::State<'_, RecState>) -> Result<(), String> 
 /// Resume a paused recording.
 #[tauri::command]
 pub fn resume_recording(state: tauri::State<'_, RecState>) -> Result<(), String> {
-    if let Some(rec) = state.0.lock().map_err(|e| e.to_string())?.as_ref() {
+    if let Some(rec) = state.recorder.lock().map_err(|e| e.to_string())?.as_ref() {
         rec.resume();
     }
     Ok(())
@@ -924,23 +965,35 @@ pub fn import_files(paths: Vec<String>) -> Result<Vec<String>, String> {
 /// window is declared in tauri.conf (label "bubble", visible:false at startup).
 #[tauri::command]
 pub fn toggle_camera_bubble(app: tauri::AppHandle) -> Result<bool, String> {
+    use tauri::Manager;
+    let visible = app
+        .get_webview_window("bubble")
+        .and_then(|w| w.is_visible().ok())
+        .unwrap_or(false);
+    set_camera_bubble(app, !visible)?;
+    Ok(!visible)
+}
+
+/// Show/hide the camera bubble — the ONLY correct way to do it: visibility
+/// and the camera stream lifecycle must move together (the bubble page
+/// starts/stops its MJPEG stream on these events). Direct window.show()
+/// produced a bubble with no feed.
+#[tauri::command]
+pub fn set_camera_bubble(app: tauri::AppHandle, visible: bool) -> Result<(), String> {
     use tauri::{Emitter, Manager};
     let Some(w) = app.get_webview_window("bubble") else {
         return Err("camera bubble window not found".into());
     };
-    let visible = w.is_visible().unwrap_or(false);
     if visible {
-        w.hide().map_err(|e| e.to_string())?;
-        // Release the webcam while hidden (privacy + stability: WebKit's
-        // capture stack should not run for an invisible window).
-        let _ = app.emit("bubble://hidden", ());
-        Ok(false)
-    } else {
         w.show().map_err(|e| e.to_string())?;
         let _ = w.set_focus();
         let _ = app.emit("bubble://shown", ());
-        Ok(true)
+    } else {
+        w.hide().map_err(|e| e.to_string())?;
+        // Release the webcam while hidden.
+        let _ = app.emit("bubble://hidden", ());
     }
+    Ok(())
 }
 
 // --- pins (filmstrip pin affordance) ---------------------------------------

@@ -16,15 +16,29 @@
 
 use std::os::fd::OwnedFd;
 
+/// The live portal session for an active recording. MUST be closed when the
+/// recording ends (clean stop, failure, or external termination) — an open
+/// session keeps the compositor casting: KDE's "screen is being shared"
+/// indicator stays up, and each new recording stacks another one.
+pub type CastSession =
+    ashpd::desktop::Session<'static, ashpd::desktop::screencast::Screencast<'static>>;
+
+/// Close a cast session, best-effort (it may already be gone if the user
+/// stopped the cast from the system tray).
+pub async fn close_session(session: &CastSession) {
+    let _ = session.close().await;
+}
+
 /// Open an xdg-desktop-portal ScreenCast session and return the PipeWire
-/// fd + node id (the picker is shown every time — no token persistence).
+/// fd + node id (the picker is shown every time — no token persistence),
+/// plus the session handle the caller must close when recording ends.
 ///
 /// The returned [`OwnedFd`] owns the PipeWire remote fd. Keep it alive until
 /// the gstreamer pipeline is built: `pipewiresrc` dups the fd, so it can be
 /// dropped after the pipeline is created. Get the raw fd for
 /// `build_pipeline_description(fd, node, ...)` (which takes `fd: i32`) via
 /// `fd.as_raw_fd()` (from `std::os::fd::AsRawFd`).
-pub async fn open_screencast() -> Result<(OwnedFd, u32), String> {
+pub async fn open_screencast() -> Result<(OwnedFd, u32, CastSession), String> {
     use ashpd::desktop::screencast::{CursorMode, Screencast, SourceType};
     use ashpd::desktop::PersistMode;
     use ashpd::WindowIdentifier;
@@ -62,5 +76,5 @@ pub async fn open_screencast() -> Result<(OwnedFd, u32), String> {
         .await
         .map_err(|e| e.to_string())?;
 
-    Ok((fd, node_id))
+    Ok((fd, node_id, session))
 }

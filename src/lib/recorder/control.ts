@@ -50,25 +50,23 @@ async function readSettings(): Promise<RecorderSettings> {
   }
 }
 
-/** Show the camera bubble window (real mode only). */
+/** Show the camera bubble (real mode only) — via the backend so the camera
+ * stream starts with it. Direct window.show() gives a bubble with no feed. */
 async function showBubble() {
   if (USE_MOCK) return;
   try {
-    const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
-    const w = await WebviewWindow.getByLabel('bubble');
-    await w?.show();
+    await ipcInvoke('set_camera_bubble', { visible: true });
   } catch (e) {
     console.error('bubble show failed', e);
   }
 }
 
-/** Hide the camera bubble window (real mode only). */
+/** Hide the camera bubble (real mode only) — via the backend so the camera
+ * stream is released with it. */
 async function hideBubble() {
   if (USE_MOCK) return;
   try {
-    const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
-    const w = await WebviewWindow.getByLabel('bubble');
-    await w?.hide();
+    await ipcInvoke('set_camera_bubble', { visible: false });
   } catch (e) {
     console.error('bubble hide failed', e);
   }
