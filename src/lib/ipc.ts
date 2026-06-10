@@ -25,10 +25,23 @@ export async function imageDataSrc(path: string): Promise<string> {
   return `data:image/png;base64,${b64}`;
 }
 
-/** Ensure every capture has a loadable `thumbnail` (real list_library omits it). */
+/** Ensure every capture has a loadable `thumbnail` (real list_library omits it).
+ *  Images use the asset protocol; videos get an ffmpeg-extracted poster frame
+ *  (backend-cached) — an <img> pointed at an .mp4 renders as a broken icon. */
 export async function normalizeCaptures(caps: Capture[]): Promise<Capture[]> {
   return Promise.all(
-    caps.map(async (c) => (c.thumbnail ? c : { ...c, thumbnail: await assetSrc(c.path) }))
+    caps.map(async (c) => {
+      if (c.thumbnail) return c;
+      if (c.kind === 'video' && !USE_MOCK) {
+        try {
+          const b64 = await ipcInvoke<string>('video_thumb', { path: c.path });
+          return { ...c, thumbnail: `data:image/png;base64,${b64}` };
+        } catch {
+          return { ...c, thumbnail: '' }; // filmstrip falls back to a dark card
+        }
+      }
+      return { ...c, thumbnail: await assetSrc(c.path) };
+    })
   );
 }
 

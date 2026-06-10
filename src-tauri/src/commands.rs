@@ -689,6 +689,54 @@ async fn run_ffmpeg_to_library(
     Ok(out.to_string_lossy().into_owned())
 }
 
+/// Poster frame for a video's filmstrip card, returned as a base64 PNG body
+/// (Qt parity: video thumbnails show a real frame, not a generic icon).
+/// Extracted with ffmpeg at t=0, scaled to thumbnail width, and cached in
+/// `~/.cache/wondershot/thumbs/` keyed on path+mtime so each video pays the
+/// ffmpeg cost once.
+#[tauri::command]
+pub async fn video_thumb(path: String) -> Result<String, String> {
+    use base64::Engine;
+    use std::hash::{Hash, Hasher};
+    let mtime = std::fs::metadata(&path)
+        .and_then(|m| m.modified())
+        .map_err(|e| e.to_string())?;
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    path.hash(&mut h);
+    mtime.hash(&mut h);
+    let cache_dir = dirs::cache_dir()
+        .unwrap_or_else(std::env::temp_dir)
+        .join("wondershot")
+        .join("thumbs");
+    std::fs::create_dir_all(&cache_dir).map_err(|e| e.to_string())?;
+    let thumb = cache_dir.join(format!("{:016x}.png", h.finish()));
+    if !thumb.exists() {
+        let ffmpeg = find_ffmpeg()?;
+        let args: Vec<String> = vec![
+            "-y".into(),
+            "-ss".into(),
+            "0".into(),
+            "-i".into(),
+            path.clone(),
+            "-frames:v".into(),
+            "1".into(),
+            "-vf".into(),
+            "scale=480:-2".into(),
+            thumb.to_string_lossy().into_owned(),
+        ];
+        let out = tokio::process::Command::new(&ffmpeg)
+            .args(&args)
+            .output()
+            .await
+            .map_err(|e| format!("could not start ffmpeg: {e}"))?;
+        if !out.status.success() || !thumb.exists() {
+            return Err("ffmpeg could not extract a poster frame".into());
+        }
+    }
+    let bytes = std::fs::read(&thumb).map_err(|e| e.to_string())?;
+    Ok(base64::engine::general_purpose::STANDARD.encode(bytes))
+}
+
 /// Grab a single frame at `position` seconds, saved as `<stem>-frame.png` in
 /// the library. Returns the new file's path.
 #[tauri::command]

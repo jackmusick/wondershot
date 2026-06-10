@@ -108,7 +108,12 @@
       oncontextmenu={(e) => openMenu(e, c)}
       title={c.title}
     >
-      <img class="thumb" src={c.thumbnail} alt={c.title} draggable="true" ondragstart={(e) => onDragStart(e, c)} />
+      {#if c.thumbnail}
+        <img class="thumb" src={c.thumbnail} alt={c.title} draggable="true" ondragstart={(e) => onDragStart(e, c)} />
+      {:else}
+        <!-- No poster available (e.g. ffmpeg missing): dark card, play badge only. -->
+        <span class="thumb fallback" draggable="true" ondragstart={(e) => onDragStart(e, c)}></span>
+      {/if}
       {#if c.kind === 'video'}<span class="play">▶</span>{/if}
       <span class="pin" class:on={$pinned.includes(c.path)} role="button" tabindex="-1"
         title={$pinned.includes(c.path) ? 'Unpin' : 'Pin'}
@@ -171,6 +176,7 @@
   .card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
   .card.pinned { border-color: var(--accent); }
   .thumb { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .thumb.fallback { background: var(--bg-sidebar, #222); }
   .play {
     position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
     font-size: 28px; color: #fff; text-shadow: 0 1px 4px rgba(0,0,0,0.6); pointer-events: none;

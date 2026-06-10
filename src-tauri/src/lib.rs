@@ -141,6 +141,7 @@ pub fn run() {
             commands::stop_recording,
             commands::pause_recording,
             commands::resume_recording,
+            commands::video_thumb,
             commands::grab_frame,
             commands::apply_blur,
             commands::export_gif,
