@@ -761,12 +761,20 @@
         commit();
       }
     };
-    ta.addEventListener('blur', commit);
     ta.addEventListener('keydown', onKey);
     editTeardown = teardown;
 
-    ta.focus();
-    ta.select();
+    // Focus on the next tick, and only then arm the blur-commit: this runs
+    // inside the canvas mousedown handler, and the mousedown's DEFAULT action
+    // (focusing the clicked canvas) fires after handlers — an immediate
+    // focus() gets blurred right back, committing the empty editor before the
+    // user can type. (The mock-driven E2E hook never exercises real clicks,
+    // which is why tests missed it.)
+    setTimeout(() => {
+      ta.focus();
+      ta.select();
+      ta.addEventListener('blur', commit);
+    }, 0);
   }
 
   /**
