@@ -202,3 +202,49 @@ aborting before the deb is regenerated (this silently shipped a stale deb once).
 - [ ] **Mic device → recording** — the dropdown now shows real labels, but the record pipeline expects a PipeWire/Pulse source name, not a webview `deviceId`. Needs a pulse-enumeration backend (pre-existing deferred item). Camera (bubble) works because `getUserMedia` takes a `deviceId`.
 - [ ] **OneDrive connect round-trip** — the device-code flow is a faithful port but needs a real Microsoft sign-in to verify end-to-end.
 - [ ] Real-app retest of all of the above on the dev box (has a DE; rebuild the Flatpak there).
+
+---
+
+## QA round 4 (dev-box live drive — 2026-06-10, xrdp/XFCE on `development`)
+
+Driven for real on the dev server's desktop (`DISPLAY :10`), against the Qt
+oracle shots and the Python app's feature list. **Process lesson repeated:**
+every bug below was invisible to the mock-IPC/`__wsEditor` test harness and
+only surfaced by clicking the real app.
+
+**Fixed + verified live (committed):**
+- ✅ **DATA LOSS: autosave truncated library PNGs to 0 bytes.** The editor
+  loaded its base via the asset protocol → WebKit tainted the Konva canvas →
+  `stage.toDataURL()` exported `data:,` → `flatten_save` wrote 0 bytes over
+  the original. Now: base loads as a data URL (`read_image_b64`),
+  `flatten_save`/`write_base` validate PNG magic + write atomically, save
+  order is sidecar+base.0 → flatten, and the toolbar shows a real
+  saved/saving/**Save failed** indicator.
+- ✅ **Blur/pixelate baked the gray placeholder + re-blurred their own bake**:
+  patches now come from `base.0` (editable base) when present, and save()
+  awaits in-flight patch fills (`DrawCtx.trackPending`).
+- ✅ **Text tool dead in the real app** (committed empty instantly): the
+  textarea focus raced mousedown's default action; focus now lands on the
+  next tick. Caret/typing/Enter-commit verified live.
+- ✅ **Video playback never worked on Linux** (`asset://` is unreadable by
+  WebKitGTK's GStreamer pipeline → MEDIA_ERR 4): loopback HTTP streamer
+  (`media_server.rs`, Range/206, library-dirs-only, worker pool — GStreamer's
+  multiple keep-alive connections deadlock a sequential accept loop).
+  Play/pause/scrubber/duration verified live.
+- ✅ **Live folder watching** (Qt parity): notify-rs watcher → debounced
+  `library://changed` → `loadLibrary()`; settings changes rebind it.
+- ✅ **Video poster thumbnails** (`video_thumb`, ffmpeg frame 0, cached) —
+  cards showed a broken-image icon before.
+- ✅ Qt-oracle gaps: Undo/Redo rail buttons (+ undo/redo now autosave),
+  zoom-bar "N shots", Settings Browse…/Add… (portal `pick_folder`), the
+  "Global capture hotkey" group (`wondershot --capture` + Open KDE Shortcuts),
+  stale Sharing blurb replaced.
+
+**Dev-box environment notes (not app bugs):** xrdp/llvmpipe webview is slow to
+first paint under build load (white window ≠ broken); vite HMR websocket dies
+in this webview — restart the app after source edits; `document.title` is NOT
+propagated to the X window title by Tauri (don't use it as a probe).
+
+**Open after this round:** capture/record flows need a real KDE/Wayland session
+(Jack's laptop); AI inference + mic-device mapping + OneDrive round-trip
+unchanged from QA3.
