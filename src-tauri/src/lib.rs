@@ -1,3 +1,4 @@
+mod ai;
 mod commands;
 mod graph;
 mod media_server;
@@ -135,6 +136,8 @@ pub fn run() {
             commands::cutout_base,
             commands::bg_model_available,
             commands::remove_background,
+            commands::ai_redact,
+            commands::ai_simplify,
             commands::flatten_save,
             commands::write_base,
             commands::read_base,

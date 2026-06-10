@@ -61,3 +61,16 @@ export interface BgApi {
 }
 
 export const bgApi = writable<BgApi | null>(null);
+
+/**
+ * AI Redact / Simplify bridge. EditorCanvas registers the runners (they own
+ * `path` + the item model); the toolbar drives them and shows the returned
+ * status message. `available` = an AI endpoint+model is configured.
+ */
+export interface AiApi {
+  available: boolean;
+  redact: () => Promise<string>;
+  simplify: () => Promise<string>;
+}
+
+export const aiApi = writable<AiApi | null>(null);

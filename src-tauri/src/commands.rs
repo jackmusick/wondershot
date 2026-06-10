@@ -176,7 +176,7 @@ pub fn copy_image(path: String) -> Result<bool, String> {
     }
 }
 
-fn in_flatpak() -> bool {
+pub(crate) fn in_flatpak() -> bool {
     std::env::var_os("FLATPAK_ID").is_some() || Path::new("/.flatpak-info").exists()
 }
 
@@ -1190,6 +1190,57 @@ pub fn trash_item(path: String) -> Result<(), String> {
         }
     }
     trash::delete(p).map_err(|e| format!("could not trash {}: {e}", path))
+}
+
+// --- AI Redact / Simplify (crate::ai) ----------------------------------------
+
+/// Endpoint/model/key from the shared conf's AI keys. The key is optional
+/// (local servers); endpoint+model are required.
+fn ai_config() -> Result<(String, String, String), String> {
+    let s = Settings::load();
+    let g = |k: &str| s.extra.get(k).map(|v| v.trim().to_string()).unwrap_or_default();
+    let (endpoint, model, key) = (g("ai_endpoint"), g("ai_model"), g("ai_api_key"));
+    if endpoint.is_empty() || model.is_empty() {
+        return Err("Configure an AI endpoint and model in Settings → AI first".into());
+    }
+    Ok((endpoint, model, key))
+}
+
+/// Decoded image + PNG bytes the AI should see: the EDITABLE base (same source
+/// as the pixelate/blur patches), so already-applied redactions don't skew it.
+fn ai_source(path: &str) -> Result<(image::RgbaImage, Vec<u8>), String> {
+    let img = open_patch_source(path)?;
+    let mut png: Vec<u8> = Vec::new();
+    img.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+        .map_err(|e| e.to_string())?;
+    Ok((img, png))
+}
+
+/// Find sensitive text on the capture; returns pixel rects for the editor to
+/// cover with pixelate items. Blocking pipeline (OCR + LLM) runs off-thread.
+#[tauri::command]
+pub async fn ai_redact(path: String) -> Result<Vec<crate::ai::RectPx>, String> {
+    let (endpoint, model, key) = ai_config()?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let (img, png) = ai_source(&path)?;
+        let (w, h) = (img.width() as i32, img.height() as i32);
+        crate::ai::redact_regions(&png, w, h, &endpoint, &key, &model)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Label the capture's major UI regions; returns rect+kind+fill/stroke colors
+/// for the editor to replace with clean editable rects.
+#[tauri::command]
+pub async fn ai_simplify(path: String) -> Result<Vec<crate::ai::SimplifyRegion>, String> {
+    let (endpoint, model, key) = ai_config()?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let (img, png) = ai_source(&path)?;
+        crate::ai::simplify_regions(&img, &png, &endpoint, &key, &model)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[cfg(test)]

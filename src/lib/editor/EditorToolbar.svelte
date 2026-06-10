@@ -1,27 +1,38 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
   import { activeTool, SHORTCUTS, type ToolId } from './tools';
-  import { bgApi, historyApi } from './zoom';
-  import { ipcInvoke } from '$lib/ipc';
+  import { bgApi, aiApi, historyApi } from './zoom';
   import { autosaveState } from '$lib/stores';
 
-  // Whether an AI endpoint is configured (Settings → AI). Gates the messaging on
-  // the AI Redact / Simplify buttons. The inference pipeline itself is a separate
-  // follow-up; until it lands these stay disabled, but the tooltip is honest
-  // about *why* (no endpoint vs. pipeline pending).
-  let aiConfigured = $state(false);
-  onMount(async () => {
-    try {
-      const s = (await ipcInvoke<Record<string, unknown>>('get_settings')) ?? {};
-      aiConfigured = !!String(s.ai_endpoint ?? '').trim();
-    } catch {
-      aiConfigured = false;
-    }
-  });
+  // AI Redact / Simplify: enabled when EditorCanvas registered runners AND an
+  // endpoint+model are configured. Busy-guarded; the runner's status line (or
+  // error) shows inline for a few seconds, like the Qt status bar.
+  let aiBusy = $state<'' | 'redact' | 'simplify'>('');
+  let aiMsg = $state('');
+  let aiErr = $state(false);
   function aiTip(name: string): string {
-    return aiConfigured
-      ? `${name} — AI endpoint configured; inference pipeline is coming soon`
-      : `${name} — set an AI endpoint in Settings → AI first`;
+    return $aiApi?.available
+      ? name
+      : `${name} — set an AI endpoint and model in Settings → AI first`;
+  }
+  async function runAi(kind: 'redact' | 'simplify') {
+    const api = $aiApi;
+    if (!api?.available || aiBusy) return;
+    aiBusy = kind;
+    aiMsg = kind === 'redact' ? 'Finding sensitive text…' : 'Simplifying UI…';
+    aiErr = false;
+    try {
+      aiMsg = await (kind === 'redact' ? api.redact() : api.simplify());
+    } catch (e) {
+      aiMsg = `AI ${kind} failed: ${e}`;
+      aiErr = true;
+      console.error('AI action failed', e);
+    } finally {
+      aiBusy = '';
+      const shown = aiMsg;
+      setTimeout(() => {
+        if (aiMsg === shown) aiMsg = '';
+      }, 8000);
+    }
   }
 
   // Tool metadata: id, human label, and an inline-SVG path/glyph. Icons are
@@ -54,14 +65,6 @@
       { id: 'cutout-h', label: 'Cut —' },
     ],
   ];
-
-  // AI actions (not editor tools): a sparkle group at the end of the rail.
-  function aiNotReady(name: string) {
-    // The AI client (ai_endpoint/ai_api_key from settings) isn't wired into the
-    // Tauri backend yet; surface that rather than silently no-op.
-    console.warn(`${name} is not implemented yet`);
-    alert(`${name} is coming soon — the AI backend isn't wired up yet.`);
-  }
 
   // Reverse-lookup the shortcut letter for a tool, for the tooltip.
   function shortcutFor(id: ToolId): string {
@@ -181,11 +184,21 @@
     {#snippet sparkle()}
       <svg viewBox="0 0 16 16" class="ai-spark"><path d="M8 1.5l1.2 3.3L12.5 6 9.2 7.2 8 10.5 6.8 7.2 3.5 6l3.3-1.2z"/><path d="M12.8 10.2l.6 1.5 1.5.6-1.5.6-.6 1.5-.6-1.5-1.5-.6 1.5-.6z"/></svg>
     {/snippet}
-    <button class="tool ai" disabled title={aiTip('AI Redact')} onclick={() => aiNotReady('AI Redact')}>
-      {@render sparkle()}<span class="tlabel">Redact</span>
+    <button
+      class="tool ai"
+      disabled={!$aiApi?.available || !!aiBusy}
+      title={aiTip('AI Redact')}
+      onclick={() => runAi('redact')}
+    >
+      {@render sparkle()}<span class="tlabel">{aiBusy === 'redact' ? 'Finding…' : 'Redact'}</span>
     </button>
-    <button class="tool ai" disabled title={aiTip('AI Simplify')} onclick={() => aiNotReady('AI Simplify')}>
-      {@render sparkle()}<span class="tlabel">Simplify</span>
+    <button
+      class="tool ai"
+      disabled={!$aiApi?.available || !!aiBusy}
+      title={aiTip('AI Simplify')}
+      onclick={() => runAi('simplify')}
+    >
+      {@render sparkle()}<span class="tlabel">{aiBusy === 'simplify' ? 'Working…' : 'Simplify'}</span>
     </button>
     <button class="tool ai" title={bgTip} aria-label="Remove background" onclick={removeBg} disabled={!bgEnabled}>
       {@render sparkle()}<span class="tlabel">{bgBusy ? 'Removing…' : 'Remove BG'}</span>
@@ -193,6 +206,9 @@
   </div>
 
   <div class="spacer"></div>
+  {#if aiMsg}
+    <span class="aimsg" class:err={aiErr} title={aiMsg}>{aiMsg}</span>
+  {/if}
   {#if $autosaveState === 'error'}
     <span class="autosave error" title="The last save failed — edits are NOT on disk. Check the log.">Save failed</span>
   {:else if $autosaveState === 'saving'}
@@ -290,5 +306,17 @@
     color: var(--danger, #ff5555);
     font-weight: 600;
   }
+  .aimsg {
+    font-size: var(--text-small);
+    color: var(--fg-secondary);
+    flex-shrink: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 0 6px;
+    max-width: 340px;
+  }
+  .aimsg.err { color: var(--danger, #ff5555); }
 
 </style>

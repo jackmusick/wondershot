@@ -6,7 +6,9 @@
   import type { Item, Vec2 } from './model';
   import { History } from './history';
   import { drawStyle, textStyle, type DrawStyle, type TextStyle } from './style';
-  import { zoomApi, saveApi, bgApi, viewInfo, historyApi } from './zoom';
+  import { zoomApi, saveApi, bgApi, aiApi, viewInfo, historyApi } from './zoom';
+  import { pixelateItem } from './tools/redact';
+  import { rectItem } from './tools/boxShapes';
   import { drawTools, type DrawCtx } from './tools/index';
   import { WS_NODE_NAME, nodeToItemRef, tagNode } from './tools/arrowLine';
   // Side-effect import: registers the rect/ellipse/highlight box-shape tools
@@ -1008,6 +1010,50 @@
     if (n) select(n);
   }
 
+  /** Render + append a batch of items as ONE history step (AI results — the
+   *  Python editor wraps these in a single undo macro). */
+  function addItemsBatch(newItems: Item[]) {
+    if (!KonvaMod || newItems.length === 0) return;
+    const ctx = drawCtx(KonvaMod);
+    for (const item of newItems) {
+      const dt = drawTools[item.type];
+      if (dt) dt.render(ctx, item);
+    }
+    items = [...items, ...newItems];
+    pushHistory();
+    annotationsLayer.batchDraw();
+  }
+
+  /** AI Redact: backend finds sensitive-text rects; cover each with a
+   *  pixelate item (non-destructive, one undo step). Returns a status line. */
+  async function runAiRedact(): Promise<string> {
+    type R = { x: number; y: number; w: number; h: number };
+    const rects = await ipcInvoke<R[]>('ai_redact', { path });
+    const made = rects
+      .map((r) => pixelateItem([r.x, r.y, r.w, r.h]))
+      .filter((i): i is NonNullable<typeof i> => i !== null);
+    addItemsBatch(made);
+    return made.length
+      ? `Pixelated ${made.length} region${made.length === 1 ? '' : 's'} — review & adjust`
+      : 'Nothing sensitive found';
+  }
+
+  /** AI Simplify: backend labels UI regions; replace each with a clean filled
+   *  rect (text → neutral gray, others → dominant color). All stay editable. */
+  async function runAiSimplify(): Promise<string> {
+    type G = { rect: { x: number; y: number; w: number; h: number }; kind: string; fill: string; stroke: string };
+    const regions = await ipcInvoke<G[]>('ai_simplify', { path });
+    const made = regions
+      .map((g) =>
+        rectItem([g.rect.x, g.rect.y, g.rect.w, g.rect.h], { color: g.stroke, width: 1 }, g.fill)
+      )
+      .filter((i): i is NonNullable<typeof i> => i !== null);
+    addItemsBatch(made);
+    return made.length
+      ? `Replaced ${made.length} region${made.length === 1 ? '' : 's'} — every block is editable`
+      : 'No regions found';
+  }
+
   function deleteSelected() {
     // Grip-selected nodes (arrow/line) aren't in the transformer, so merge.
     const nodes = [...new Set([...transformer.nodes(), ...(selectedNode ? [selectedNode] : [])])];
@@ -1248,6 +1294,18 @@
       bgApi.set({ removeBackground, available });
     })();
 
+    // AI Redact/Simplify bridge: enabled when an endpoint + model are set.
+    (async () => {
+      let configured = false;
+      try {
+        const s = (await ipcInvoke<Record<string, unknown>>('get_settings')) ?? {};
+        configured = !!String(s.ai_endpoint ?? '').trim() && !!String(s.ai_model ?? '').trim();
+      } catch {
+        configured = false;
+      }
+      aiApi.set({ available: configured, redact: runAiRedact, simplify: runAiSimplify });
+    })();
+
     window.addEventListener('keydown', onKeyDown);
 
     // --- Load the base image ---
@@ -1357,6 +1415,7 @@
       zoomApi.set(null);
       saveApi.set(null);
       bgApi.set(null);
+      aiApi.set(null);
       viewInfo.set(null);
       historyApi.set(null);
       unsubTool();
