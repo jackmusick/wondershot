@@ -1,7 +1,9 @@
 <script lang="ts">
   // The little bar below the canvas (Qt parity): image resolution on the left,
-  // zoom controls on the right. Reads viewInfo + drives zoomApi.
+  // zoom controls + the library count ("N shots") on the right. Reads
+  // viewInfo + captures, drives zoomApi.
   import { zoomApi, viewInfo } from '$lib/editor/zoom';
+  import { captures } from '$lib/stores';
 
   function zoom(fn: 'zoomIn' | 'zoomOut' | 'zoomActual' | 'zoomFit') {
     $zoomApi?.[fn]();
@@ -20,6 +22,7 @@
     <button class="ztext pct" title="Actual size (100%)" onclick={() => zoom('zoomActual')}>{pct}%</button>
     <button class="zbtn" title="Zoom in" aria-label="Zoom in" onclick={() => zoom('zoomIn')}>+</button>
   </div>
+  <span class="shots">{$captures.length} {$captures.length === 1 ? 'shot' : 'shots'}</span>
 </div>
 
 <style>
@@ -51,4 +54,10 @@
   .pct { min-width: 46px; font-variant-numeric: tabular-nums; }
   .zbtn:hover,
   .ztext:hover { background: var(--bg-hover); }
+  .shots {
+    margin-left: 8px;
+    font-size: var(--text-small);
+    color: var(--fg-secondary);
+    font-variant-numeric: tabular-nums;
+  }
 </style>

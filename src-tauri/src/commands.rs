@@ -946,6 +946,39 @@ pub async fn save_image_as(path: String) -> Result<Option<String>, String> {
     Ok(Some(dest.to_string_lossy().into_owned()))
 }
 
+/// Folder picker via the portal file chooser (Settings → Browse…/Add…).
+/// Returns the chosen directory, or None if cancelled.
+#[tauri::command]
+pub async fn pick_folder() -> Result<Option<String>, String> {
+    let chosen = rfd::AsyncFileDialog::new().pick_folder().await;
+    Ok(chosen.map(|d| d.path().to_string_lossy().into_owned()))
+}
+
+/// Open the desktop's global-shortcut settings (Qt parity: the Settings
+/// "Open KDE Shortcuts settings" button). KDE-only, like the Python app;
+/// errors if neither systemsettings nor kcmshell6 is on PATH.
+#[tauri::command]
+pub fn open_shortcut_settings() -> Result<(), String> {
+    let candidates: [(&str, &[&str]); 2] =
+        [("systemsettings", &["kcm_keys"]), ("kcmshell6", &["kcm_keys"])];
+    for (bin, args) in candidates {
+        let mut cmd = if in_flatpak() {
+            // The sandbox has no systemsettings; run the host's.
+            let mut c = std::process::Command::new("flatpak-spawn");
+            c.arg("--host").arg(bin).args(args);
+            c
+        } else {
+            let mut c = std::process::Command::new(bin);
+            c.args(args);
+            c
+        };
+        if cmd.spawn().is_ok() {
+            return Ok(());
+        }
+    }
+    Err("no systemsettings/kcmshell6 found — open your desktop's shortcut settings manually".into())
+}
+
 /// Open the capture's containing folder in the file manager (host file manager
 /// when sandboxed, via flatpak-spawn).
 #[tauri::command]

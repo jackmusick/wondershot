@@ -36,6 +36,20 @@ export const viewInfo = writable<ViewInfo | null>(null);
 export const saveApi = writable<(() => Promise<void>) | null>(null);
 
 /**
+ * Undo/redo bridge, mirroring zoomApi (Qt parity: the tool rail shows Undo and
+ * Redo buttons; keyboard Ctrl+Z/Ctrl+Shift+Z route to the same functions).
+ * `canUndo`/`canRedo` drive the buttons' disabled state.
+ */
+export interface HistoryApi {
+  undo: () => void;
+  redo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
+}
+
+export const historyApi = writable<HistoryApi | null>(null);
+
+/**
  * Background-removal bridge, mirroring saveApi. EditorCanvas registers its async
  * `removeBackground()` here on mount; the EditorToolbar's "Remove BG" button
  * calls it. `available` reflects whether the u2net model is installed (gates the

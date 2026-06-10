@@ -48,6 +48,14 @@ export class History<T> {
     return this.current();
   }
 
+  canUndo(): boolean {
+    return this.index > 0;
+  }
+
+  canRedo(): boolean {
+    return this.index < this.stack.length - 1;
+  }
+
   markClean(): void {
     this.cleanIndex = this.index;
   }

@@ -153,6 +153,8 @@ pub fn run() {
             commands::set_pinned,
             commands::save_image_as,
             commands::show_in_folder,
+            commands::pick_folder,
+            commands::open_shortcut_settings,
             commands::test_ai_endpoint,
             commands::show_capture_window,
             commands::open_url,

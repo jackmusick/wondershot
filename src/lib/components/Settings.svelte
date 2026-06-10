@@ -208,6 +208,38 @@
     if (e.key === 'Escape') close();
   }
 
+  /** Portal folder picker → Library folder field. */
+  async function browseLibrary() {
+    try {
+      const dir = await ipcInvoke<string | null>('pick_folder');
+      if (dir) s.library_dir = dir;
+    } catch (e) {
+      console.error('pick_folder failed', e);
+    }
+  }
+
+  /** Portal folder picker → appended to the semicolon-separated extra dirs. */
+  async function addExtraFolder() {
+    try {
+      const dir = await ipcInvoke<string | null>('pick_folder');
+      if (!dir) return;
+      const cur = String(s.extra_dirs_text ?? '').trim();
+      s.extra_dirs_text = cur ? `${cur};${dir}` : dir;
+    } catch (e) {
+      console.error('pick_folder failed', e);
+    }
+  }
+
+  let shortcutsErr = $state('');
+  async function openShortcuts() {
+    shortcutsErr = '';
+    try {
+      await ipcInvoke('open_shortcut_settings');
+    } catch (e) {
+      shortcutsErr = String(e);
+    }
+  }
+
   // Typed accessors keep bind:value happy with the loose record.
   function num(k: string): number {
     return Number(s[k] ?? 0);
@@ -240,12 +272,18 @@
         {#if tab === 'general'}
           <label class="field">
             <span>Library folder</span>
-            <input type="text" bind:value={s.library_dir} />
+            <span class="withbtn">
+              <input type="text" bind:value={s.library_dir} />
+              <button class="btn" onclick={browseLibrary}>Browse…</button>
+            </span>
             <small>Where screenshots and recordings are saved.</small>
           </label>
           <label class="field">
             <span>Extra folders</span>
-            <input type="text" bind:value={s.extra_dirs_text} placeholder="/path/one;/path/two" />
+            <span class="withbtn">
+              <input type="text" bind:value={s.extra_dirs_text} placeholder="/path/one;/path/two" />
+              <button class="btn" onclick={addExtraFolder}>Add…</button>
+            </span>
             <small>Semicolon-separated extra folders to show in the library.</small>
           </label>
           <label class="check"><input type="checkbox" bind:checked={s.copy_after_capture} /> Copy to clipboard after capture</label>
@@ -261,6 +299,16 @@
             <input type="text" bind:value={s.hotkey_capture} />
             <small>On Linux, bind this manually in KDE settings — shown here for reference.</small>
           </label>
+          <fieldset class="group">
+            <legend>Global capture hotkey</legend>
+            <small>
+              Bind a key (e.g. <b>Meta+Shift+S</b>) to the command below in your desktop's
+              shortcut settings. It reaches the running Wondershot instantly.
+            </small>
+            <input type="text" readonly value="wondershot --capture" onfocus={(e) => e.currentTarget.select()} />
+            <button class="btn wide" onclick={openShortcuts}>Open KDE Shortcuts settings</button>
+            {#if shortcutsErr}<small class="err">{shortcutsErr}</small>{/if}
+          </fieldset>
         {:else if tab === 'capture'}
           <label class="field row">
             <span>Backend</span>
@@ -346,8 +394,8 @@
           </label>
         {:else if tab === 'sharing'}
           <p class="note">
-            Upload a capture to a cloud target and copy a share link. Backends aren't
-            wired into this build yet — credentials are stored and preserved for parity.
+            Upload a capture to a cloud target and copy a share link. Credentials are
+            shared with the previous Wondershot, so an existing sign-in carries over.
           </p>
           <label class="field row">
             <span>Default provider</span>
@@ -602,6 +650,48 @@
     font-size: var(--text-small);
     line-height: 1.4;
   }
+  .withbtn {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .withbtn input { flex: 1; min-width: 0; }
+  .btn {
+    height: 28px;
+    padding: 0 12px;
+    border: 1px solid var(--border);
+    background: var(--bg-field);
+    color: var(--fg-primary);
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-size: var(--text-small);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .btn:hover { background: var(--bg-hover); }
+  .btn.wide { width: 100%; margin-top: 6px; }
+  .group {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 12px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 4px 0 0;
+  }
+  .group legend {
+    font-weight: 600;
+    font-size: var(--text-small);
+    color: var(--fg-primary);
+    padding: 0 4px;
+  }
+  .group small { color: var(--fg-secondary); line-height: 1.4; }
+  .group input[readonly] {
+    font-family: monospace;
+    color: var(--fg-primary);
+    background: var(--bg-field);
+  }
+  .err { color: var(--danger); }
   .group-label {
     font-weight: 600;
     color: var(--fg-primary);

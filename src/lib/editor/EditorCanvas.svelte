@@ -6,7 +6,7 @@
   import type { Item, Vec2 } from './model';
   import { History } from './history';
   import { drawStyle, textStyle, type DrawStyle, type TextStyle } from './style';
-  import { zoomApi, saveApi, bgApi, viewInfo } from './zoom';
+  import { zoomApi, saveApi, bgApi, viewInfo, historyApi } from './zoom';
   import { drawTools, type DrawCtx } from './tools/index';
   import { WS_NODE_NAME, nodeToItemRef, tagNode } from './tools/arrowLine';
   // Side-effect import: registers the rect/ellipse/highlight box-shape tools
@@ -136,9 +136,15 @@
   }
 
   /** Push the current base+items state onto the history stack. */
+  /** Publish undo/redo availability to the tool rail (Qt parity buttons). */
+  function syncHistoryApi() {
+    historyApi.set({ undo, redo, canUndo: history.canUndo(), canRedo: history.canRedo() });
+  }
+
   function pushHistory() {
     history.push({ baseSrc: currentBaseSrc, items: [...items] });
     syncDraggable();
+    syncHistoryApi();
     scheduleAutosave();
   }
 
@@ -506,6 +512,7 @@
     const apply = () => {
       rebuildAnnotations();
       history.reset({ baseSrc: currentBaseSrc, items: [...items] });
+      syncHistoryApi();
     };
     if (base64) {
       setBaseImage(`data:image/png;base64,${base64}`, apply);
@@ -653,14 +660,18 @@
 
   function undo() {
     const snap = history.undo();
+    syncHistoryApi();
     if (snap === null) return;
     restoreSnapshot(snap);
+    scheduleAutosave();
   }
 
   function redo() {
     const snap = history.redo();
+    syncHistoryApi();
     if (snap === null) return;
     restoreSnapshot(snap);
+    scheduleAutosave();
   }
 
   /** Pointer position in stage (image) coordinates. */
@@ -1095,6 +1106,7 @@
       zoomFit: fitToView,
     });
     saveApi.set(save);
+    syncHistoryApi();
 
     // Background-removal bridge: probe the model once on mount; the toolbar
     // disables the button when the model is absent. Failures default to false.
@@ -1127,6 +1139,7 @@
         // snapshot, so undo can restore the original (pre-destructive) base.
         currentBaseSrc = src;
         history.reset({ baseSrc: src, items: [] });
+        syncHistoryApi();
 
         fitToView();
         applyEffects();
@@ -1217,6 +1230,7 @@
       saveApi.set(null);
       bgApi.set(null);
       viewInfo.set(null);
+      historyApi.set(null);
       unsubTool();
       unsubStyle();
       unsubTextStyle();

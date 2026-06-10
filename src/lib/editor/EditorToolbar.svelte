@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { activeTool, SHORTCUTS, type ToolId } from './tools';
-  import { bgApi } from './zoom';
+  import { bgApi, historyApi } from './zoom';
   import { ipcInvoke } from '$lib/ipc';
   import { autosaveState } from '$lib/stores';
 
@@ -152,6 +152,29 @@
         </button>
       {/each}
     {/each}
+
+    <!-- Undo / Redo (Qt parity: rail buttons; Ctrl+Z / Ctrl+Shift+Z still work) -->
+    <span class="sep"></span>
+    <button
+      class="tool"
+      title="Undo (Ctrl+Z)"
+      aria-label="Undo"
+      disabled={!$historyApi?.canUndo}
+      onclick={() => $historyApi?.undo()}
+    >
+      <svg viewBox="0 0 16 16"><path d="M6 3L2.5 6.5 6 10" /><path d="M2.5 6.5H10a3.5 3.5 0 0 1 0 7H7" /></svg>
+      <span class="tlabel">Undo</span>
+    </button>
+    <button
+      class="tool"
+      title="Redo (Ctrl+Shift+Z)"
+      aria-label="Redo"
+      disabled={!$historyApi?.canRedo}
+      onclick={() => $historyApi?.redo()}
+    >
+      <svg viewBox="0 0 16 16"><path d="M10 3l3.5 3.5L10 10" /><path d="M13.5 6.5H6a3.5 3.5 0 0 0 0 7h3" /></svg>
+      <span class="tlabel">Redo</span>
+    </button>
 
     <!-- AI group: sparkle actions -->
     <span class="sep"></span>
