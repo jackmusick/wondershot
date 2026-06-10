@@ -38,6 +38,38 @@
       console.error('camera toggle failed', e);
     }
   }
+
+  // Share: upload the active capture via the default provider (Settings →
+  // Sharing) and copy the time-limited link. The result line shows inline
+  // for a few seconds, like the Qt status bar.
+  let shareBusy = $state(false);
+  let shareMsg = $state('');
+  let shareErr = $state(false);
+  async function shareActive() {
+    const item = $activeItem;
+    if (!item || shareBusy) return;
+    shareBusy = true;
+    shareErr = false;
+    shareMsg = 'Uploading…';
+    try {
+      const res = await ipcInvoke<{ url: string; provider: string; copied: boolean }>(
+        'share_capture',
+        { path: item.path }
+      );
+      shareMsg = res.copied
+        ? `Link copied (${res.provider})`
+        : `Shared via ${res.provider}: ${res.url}`;
+    } catch (e) {
+      shareErr = true;
+      shareMsg = e instanceof Error ? e.message : String(e);
+    } finally {
+      shareBusy = false;
+      const shown = shareMsg;
+      setTimeout(() => {
+        if (shareMsg === shown) shareMsg = '';
+      }, 8000);
+    }
+  }
 </script>
 
 <header class="header">
@@ -80,9 +112,17 @@
   </button>
 
   <div class="spacer"></div>
-  <button class="hbtn" disabled={!$activeItem} title="Sharing targets aren't bundled in this build">
+  {#if shareMsg}
+    <span class="sharemsg" class:err={shareErr} title={shareMsg}>{shareMsg}</span>
+  {/if}
+  <button
+    class="hbtn"
+    disabled={!$activeItem || shareBusy}
+    title="Upload via the default provider (Settings → Sharing) and copy the link"
+    onclick={shareActive}
+  >
     <svg viewBox="0 0 16 16"><path d="M3 9v4h10V9M8 11V2M5 5l3-3 3 3"/></svg>
-    Share
+    {shareBusy ? 'Sharing…' : 'Share'}
   </button>
 </header>
 {#if $view === 'editor' && $activeItem}
@@ -108,6 +148,16 @@
   }
   .hbtn svg .fill-red { fill: var(--danger); stroke: none; }
   .spacer { flex: 1; }
+  .sharemsg {
+    font-size: var(--text-small);
+    color: var(--fg-secondary);
+    max-width: 360px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 0 6px;
+  }
+  .sharemsg.err { color: var(--danger, #ff5555); }
   .rec-controls { display: inline-flex; align-items: center; gap: 4px; }
   .rec .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); margin-right: 6px;
     animation: rec-pulse 1.4s ease-in-out infinite; }

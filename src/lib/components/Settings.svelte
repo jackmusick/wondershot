@@ -7,28 +7,16 @@
   let cameras = $state<Device[]>([]);
   let mics = $state<Device[]>([]);
 
-  /** Enumerate webcam / mic inputs for the device dropdowns. Labels are only
-   * populated once the user has granted camera/mic permission (e.g. after the
-   * camera bubble has run once); until then we fall back to generic names. */
+  /** Enumerate webcam / mic inputs for the device dropdowns — from the
+   * BACKEND (gst DeviceMonitor), not the webview: WebKit anonymizes labels
+   * ("Camera 1") until a getUserMedia grant, which made the dropdowns useless
+   * and popped a permission prompt just for opening Settings. Backend labels
+   * are the same descriptions resolve_mic_source matches at record time. */
   async function enumerateDevices() {
-    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.enumerateDevices) return;
     try {
-      // Device labels + stable ids are only exposed after a getUserMedia grant.
-      // Probe briefly (cam + mic), then release — otherwise the dropdowns only
-      // ever show generic "Camera 1 / Microphone 1" placeholders.
-      try {
-        const probe = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        probe.getTracks().forEach((t) => t.stop());
-      } catch {
-        // permission denied / no device — fall back to generic names below
-      }
-      const devs = await navigator.mediaDevices.enumerateDevices();
-      cameras = devs
-        .filter((d) => d.kind === 'videoinput')
-        .map((d, i) => ({ id: d.deviceId, label: d.label || `Camera ${i + 1}` }));
-      mics = devs
-        .filter((d) => d.kind === 'audioinput')
-        .map((d, i) => ({ id: d.deviceId, label: d.label || `Microphone ${i + 1}` }));
+      const devs = (await ipcInvoke<{ kind: string; label: string }[]>('list_media_devices')) ?? [];
+      cameras = devs.filter((d) => d.kind === 'videoinput').map((d) => ({ id: d.label, label: d.label }));
+      mics = devs.filter((d) => d.kind === 'audioinput').map((d) => ({ id: d.label, label: d.label }));
     } catch {
       // ignore — selects fall back to the stored value
     }
@@ -381,7 +369,7 @@
                 <option value={s.camera_device}>{s.camera_device}</option>
               {/if}
             </select>
-            <small>Drives the camera bubble. Names appear after granting camera access once.</small>
+            <small>Drives the camera bubble.</small>
           </label>
           <label class="check"><input type="checkbox" bind:checked={s.record_cursor_halo} disabled /> Cursor halo <small class="inline">(coming soon)</small></label>
           <label class="field row">

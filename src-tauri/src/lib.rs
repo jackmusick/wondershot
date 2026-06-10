@@ -2,6 +2,7 @@ mod ai;
 mod commands;
 mod graph;
 mod media_server;
+mod share;
 mod watcher;
 
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
@@ -154,6 +155,8 @@ pub fn run() {
             commands::resume_recording,
             commands::video_thumb,
             commands::graph_connect_interactive,
+            commands::list_media_devices,
+            commands::share_capture,
             media_server::media_server_port,
             commands::grab_frame,
             commands::apply_blur,

@@ -489,6 +489,43 @@ pub fn resolve_mic_source(description: &str) -> String {
     String::new()
 }
 
+/// Enumerate capture devices for the Settings dropdowns as (kind, description)
+/// pairs — kind is "audioinput"/"videoinput". Enumerating in the BACKEND
+/// avoids the webview permission wall: until a getUserMedia grant, WebKit
+/// only reveals anonymized labels ("Camera 1"), which are useless as stored
+/// descriptions and unresolvable by [`resolve_mic_source`]. Monitor sources
+/// (sink loopbacks) are excluded, mirroring Qt's `audioInputs()`.
+pub fn list_capture_devices() -> Vec<(String, String)> {
+    use gst::prelude::*;
+    if gst::init().is_err() {
+        return Vec::new();
+    }
+    let monitor = gst::DeviceMonitor::new();
+    monitor.add_filter(Some("Audio/Source"), None);
+    monitor.add_filter(Some("Video/Source"), None);
+    if monitor.start().is_err() {
+        return Vec::new();
+    }
+    let devices = monitor.devices();
+    monitor.stop();
+    let mut out = Vec::new();
+    for d in devices {
+        let class = d.device_class().to_string();
+        let kind = if class.contains("Audio") { "audioinput" } else { "videoinput" };
+        if kind == "audioinput" {
+            let is_monitor = d
+                .properties()
+                .and_then(|p| p.get::<String>("device.class").ok())
+                .is_some_and(|c| c == "monitor");
+            if is_monitor {
+                continue;
+            }
+        }
+        out.push((kind.to_string(), d.display_name().to_string()));
+    }
+    out
+}
+
 /// Self-contained pipeline for the smoke test — needs no PipeWire/portal.
 /// `videotestsrc num-buffers=30` EOSes on its own.
 #[cfg(test)]

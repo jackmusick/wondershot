@@ -392,3 +392,132 @@ mod auth_tests {
         assert!(parse_callback("wondershot://auth").is_err());
     }
 }
+
+// -- upload + share link (msgraph.py upload/create_link/share port) -----------
+
+const SIMPLE_UPLOAD_LIMIT: u64 = 4 * 1024 * 1024;
+const UPLOAD_CHUNK: usize = 10 * 1024 * 1024; // multiple of 320 KiB
+
+fn drive_base(drive_id: &str) -> String {
+    // '' = the signed-in account's own OneDrive; a drive id targets a
+    // specific SharePoint document library.
+    if drive_id.is_empty() {
+        format!("{GRAPH}/me/drive")
+    } else {
+        format!("{GRAPH}/drives/{drive_id}")
+    }
+}
+
+/// Authenticated Graph request with a byte body; OAuth/Graph errors surface
+/// with their JSON detail.
+fn graph_send(method: &str, url: &str, token: &str, body: &[u8], ctype: &str) -> Result<Value, String> {
+    let req = ureq::request(method, url)
+        .timeout(std::time::Duration::from_secs(300))
+        .set("Authorization", &format!("Bearer {token}"))
+        .set("Content-Type", ctype);
+    match req.send_bytes(body) {
+        Ok(resp) => resp.into_json::<Value>().map_err(|e| e.to_string()),
+        Err(ureq::Error::Status(code, resp)) => {
+            let body = resp.into_string().unwrap_or_default();
+            Err(format!("Graph HTTP {code}: {}", body.chars().take(200).collect::<String>()))
+        }
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+/// Upload to `/Wondershot/<name>`; returns the item id. Small files go in one
+/// PUT; larger ones through an upload session in 10 MiB chunks (videos).
+pub fn upload(path: &str, token: &str, drive_id: &str) -> Result<String, String> {
+    use std::io::Read;
+    let name = std::path::Path::new(path)
+        .file_name()
+        .map(|n| urlencoding_minimal(&n.to_string_lossy()))
+        .ok_or("bad file name")?;
+    let base = format!("{}/root:/Wondershot/{name}:", drive_base(drive_id));
+    let size = std::fs::metadata(path).map_err(|e| e.to_string())?.len();
+
+    if size <= SIMPLE_UPLOAD_LIMIT {
+        let data = std::fs::read(path).map_err(|e| e.to_string())?;
+        let item = graph_send("PUT", &format!("{base}/content"), token, &data, "application/octet-stream")?;
+        return item
+            .get("id")
+            .and_then(|v| v.as_str())
+            .map(String::from)
+            .ok_or("upload returned no item id".into());
+    }
+
+    let session = graph_send(
+        "POST",
+        &format!("{base}/createUploadSession"),
+        token,
+        json!({"item": {"@microsoft.graph.conflictBehavior": "replace"}})
+            .to_string()
+            .as_bytes(),
+        "application/json",
+    )?;
+    let url = session
+        .get("uploadUrl")
+        .and_then(|v| v.as_str())
+        .ok_or("createUploadSession returned no uploadUrl")?;
+
+    let mut f = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    let mut offset: u64 = 0;
+    let mut item = Value::Null;
+    let mut buf = vec![0u8; UPLOAD_CHUNK];
+    while offset < size {
+        let n = f.read(&mut buf).map_err(|e| e.to_string())?;
+        if n == 0 {
+            break;
+        }
+        let end = offset + n as u64 - 1;
+        // Session PUTs are unauthenticated (the URL is the credential).
+        let resp = ureq::put(url)
+            .timeout(std::time::Duration::from_secs(300))
+            .set("Content-Length", &n.to_string())
+            .set("Content-Range", &format!("bytes {offset}-{end}/{size}"))
+            .send_bytes(&buf[..n]);
+        match resp {
+            Ok(r) => {
+                item = r.into_json::<Value>().unwrap_or(Value::Null);
+            }
+            Err(ureq::Error::Status(code, _)) => {
+                return Err(format!("chunk upload failed: HTTP {code}"));
+            }
+            Err(e) => return Err(e.to_string()),
+        }
+        offset += n as u64;
+    }
+    item.get("id")
+        .and_then(|v| v.as_str())
+        .map(String::from)
+        .ok_or("upload session returned no item id".into())
+}
+
+/// View link; anonymous when the tenant allows it, else org-scoped.
+pub fn create_link(item_id: &str, token: &str, drive_id: &str) -> Result<String, String> {
+    let mut last_err = String::new();
+    for scope in ["anonymous", "organization"] {
+        match graph_send(
+            "POST",
+            &format!("{}/items/{item_id}/createLink", drive_base(drive_id)),
+            token,
+            json!({"type": "view", "scope": scope}).to_string().as_bytes(),
+            "application/json",
+        ) {
+            Ok(out) => {
+                if let Some(url) = out.pointer("/link/webUrl").and_then(|v| v.as_str()) {
+                    return Ok(url.to_string());
+                }
+                last_err = "createLink returned no webUrl".into();
+            }
+            Err(e) => last_err = e,
+        }
+    }
+    Err(format!("createLink failed: {last_err}"))
+}
+
+/// Upload + link in one call (msgraph.share parity).
+pub fn share(path: &str, drive_id: &str) -> Result<String, String> {
+    let token = ensure_access_token()?;
+    create_link(&upload(path, &token, drive_id)?, &token, drive_id)
+}

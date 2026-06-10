@@ -48,7 +48,11 @@ pub fn chat(
     let body = serde_json::json!({
         "model": model,
         "messages": [{"role": "user", "content": content}],
-        "max_tokens": 1024,
+        // High ceiling on purpose (OG aiclient.py chat() default): a
+        // full-screen region/redaction list is long JSON, and a small
+        // max_tokens truncates the reply mid-array ("cut off" errors /
+        // empty region lists). 1024 was the bug, not a budget.
+        "max_tokens": 4096,
     });
     let mut req = ureq::post(&chat_url(endpoint))
         .timeout(std::time::Duration::from_secs(120))

@@ -26,6 +26,8 @@ ureq = { version = "2", features = ["json"] }
 # PKCE for the interactive OneDrive sign-in (S256 challenge + CSRF state).
 sha2 = "0.10"
 getrandom = "0.2"
+# SigV4 presigning (S3) + Azure SAS for the Share flow.
+hmac = "0.12"
 # Native file drag-out (filmstrip → file manager copies the real file, not a URL).
 tauri-plugin-drag = "2"
 # Live library-folder watching (Qt parity: externally created captures appear

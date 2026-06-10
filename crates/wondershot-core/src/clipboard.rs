@@ -37,6 +37,23 @@ pub fn copy_png(png: &[u8]) -> std::io::Result<bool> {
     Ok(status.success())
 }
 
+/// Put text on the clipboard via wl-copy (Wayland, focus-independent).
+/// Returns Ok(false) when not on Wayland (caller falls back to native).
+pub fn copy_text(text: &str) -> std::io::Result<bool> {
+    let wayland = std::env::var("WAYLAND_DISPLAY").ok();
+    if !should_use_wl_copy(wayland.as_deref(), wl_copy_on_path()) {
+        return Ok(false);
+    }
+    let mut child = std::process::Command::new("wl-copy")
+        .stdin(std::process::Stdio::piped())
+        .spawn()?;
+    let mut stdin = child.stdin.take().expect("piped stdin");
+    stdin.write_all(text.as_bytes())?;
+    drop(stdin);
+    let status = child.wait()?;
+    Ok(status.success())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

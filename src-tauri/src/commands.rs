@@ -1283,6 +1283,42 @@ pub fn trash_item(path: String) -> Result<(), String> {
     trash::delete(p).map_err(|e| format!("could not trash {}: {e}", path))
 }
 
+/// Share the capture at `path` via the configured default provider: upload,
+/// copy the time-limited link to the clipboard, return {url, provider}.
+/// Errors with guidance when no provider is configured/connected.
+#[tauri::command]
+pub async fn share_capture(path: String) -> Result<serde_json::Value, String> {
+    let s = Settings::load();
+    let provider = crate::share::default_provider(&s);
+    if provider.is_empty() {
+        return Err(
+            "No share provider configured — set up S3, Azure, or connect OneDrive in Settings → Sharing"
+                .into(),
+        );
+    }
+    let prov = provider.clone();
+    let url = tauri::async_runtime::spawn_blocking(move || crate::share::share_file(&s, &path, &prov))
+        .await
+        .map_err(|e| e.to_string())??;
+    // Best-effort clipboard copy (wl-clipboard path first, arboard fallback).
+    let copied = clipboard::copy_text(&url).unwrap_or(false)
+        || arboard::Clipboard::new()
+            .and_then(|mut cb| cb.set_text(url.clone()))
+            .is_ok();
+    Ok(serde_json::json!({ "url": url, "provider": provider, "copied": copied }))
+}
+
+/// Capture devices for the Settings dropdowns ({kind, label}), enumerated in
+/// the backend (gst DeviceMonitor) so no webview media permission is needed
+/// and labels match what `resolve_mic_source` resolves at record time.
+#[tauri::command]
+pub fn list_media_devices() -> Vec<serde_json::Value> {
+    recorder::list_capture_devices()
+        .into_iter()
+        .map(|(kind, label)| serde_json::json!({ "kind": kind, "label": label }))
+        .collect()
+}
+
 // --- AI Redact / Simplify (crate::ai) ----------------------------------------
 
 /// Endpoint/model/key from the shared conf's AI keys. The key is optional
