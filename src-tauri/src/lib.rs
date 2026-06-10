@@ -41,8 +41,76 @@ fn dispatch_cli(app: &tauri::AppHandle, action: CliAction) {
         CliAction::OpenUrl(url) if url.starts_with("wondershot://auth") => {
             app.state::<commands::AuthRouter>().deliver(url);
         }
-        // Version is handled before the GUI starts; URL/Launch just focus.
-        CliAction::Version | CliAction::OpenUrl(_) | CliAction::Launch => {}
+        // Version/MediaCheck are handled before the GUI starts; URL/Launch just focus.
+        CliAction::Version | CliAction::MediaCheck | CliAction::OpenUrl(_) | CliAction::Launch => {}
+    }
+}
+
+/// `wondershot --media-check` — deterministic, GUI-free verification of the
+/// exact code paths the camera bubble, Settings dropdowns, and recorder use.
+/// Run it inside the Flatpak (`flatpak run io.github.jackmusick.wondershot
+/// --media-check`) and every stage prints PASS/FAIL with the real error.
+fn media_check() {
+    use wondershot_core::record::recorder;
+    use wondershot_core::settings::Settings;
+
+    let s = Settings::load();
+    println!("wondershot media check");
+    println!("  settings camera_device: {:?}", s.camera_device);
+    println!("  settings mic_device:    {:?}", s.mic_device);
+    println!();
+
+    // 1. Device enumeration — what the Settings dropdowns show.
+    let devices = recorder::list_capture_devices();
+    if devices.is_empty() {
+        println!("[FAIL] device enumeration: no devices (gst DeviceMonitor returned nothing)");
+    } else {
+        println!("[PASS] device enumeration ({}):", devices.len());
+        for (kind, label) in &devices {
+            println!("         {kind:11} {label}");
+        }
+    }
+    println!();
+
+    // 2. Camera open + frames — exactly what the bubble streams.
+    match wondershot_core::camera::open(&s.camera_device) {
+        Ok(stream) => {
+            let mut frames = 0;
+            let mut bytes = 0usize;
+            for _ in 0..5 {
+                match stream.next_jpeg() {
+                    Some(j) => {
+                        frames += 1;
+                        bytes += j.len();
+                    }
+                    None => break,
+                }
+            }
+            if frames > 0 {
+                println!("[PASS] camera: {frames} JPEG frames ({bytes} bytes total)");
+            } else {
+                println!("[FAIL] camera: pipeline started but produced no frames in 5s");
+            }
+        }
+        Err(e) => println!("[FAIL] camera: {e}"),
+    }
+    println!();
+
+    // 3. Mic resolution + open — what a recording will do.
+    let source = recorder::resolve_mic_source(&s.mic_device);
+    if s.mic_device.is_empty() {
+        println!("[INFO] mic: no device selected (recordings use the default source)");
+    } else if source.is_empty() {
+        println!(
+            "[FAIL] mic: could not resolve {:?} to a pulse/pipewire source",
+            s.mic_device
+        );
+    } else {
+        println!("[PASS] mic resolves: {:?} -> {source}", s.mic_device);
+    }
+    match recorder::mic_probe(&source) {
+        Ok(()) => println!("[PASS] mic opens + produces audio buffers"),
+        Err(e) => println!("[FAIL] mic open: {e}"),
     }
 }
 
@@ -59,6 +127,10 @@ pub fn run() {
             if let Err(e) = commands::install_desktop() {
                 eprintln!("install-desktop failed: {e}");
             }
+            return;
+        }
+        CliAction::MediaCheck => {
+            media_check();
             return;
         }
         _ => {}

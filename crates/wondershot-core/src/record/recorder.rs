@@ -489,6 +489,38 @@ pub fn resolve_mic_source(description: &str) -> String {
     String::new()
 }
 
+/// Open the mic (`source` = pulse/pipewire source name, "" = default) and
+/// confirm it actually produces audio buffers — the GUI-free half of a
+/// recording's audio path, used by `wondershot --media-check`.
+pub fn mic_probe(source: &str) -> Result<(), String> {
+    use gst::prelude::*;
+    gst::init().map_err(|e| e.to_string())?;
+    let dev = if source.is_empty() {
+        String::new()
+    } else {
+        format!("device={source} ")
+    };
+    let desc = format!("pulsesrc {dev}! audioconvert ! appsink name=probe max-buffers=2 drop=true");
+    let pipeline = gst::parse::launch(&desc).map_err(|e| format!("mic pipeline: {e}"))?;
+    let pipeline = pipeline
+        .downcast::<gst::Pipeline>()
+        .map_err(|_| "mic pipeline was not a pipeline".to_string())?;
+    let sink = pipeline
+        .by_name("probe")
+        .and_then(|e| e.downcast::<gstreamer_app::AppSink>().ok())
+        .ok_or("mic probe sink missing")?;
+    pipeline
+        .set_state(gst::State::Playing)
+        .map_err(|e| format!("mic would not start: {e}"))?;
+    let got = sink.try_pull_sample(gst::ClockTime::from_seconds(5)).is_some();
+    let _ = pipeline.set_state(gst::State::Null);
+    if got {
+        Ok(())
+    } else {
+        Err("mic started but produced no audio in 5s".into())
+    }
+}
+
 /// Enumerate capture devices for the Settings dropdowns as (kind, description)
 /// pairs — kind is "audioinput"/"videoinput". Enumerating in the BACKEND
 /// avoids the webview permission wall: until a getUserMedia grant, WebKit

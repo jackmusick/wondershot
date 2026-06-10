@@ -12,6 +12,7 @@ pub enum CliAction {
     Quit,
     InstallDesktop,
     Version,
+    MediaCheck,
     OpenUrl(String),
 }
 
@@ -27,6 +28,7 @@ pub fn parse_args<I: IntoIterator<Item = String>>(args: I) -> CliAction {
             "--quit" => return CliAction::Quit,
             "--install-desktop" => return CliAction::InstallDesktop,
             "--version" => return CliAction::Version,
+            "--media-check" => return CliAction::MediaCheck,
             "-e" | "--edit" => {
                 return match args.get(i + 1) {
                     Some(p) => CliAction::Edit(p.clone()),
