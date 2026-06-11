@@ -108,6 +108,11 @@ fn media_check() {
     } else {
         println!("[PASS] mic resolves: {:?} -> {source}", s.mic_device);
     }
+    if recorder::have_gst_element("webrtcdsp") {
+        println!("[PASS] noise suppression (webrtcdsp) available");
+    } else {
+        println!("[WARN] webrtcdsp missing — recordings get raw mic audio (no noise suppression)");
+    }
     println!("       (speak into the mic now — sampling ~1s)");
     match recorder::mic_probe(&source) {
         Ok(peak) if peak >= 0.01 => {

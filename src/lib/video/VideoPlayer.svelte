@@ -50,7 +50,16 @@
   // --- redaction overlay: draw boxes while paused ---------------------------
   let overlayEl = $state<HTMLElement | null>(null);
   let redactions = $state<Redaction[]>([]);
-  let blur = $state(14);
+  let blur = $state(30);
+  // Seed strength from settings (video_blur_strength, default 30).
+  $effect(() => {
+    void ipcInvoke<Record<string, unknown>>('get_settings')
+      .then((s) => {
+        const v = Number(s?.video_blur_strength ?? 30);
+        if (Number.isFinite(v) && v > 0) blur = v;
+      })
+      .catch(() => {});
+  });
 
   // In-progress drag, in DISPLAY (overlay client) coords.
   let drag = $state<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
@@ -126,6 +135,7 @@
       ...redactions,
       { x: Math.round(vx), y: Math.round(vy), w: Math.round(vw), h: Math.round(vh), start, end }
     ];
+    selected = redactions.length - 1; // new blur becomes the active span
   }
 
   // In-progress drag rect in display coords for the live preview.
@@ -142,11 +152,114 @@
   function setField(i: number, field: 'start' | 'end', value: number) {
     redactions = redactions.map((r, j) => (j === i ? { ...r, [field]: value } : r));
   }
+
+  // --- timeline span bar (Qt parity: video.py SpanBar) -----------------------
+  // Each blur's [start,end] is a draggable band above the seek bar:
+  //   drag a band's edge  → adjust start/end independently
+  //   drag inside a band  → move the whole span
+  //   drag on empty bar   → redefine the SELECTED blur's span from scratch
+  // The video scrubs live during every drag.
+  let selected = $state(0);
+  let spanbarEl = $state<HTMLDivElement | null>(null);
+  type SpanDrag = { idx: number; mode: 'start' | 'end' | 'move' | 'define'; grab: number; anchor: number };
+  let spanDrag: SpanDrag | null = null;
+  const EDGE_PX = 7;
+  const MIN_SPAN = 0.05;
+
+  function round3(v: number): number {
+    return Number(v.toFixed(3));
+  }
+  function tAt(e: PointerEvent): number {
+    const r = spanbarEl!.getBoundingClientRect();
+    const f = Math.min(1, Math.max(0, (e.clientX - r.left) / Math.max(1, r.width)));
+    return f * (duration || 0);
+  }
+  function scrub(t: number) {
+    const v = videoEl;
+    const c = Math.min(Math.max(0, t), duration || 0);
+    if (v) v.currentTime = c;
+    current = c;
+  }
+
+  function spanPointerDown(e: PointerEvent) {
+    if (!duration || !spanbarEl || e.button !== 0) return;
+    spanbarEl.setPointerCapture(e.pointerId);
+    const r = spanbarEl.getBoundingClientRect();
+    const x = e.clientX - r.left;
+    const t = tAt(e);
+    // Edges win over interiors so adjacent/overlapping bands stay editable.
+    for (let i = 0; i < redactions.length; i++) {
+      const b = redactions[i];
+      const x0 = (b.start / duration) * r.width;
+      const x1 = (b.end / duration) * r.width;
+      if (Math.abs(x - x0) <= EDGE_PX) {
+        selected = i;
+        spanDrag = { idx: i, mode: 'start', grab: 0, anchor: t };
+        scrub(b.start);
+        return;
+      }
+      if (Math.abs(x - x1) <= EDGE_PX) {
+        selected = i;
+        spanDrag = { idx: i, mode: 'end', grab: 0, anchor: t };
+        scrub(b.end);
+        return;
+      }
+    }
+    for (let i = 0; i < redactions.length; i++) {
+      const b = redactions[i];
+      if (t >= b.start && t <= b.end) {
+        selected = i;
+        spanDrag = { idx: i, mode: 'move', grab: t - b.start, anchor: t };
+        scrub(t);
+        return;
+      }
+    }
+    if (redactions.length > 0) {
+      const i = Math.min(selected, redactions.length - 1);
+      selected = i;
+      spanDrag = { idx: i, mode: 'define', grab: 0, anchor: t };
+      redactions = redactions.map((b, j) =>
+        j === i ? { ...b, start: round3(t), end: round3(Math.min(duration, t + MIN_SPAN)) } : b
+      );
+      scrub(t);
+    }
+  }
+
+  function spanPointerMove(e: PointerEvent) {
+    if (!spanDrag || !duration) return;
+    const t = tAt(e);
+    const { idx, mode, grab, anchor } = spanDrag;
+    const b = redactions[idx];
+    if (!b) return;
+    if (mode === 'start') {
+      setField(idx, 'start', round3(Math.min(Math.max(0, t), b.end - MIN_SPAN)));
+    } else if (mode === 'end') {
+      setField(idx, 'end', round3(Math.max(Math.min(duration, t), b.start + MIN_SPAN)));
+    } else if (mode === 'move') {
+      const len = b.end - b.start;
+      const ns = Math.min(Math.max(0, t - grab), duration - len);
+      redactions = redactions.map((r2, j) =>
+        j === idx ? { ...r2, start: round3(ns), end: round3(ns + len) } : r2
+      );
+    } else {
+      const a = Math.min(anchor, t);
+      const z = Math.max(anchor, t);
+      redactions = redactions.map((r2, j) =>
+        j === idx ? { ...r2, start: round3(Math.max(0, a)), end: round3(Math.min(duration, Math.max(z, a + MIN_SPAN))) } : r2
+      );
+    }
+    scrub(t);
+  }
+
+  function spanPointerUp() {
+    spanDrag = null;
+  }
   function fromPlayhead(i: number, field: 'start' | 'end') {
     setField(i, field, Number(current.toFixed(3)));
   }
   function removeRedaction(i: number) {
     redactions = redactions.filter((_, j) => j !== i);
+    selected = Math.max(0, Math.min(selected, redactions.length - 1));
   }
 
   // --- apply / export status ------------------------------------------------
@@ -267,16 +380,40 @@
         <svg viewBox="0 0 16 16"><path d="M4 2.5l9 5.5-9 5.5z" /></svg>
       {/if}
     </button>
-    <input
-      class="timeline"
-      type="range"
-      min="0"
-      max={duration || 0}
-      step="0.01"
-      value={current}
-      oninput={onSeek}
-      aria-label="Seek"
-    />
+    <div class="tstack">
+      {#if redactions.length > 0}
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div
+          class="spanbar"
+          bind:this={spanbarEl}
+          onpointerdown={spanPointerDown}
+          onpointermove={spanPointerMove}
+          onpointerup={spanPointerUp}
+          onpointercancel={spanPointerUp}
+          title="Drag edges to adjust · drag inside to move · drag empty space to redefine the selected blur"
+        >
+          {#if duration > 0}
+            {#each redactions as b, i (i)}
+              <div
+                class="span"
+                class:sel={i === selected}
+                style="left:{(b.start / duration) * 100}%; width:{Math.max(0.6, ((b.end - b.start) / duration) * 100)}%"
+              ></div>
+            {/each}
+          {/if}
+        </div>
+      {/if}
+      <input
+        class="timeline"
+        type="range"
+        min="0"
+        max={duration || 0}
+        step="0.01"
+        value={current}
+        oninput={onSeek}
+        aria-label="Seek"
+      />
+    </div>
     <span class="time">{fmt(current)} / {fmt(duration)}</span>
   </div>
 
@@ -301,7 +438,8 @@
     {:else}
       <ul class="redlist">
         {#each redactions as r, i (i)}
-          <li class="redrow">
+          <!-- svelte-ignore a11y_no_noninteractive_element_interactions a11y_click_events_have_key_events -->
+          <li class="redrow" class:sel={i === selected} onclick={() => (selected = i)}>
             <span class="idx">{i + 1}</span>
             <label class="t">
               start
@@ -451,9 +589,39 @@
     height: 16px;
     fill: currentColor;
   }
-  .timeline {
+  .tstack {
     flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+  }
+  .timeline {
+    width: 100%;
     accent-color: var(--accent);
+  }
+  .spanbar {
+    position: relative;
+    height: 14px;
+    background: var(--bg-field);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: crosshair;
+    touch-action: none;
+    user-select: none;
+  }
+  .span {
+    position: absolute;
+    top: 1px;
+    bottom: 1px;
+    background: color-mix(in srgb, var(--accent) 35%, transparent);
+    border: 1px solid var(--accent);
+    border-radius: 3px;
+    cursor: grab;
+    pointer-events: none; /* the bar owns hit-testing (edges need slop) */
+  }
+  .span.sel {
+    background: color-mix(in srgb, var(--accent) 65%, transparent);
   }
   .time {
     font-size: var(--text-small);
@@ -518,6 +686,10 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
+  }
+  .redrow.sel {
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    border-radius: var(--radius);
   }
   .redrow {
     display: flex;

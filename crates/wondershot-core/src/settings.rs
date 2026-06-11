@@ -64,7 +64,7 @@ impl Default for Settings {
             stroke_width: 10,
             font_size: 24,
             tool_color: "#e3242b".into(),
-            video_blur_strength: 14,
+            video_blur_strength: 30,
             gif_fps: 12,
             gif_max_width: 720,
             effect_rounded: false,
@@ -141,7 +141,7 @@ impl Settings {
                 "stroke_width" => s.stroke_width = v.parse().unwrap_or(10),
                 "font_size" => s.font_size = v.parse().unwrap_or(24),
                 "tool_color" => s.tool_color = v.to_string(),
-                "video_blur_strength" => s.video_blur_strength = v.parse().unwrap_or(14),
+                "video_blur_strength" => s.video_blur_strength = v.parse().unwrap_or(30),
                 "gif_fps" => s.gif_fps = v.parse().unwrap_or(12),
                 "gif_max_width" => s.gif_max_width = v.parse().unwrap_or(720),
                 "effect_rounded" => s.effect_rounded = v == "true",
@@ -308,7 +308,7 @@ mod tests {
         assert_eq!(s.stroke_width, 10);
         assert_eq!(s.font_size, 24);
         assert_eq!(s.tool_color, "#e3242b");
-        assert_eq!(s.video_blur_strength, 14);
+        assert_eq!(s.video_blur_strength, 30);
         assert_eq!(s.gif_fps, 12);
         assert_eq!(s.gif_max_width, 720);
         assert_eq!(s.effect_corner_radius, 16);

@@ -585,15 +585,15 @@ pub async fn start_recording(
     let tmp = rendering.join(&name);
     let out = paths::unique_path(library_dir, &name);
 
-    // NOTE: have_webrtcdsp is hardcoded false for M4 — src-tauri has no
-    // gstreamer dependency to probe ElementFactory::find("webrtcdsp").
     // mic_device in settings is a human-readable description (shared with the
-    // Python app's conf); resolve it to the pulse source name here.
+    // Python app's conf); resolve it to the pulse source name here. webrtcdsp
+    // is probed for real (record.py parity) — the GNOME runtime ships it, and
+    // without it the noise_suppression setting silently did nothing.
     let opts = pipeline::PipelineOpts {
         mic_enabled: s.mic_enabled,
         mic_device: recorder::resolve_mic_source(&s.mic_device),
         noise_suppression: s.noise_suppression,
-        have_webrtcdsp: false,
+        have_webrtcdsp: recorder::have_gst_element("webrtcdsp"),
         crop: None,
         halo: s.record_cursor_halo,
     };

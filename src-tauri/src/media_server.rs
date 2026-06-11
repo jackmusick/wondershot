@@ -101,19 +101,44 @@ pub fn start() -> u16 {
     port
 }
 
+/// Each new /camera request bumps this; older streams notice and end, so the
+/// (exclusive) v4l2 device is released for the newcomer instead of the two
+/// fighting over it.
+static CAMERA_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 /// Streams MJPEG parts from a backend camera pipeline. tiny_http pulls this
 /// Reader until the client disconnects; dropping it tears the pipeline down.
 struct MjpegReader {
     stream: wondershot_core::camera::CameraStream,
     buf: Vec<u8>,
     pos: usize,
+    generation: u64,
 }
 
 impl std::io::Read for MjpegReader {
     fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
-        if self.pos >= self.buf.len() {
-            let Some(jpeg) = self.stream.next_jpeg() else {
-                return Ok(0); // camera gone / timeout → end the stream
+        use std::sync::atomic::Ordering;
+        while self.pos >= self.buf.len() {
+            // A newer stream superseded this one → end promptly (frees the cam).
+            if CAMERA_GEN.load(Ordering::SeqCst) != self.generation {
+                return Ok(0);
+            }
+            // Short pulls so supersession is noticed fast; tolerate brief
+            // gaps (exposure adjustments etc.) before declaring the cam gone.
+            let mut misses = 0u32;
+            let jpeg = loop {
+                match self.stream.next_jpeg_timeout(500) {
+                    Some(j) => break Some(j),
+                    None => {
+                        misses += 1;
+                        if CAMERA_GEN.load(Ordering::SeqCst) != self.generation || misses >= 8 {
+                            break None;
+                        }
+                    }
+                }
+            };
+            let Some(jpeg) = jpeg else {
+                return Ok(0); // superseded or ~4s of silence → end the stream
             };
             self.buf = format!(
                 "--wsframe\r\nContent-Type: image/jpeg\r\nContent-Length: {}\r\n\r\n",
@@ -141,14 +166,16 @@ fn camera_handle(request: tiny_http::Request) {
         .split_once("label=")
         .map(|(_, v)| urlencoding_decode(v.split('&').next().unwrap_or(v)))
         .unwrap_or_default();
-    match wondershot_core::camera::open(&label) {
+    let generation = CAMERA_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+    // Retry across the previous stream's release window (≤ ~4s worst case).
+    match wondershot_core::camera::open_with_retry(&label, 15, 350) {
         Ok(stream) => {
             let ctype = tiny_http::Header::from_bytes(
                 &b"Content-Type"[..],
                 &b"multipart/x-mixed-replace; boundary=wsframe"[..],
             )
             .unwrap();
-            let reader = MjpegReader { stream, buf: Vec::new(), pos: 0 };
+            let reader = MjpegReader { stream, buf: Vec::new(), pos: 0, generation };
             let _ = request.respond(tiny_http::Response::new(
                 tiny_http::StatusCode(200),
                 vec![ctype],

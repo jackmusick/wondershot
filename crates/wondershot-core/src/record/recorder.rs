@@ -531,6 +531,15 @@ pub fn resolve_mic_source(description: &str) -> String {
     String::new()
 }
 
+/// Whether a gst element factory exists (ports record.py `_have_gst_element`).
+/// Gates optional pipeline pieces like webrtcdsp noise suppression.
+pub fn have_gst_element(name: &str) -> bool {
+    if gst::init().is_err() {
+        return false;
+    }
+    gst::ElementFactory::find(name).is_some()
+}
+
 /// Open the mic (`source` = pulse/pipewire source name, "" = default), pull
 /// ~1s of audio, and return the PEAK level as a 0.0–1.0 fraction — the
 /// GUI-free half of a recording's audio path, used by `wondershot

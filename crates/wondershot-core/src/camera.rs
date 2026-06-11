@@ -123,13 +123,39 @@ impl CameraStream {
     /// Block (up to 5s) for the next JPEG frame; None on timeout/EOS — the
     /// server treats that as end-of-stream.
     pub fn next_jpeg(&self) -> Option<Vec<u8>> {
+        self.next_jpeg_timeout(5000)
+    }
+
+    /// Like [`next_jpeg`] with a caller-chosen timeout. Short timeouts let a
+    /// streaming loop notice cancellation quickly (and release the device —
+    /// v4l2 devices are exclusive-open).
+    pub fn next_jpeg_timeout(&self, timeout_ms: u64) -> Option<Vec<u8>> {
         let sample = self
             .appsink
-            .try_pull_sample(gst::ClockTime::from_seconds(5))?;
+            .try_pull_sample(gst::ClockTime::from_mseconds(timeout_ms))?;
         let buffer = sample.buffer()?;
         let map = buffer.map_readable().ok()?;
         Some(map.as_slice().to_vec())
     }
+}
+
+/// [`open`] with retries: v4l2 devices are exclusive, and the previous
+/// stream's pipeline can hold the node for a moment after its client
+/// disconnects (hide → quick re-show, or stop-recording → bubble restart).
+pub fn open_with_retry(label: &str, attempts: u32, delay_ms: u64) -> Result<CameraStream, String> {
+    let mut last = String::new();
+    for i in 0..attempts {
+        match open(label) {
+            Ok(s) => return Ok(s),
+            Err(e) => {
+                last = e;
+                if i + 1 < attempts {
+                    std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+                }
+            }
+        }
+    }
+    Err(last)
 }
 
 impl Drop for CameraStream {
