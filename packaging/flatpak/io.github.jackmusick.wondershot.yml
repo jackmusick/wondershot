@@ -1,12 +1,20 @@
 # Flatpak manifest — the Tauri Wondershot bundle (one install, real menu integration).
 #
 # Local build + run (needs the .deb next to this file, named wondershot.deb):
-#   npm run tauri build -- --features bgremove
+#   npm run tauri build -- --bundles deb --features bgremove
 #   cp src-tauri/target/release/bundle/deb/Wondershot_*_amd64.deb \
 #     packaging/flatpak/wondershot.deb
 #   flatpak-builder --user --install --force-clean build-dir \
 #     packaging/flatpak/io.github.jackmusick.wondershot.yml
 #   flatpak run io.github.jackmusick.wondershot
+#
+# Distributable single-file bundle — ALWAYS pass --runtime-repo, or the
+# bundle can't resolve org.gnome.Platform on machines that don't already
+# have it (fresh installs fail with "runtime ... not found"):
+#   flatpak-builder --user --force-clean --repo=REPO build-dir <this file>
+#   flatpak build-bundle \
+#     --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo \
+#     REPO wondershot.flatpak io.github.jackmusick.wondershot
 #
 # Like wonderblob's manifest, this does NOT compile Rust/JS in the sandbox —
 # it unpacks the prebuilt .deb and relies on org.gnome.Platform for
