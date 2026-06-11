@@ -254,8 +254,15 @@
   function spanPointerUp() {
     spanDrag = null;
   }
-  function fromPlayhead(i: number, field: 'start' | 'end') {
-    setField(i, field, Number(current.toFixed(3)));
+
+  /** Delete/Backspace removes the selected blur region. */
+  function onKeyDown(e: KeyboardEvent) {
+    const el = e.target as HTMLElement | null;
+    if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
+    if ((e.key === 'Delete' || e.key === 'Backspace') && redactions.length > 0) {
+      removeRedaction(selected);
+      e.preventDefault();
+    }
   }
   function removeRedaction(i: number) {
     redactions = redactions.filter((_, j) => j !== i);
@@ -334,6 +341,8 @@
   }
 </script>
 
+<svelte:window onkeydown={onKeyDown} />
+
 <div class="player">
   <div class="stage">
     <!-- svelte-ignore a11y_media_has_caption -->
@@ -398,7 +407,10 @@
                 class="span"
                 class:sel={i === selected}
                 style="left:{(b.start / duration) * 100}%; width:{Math.max(0.6, ((b.end - b.start) / duration) * 100)}%"
-              ></div>
+              >
+                <span class="grip l"></span>
+                <span class="grip r"></span>
+              </div>
             {/each}
           {/if}
         </div>
@@ -436,26 +448,12 @@
     {#if redactions.length === 0}
       <div class="empty">Pause the video and drag a box to redact a region.</div>
     {:else}
-      <ul class="redlist">
-        {#each redactions as r, i (i)}
-          <!-- svelte-ignore a11y_no_noninteractive_element_interactions a11y_click_events_have_key_events -->
-          <li class="redrow" class:sel={i === selected} onclick={() => (selected = i)}>
-            <span class="idx">{i + 1}</span>
-            <label class="t">
-              start
-              <input type="number" min="0" step="0.1" value={r.start} oninput={(e) => setField(i, 'start', Number((e.target as HTMLInputElement).value))} />
-            </label>
-            <button class="set" title="Set start from playhead" onclick={() => fromPlayhead(i, 'start')}>⌖</button>
-            <label class="t">
-              end
-              <input type="number" min="0" step="0.1" value={r.end} oninput={(e) => setField(i, 'end', Number((e.target as HTMLInputElement).value))} />
-            </label>
-            <button class="set" title="Set end from playhead" onclick={() => fromPlayhead(i, 'end')}>⌖</button>
-            <div class="spacer"></div>
-            <button class="del" title="Delete region" aria-label="Delete region" onclick={() => removeRedaction(i)}>✕</button>
-          </li>
-        {/each}
-      </ul>
+      <div class="spanhint">
+        {redactions.length} region{redactions.length === 1 ? '' : 's'} — the orange bands above
+        the timeline are when each blur is active: drag the handles to adjust, drag inside to
+        move, click a band to select it.
+        <button class="del" title="Delete the selected region (Del)" aria-label="Delete the selected region" onclick={() => removeRedaction(selected)}>✕ region {selected + 1}</button>
+      </div>
     {/if}
   </div>
 
@@ -600,9 +598,11 @@
     width: 100%;
     accent-color: var(--accent);
   }
+  /* Blur-span bands: deliberately NOT the accent blue — these are blur time
+     ranges, not a seek control. */
   .spanbar {
     position: relative;
-    height: 14px;
+    height: 18px;
     background: var(--bg-field);
     border: 1px solid var(--border);
     border-radius: 4px;
@@ -614,14 +614,38 @@
     position: absolute;
     top: 1px;
     bottom: 1px;
-    background: color-mix(in srgb, var(--accent) 35%, transparent);
-    border: 1px solid var(--accent);
+    background: color-mix(in srgb, #f59e0b 30%, transparent);
+    border: 1px solid #f59e0b;
     border-radius: 3px;
     cursor: grab;
     pointer-events: none; /* the bar owns hit-testing (edges need slop) */
   }
   .span.sel {
-    background: color-mix(in srgb, var(--accent) 65%, transparent);
+    background: color-mix(in srgb, #f59e0b 55%, transparent);
+    border-color: #fbbf24;
+  }
+  .grip {
+    position: absolute;
+    top: 2px;
+    bottom: 2px;
+    width: 4px;
+    border-radius: 2px;
+    background: #fde68a;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  }
+  .grip.l { left: -2px; }
+  .grip.r { right: -2px; }
+  .spanhint {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: var(--text-small);
+    color: var(--fg-secondary);
+    padding: 4px 2px;
+  }
+  .spanhint .del {
+    margin-left: auto;
+    white-space: nowrap;
   }
   .time {
     font-size: var(--text-small);
@@ -678,71 +702,6 @@
     color: var(--fg-secondary);
     font-size: var(--text-small);
     padding: 10px 2px;
-  }
-  .redlist {
-    list-style: none;
-    margin: 8px 0 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-  .redrow.sel {
-    background: color-mix(in srgb, var(--accent) 14%, transparent);
-    border-radius: var(--radius);
-  }
-  .redrow {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    background: var(--bg-field);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 4px 8px;
-  }
-  .redrow .idx {
-    width: 18px;
-    height: 18px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--accent);
-    color: #fff;
-    border-radius: 50%;
-    font-size: 10px;
-    font-weight: 700;
-    flex-shrink: 0;
-  }
-  .t {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    font-size: var(--text-small);
-    color: var(--fg-secondary);
-  }
-  .t input[type='number'] {
-    width: 64px;
-    height: 22px;
-    background: var(--bg-content);
-    color: var(--fg-primary);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    font-size: var(--text-small);
-    padding: 0 4px;
-  }
-  .set {
-    height: 22px;
-    min-width: 22px;
-    border: 1px solid var(--border);
-    background: var(--bg-content);
-    color: var(--fg-primary);
-    border-radius: var(--radius);
-    cursor: pointer;
-    font-size: 13px;
-    line-height: 1;
-  }
-  .set:hover {
-    background: var(--bg-hover);
   }
   .del {
     height: 22px;

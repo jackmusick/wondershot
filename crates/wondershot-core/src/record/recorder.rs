@@ -499,36 +499,54 @@ pub fn resolve_mic_source(description: &str) -> String {
     }
     let devices = monitor.devices();
     monitor.stop();
-    for d in devices {
-        let name = d.display_name();
-        if name == description || name.starts_with(description) || description.starts_with(name.as_str()) {
-            // PipeWire-provider devices: `node.name` IS the pulse-compatible
-            // source name (pipewire-pulse maps them 1:1) — and their element
-            // (pipewiresrc) has no `device` property at all (reading it via
-            // glib PANICS, it doesn't error).
-            if let Some(props) = d.properties() {
-                if let Ok(node) = props.get::<String>("node.name") {
-                    if !node.is_empty() {
-                        return node;
-                    }
-                }
-            }
-            // Pulse-provider devices: the configured element carries the
-            // source name in `device` — guarded, never assumed to exist.
-            if let Ok(elem) = d.create_element(None) {
-                if elem.find_property("device").is_some() {
-                    let v = elem.property_value("device");
-                    if let Ok(Some(s)) = v.get::<Option<String>>() {
-                        return s;
-                    }
-                    if let Ok(s) = v.get::<String>() {
-                        return s;
-                    }
+
+    /// The pulse/pipewire source name for a gst Device. PipeWire-provider
+    /// devices: `node.name` IS the pulse-compatible name (pipewire-pulse maps
+    /// them 1:1) — and their element (pipewiresrc) has no `device` property
+    /// at all (reading it via glib PANICS, it doesn't error). Pulse-provider
+    /// devices carry it in the configured element's `device` — guarded.
+    fn source_name(d: &gst::Device) -> Option<String> {
+        use gst::prelude::*;
+        if let Some(props) = d.properties() {
+            if let Ok(node) = props.get::<String>("node.name") {
+                if !node.is_empty() {
+                    return Some(node);
                 }
             }
         }
+        if let Ok(elem) = d.create_element(None) {
+            if elem.find_property("device").is_some() {
+                let v = elem.property_value("device");
+                if let Ok(Some(s)) = v.get::<Option<String>>() {
+                    return Some(s);
+                }
+                if let Ok(s) = v.get::<String>() {
+                    return Some(s);
+                }
+            }
+        }
+        None
     }
-    String::new()
+
+    fn is_monitor(d: &gst::Device) -> bool {
+        use gst::prelude::*;
+        d.properties()
+            .and_then(|p| p.get::<String>("device.class").ok())
+            .is_some_and(|c| c == "monitor")
+    }
+
+    let real: Vec<gst::Device> = devices.into_iter().filter(|d| !is_monitor(d)).collect();
+    let matched = real.iter().find(|d| {
+        let name = d.display_name();
+        name == description || name.starts_with(description) || description.starts_with(name.as_str())
+    });
+    // A selected-but-gone device (unplugged dock, renamed node) falls back to
+    // the FIRST real microphone — never the pulse default, which on PipeWire
+    // desktops can be a monitor/loopback that records the speakers.
+    matched
+        .or_else(|| real.first())
+        .and_then(source_name)
+        .unwrap_or_default()
 }
 
 /// Whether a gst element factory exists (ports record.py `_have_gst_element`).

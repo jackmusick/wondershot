@@ -24,6 +24,15 @@
         }));
       cameras = pick('videoinput');
       mics = pick('audioinput');
+      // A saved device that no longer exists (unplugged, renamed) must not
+      // linger as a ghost selection — reset to Default so what's shown is
+      // what will actually be used (the backend falls back the same way).
+      if (s.camera_device && !cameras.some((d) => d.label === s.camera_device)) {
+        s.camera_device = '';
+      }
+      if (s.mic_device && !mics.some((d) => d.label === s.mic_device)) {
+        s.mic_device = '';
+      }
     } catch {
       // ignore — selects fall back to the stored value
     }
@@ -366,9 +375,6 @@
               {#each mics as d (d.id)}
                 <option value={d.label}>{d.label}</option>
               {/each}
-              {#if s.mic_device && !mics.some((d) => d.label === s.mic_device)}
-                <option value={s.mic_device}>{s.mic_device}</option>
-              {/if}
             </select>
           </label>
           <label class="check"><input type="checkbox" bind:checked={s.noise_suppression} /> Noise suppression</label>
@@ -383,9 +389,6 @@
               {#each cameras as d (d.id)}
                 <option value={d.label}>{d.label}</option>
               {/each}
-              {#if s.camera_device && !cameras.some((d) => d.label === s.camera_device)}
-                <option value={s.camera_device}>{s.camera_device}</option>
-              {/if}
             </select>
             <small>Drives the camera bubble.</small>
           </label>
