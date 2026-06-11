@@ -178,14 +178,63 @@ pub fn run() {
             let tray = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 let record_item =
                     MenuItemBuilder::with_id("record-toggle", "Record / Stop").build(&tray_handle)?;
-                let menu = MenuBuilder::new(&tray_handle).item(&record_item).build()?;
-                TrayIconBuilder::new()
-                    .tooltip("Wondershot")
-                    .menu(&menu)
+                let show_item =
+                    MenuItemBuilder::with_id("show", "Open Wondershot").build(&tray_handle)?;
+                let quit_item =
+                    MenuItemBuilder::with_id("quit", "Quit Wondershot").build(&tray_handle)?;
+                let menu = MenuBuilder::new(&tray_handle)
+                    .item(&record_item)
+                    .separator()
+                    .item(&show_item)
+                    .item(&quit_item)
+                    .build()?;
+                let mut builder = TrayIconBuilder::new().tooltip("Wondershot").menu(&menu);
+                // An explicit icon is required — without one the item registers
+                // but renders blank ("the icon is there but invisible").
+                if let Some(icon) = tray_handle.default_window_icon().cloned() {
+                    builder = builder.icon(icon);
+                }
+                // Flatpak: tray-icon writes the icon PNG to a temp dir and tells
+                // the SNI host (plasmashell) to load it from that path. The
+                // default $TEMP is inside the sandbox, which the host can't read
+                // → a blank icon. Redirect it to the app cache dir, which lives
+                // under the real $HOME (host-readable via --filesystem=home).
+                if let Ok(cache) = tray_handle.path().app_cache_dir() {
+                    let dir = cache.join("tray-icon");
+                    let _ = std::fs::create_dir_all(&dir);
+                    builder = builder.temp_dir_path(dir);
+                }
+                builder
                     .on_menu_event(|app, event| {
-                        use tauri::Emitter;
-                        if event.id() == "record-toggle" {
-                            let _ = app.emit("tray://record-toggle", ());
+                        use tauri::{Emitter, Manager};
+                        match event.id().as_ref() {
+                            "record-toggle" => {
+                                let _ = app.emit("tray://record-toggle", ());
+                            }
+                            "show" => {
+                                if let Some(w) = app.get_webview_window("main") {
+                                    let _ = w.show();
+                                    let _ = w.unminimize();
+                                    let _ = w.set_focus();
+                                }
+                            }
+                            // Hard-exit to skip the crash-prone GTK/WebKit
+                            // teardown that SIGABRTs on a normal app.exit().
+                            "quit" => std::process::exit(0),
+                            _ => {}
+                        }
+                    })
+                    // Left-click the tray icon → bring the main window back, so a
+                    // closed-to-tray app is always recoverable without the menu.
+                    .on_tray_icon_event(|tray, event| {
+                        use tauri::tray::{MouseButton, TrayIconEvent};
+                        use tauri::Manager;
+                        if let TrayIconEvent::Click { button: MouseButton::Left, .. } = event {
+                            if let Some(w) = tray.app_handle().get_webview_window("main") {
+                                let _ = w.show();
+                                let _ = w.unminimize();
+                                let _ = w.set_focus();
+                            }
                         }
                     })
                     .build(&tray_handle)?;
@@ -200,22 +249,29 @@ pub fn run() {
                 ),
             }
 
-            // Closing the main window must QUIT when there is no tray: the
-            // hidden helper windows (bubble/countdown/capture) otherwise keep
-            // the process alive as an unreachable ghost — and the
-            // single-instance plugin then forwards every relaunch to a main
-            // window that no longer exists ("app won't reopen", stray bwrap).
-            // With a working tray, staying resident is the Python app's
-            // close-to-tray behavior, so keep it.
-            if !tray_ok {
-                if let Some(main) = app.get_webview_window("main") {
-                    let handle = app.handle().clone();
-                    main.on_window_event(move |e| {
-                        if matches!(e, tauri::WindowEvent::Destroyed) {
-                            handle.exit(0);
+            // Window-close behaviour:
+            //  - With a tray: HIDE to tray (Python close-to-tray parity) — do
+            //    NOT let the window be destroyed. Destroying it makes the tray
+            //    "Open"/click unable to bring it back (the handle is gone) AND
+            //    routinely aborts WebKit's web process during teardown — that's
+            //    the "crash on close" notification. Hiding keeps the live
+            //    window so relaunch/tray just re-shows it.
+            //  - Without a tray: there's nowhere to reopen from, so quit. Use
+            //    std::process::exit to terminate immediately and skip Tauri's
+            //    crash-prone async GTK/WebKit teardown (the SIGABRT on exit);
+            //    the OS reclaims the camera/PipeWire/portal resources cleanly.
+            if let Some(main) = app.get_webview_window("main") {
+                let win = main.clone();
+                main.on_window_event(move |e| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = e {
+                        if tray_ok {
+                            api.prevent_close();
+                            let _ = win.hide();
+                        } else {
+                            std::process::exit(0);
                         }
-                    });
-                }
+                    }
+                });
             }
 
             // Act on the launch args once the webview's cli:// listeners are

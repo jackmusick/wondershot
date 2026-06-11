@@ -990,8 +990,14 @@ pub fn set_camera_bubble(app: tauri::AppHandle, visible: bool) -> Result<(), Str
         let _ = app.emit("bubble://shown", ());
     } else {
         w.hide().map_err(|e| e.to_string())?;
-        // Release the webcam while hidden.
+        // Release the webcam while hidden. The bubble://hidden event asks the
+        // webview to drop its <img> (closes the socket), but WebKitGTK often
+        // keeps a multipart/x-mixed-replace connection alive — leaving the gst
+        // pipeline PLAYING and the PipeWire camera node "in use", which keeps
+        // the machine awake. Tear the stream down from the backend too so the
+        // release is deterministic regardless of what the webview does.
         let _ = app.emit("bubble://hidden", ());
+        crate::media_server::stop_camera();
     }
     Ok(())
 }

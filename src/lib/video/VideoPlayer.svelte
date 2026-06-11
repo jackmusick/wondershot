@@ -51,6 +51,14 @@
   let overlayEl = $state<HTMLElement | null>(null);
   let redactions = $state<Redaction[]>([]);
   let blur = $state(30);
+
+  // Per-region colour (Qt parity: video.py PALETTE). Used to tell the timeline
+  // bands apart and to tint the SELECTED overlay box — never the export, which
+  // is a plain ffmpeg boxblur with no colour.
+  const PALETTE = ['#f59e0b', '#3b82f6', '#10b981', '#ef4444', '#a855f7', '#ec4899', '#22d3ee', '#84cc16'];
+  function colorOf(i: number): string {
+    return PALETTE[i % PALETTE.length];
+  }
   // Seed strength from settings (video_blur_strength, default 30).
   $effect(() => {
     void ipcInvoke<Record<string, unknown>>('get_settings')
@@ -165,6 +173,28 @@
   let spanDrag: SpanDrag | null = null;
   const EDGE_PX = 7;
   const MIN_SPAN = 0.05;
+  // Hover cursor on the span bar — Qt SpanBar parity (video.py mouseMoveEvent):
+  // resize over an edge handle, grab over a band body, crosshair on empty.
+  let spanCursor = $state('crosshair');
+
+  /** What a press at the pointer would do (edge handle / band body / empty). */
+  function spanHit(e: PointerEvent): 'start' | 'end' | 'move' | null {
+    if (!duration || !spanbarEl) return null;
+    const r = spanbarEl.getBoundingClientRect();
+    const x = e.clientX - r.left;
+    const t = tAt(e);
+    // Edges first so adjacent/overlapping bands stay resizable.
+    for (let i = 0; i < redactions.length; i++) {
+      const b = redactions[i];
+      if (Math.abs(x - (b.start / duration) * r.width) <= EDGE_PX) return 'start';
+      if (Math.abs(x - (b.end / duration) * r.width) <= EDGE_PX) return 'end';
+    }
+    for (let i = 0; i < redactions.length; i++) {
+      const b = redactions[i];
+      if (t >= b.start && t <= b.end) return 'move';
+    }
+    return null;
+  }
 
   function round3(v: number): number {
     return Number(v.toFixed(3));
@@ -195,12 +225,14 @@
       if (Math.abs(x - x0) <= EDGE_PX) {
         selected = i;
         spanDrag = { idx: i, mode: 'start', grab: 0, anchor: t };
+        spanCursor = 'ew-resize';
         scrub(b.start);
         return;
       }
       if (Math.abs(x - x1) <= EDGE_PX) {
         selected = i;
         spanDrag = { idx: i, mode: 'end', grab: 0, anchor: t };
+        spanCursor = 'ew-resize';
         scrub(b.end);
         return;
       }
@@ -210,6 +242,7 @@
       if (t >= b.start && t <= b.end) {
         selected = i;
         spanDrag = { idx: i, mode: 'move', grab: t - b.start, anchor: t };
+        spanCursor = 'grabbing';
         scrub(t);
         return;
       }
@@ -218,6 +251,7 @@
       const i = Math.min(selected, redactions.length - 1);
       selected = i;
       spanDrag = { idx: i, mode: 'define', grab: 0, anchor: t };
+      spanCursor = 'grabbing';
       redactions = redactions.map((b, j) =>
         j === i ? { ...b, start: round3(t), end: round3(Math.min(duration, t + MIN_SPAN)) } : b
       );
@@ -226,7 +260,14 @@
   }
 
   function spanPointerMove(e: PointerEvent) {
-    if (!spanDrag || !duration) return;
+    if (!spanDrag) {
+      // Not dragging: reflect what a press would do, so the edge handles are
+      // discoverable (Qt SpanBar cursor parity).
+      const h = spanHit(e);
+      spanCursor = h === 'start' || h === 'end' ? 'ew-resize' : h === 'move' ? 'grab' : 'crosshair';
+      return;
+    }
+    if (!duration) return;
     const t = tAt(e);
     const { idx, mode, grab, anchor } = spanDrag;
     const b = redactions[idx];
@@ -253,6 +294,7 @@
 
   function spanPointerUp() {
     spanDrag = null;
+    spanCursor = 'crosshair'; // next hover recomputes the handle/body cursor
   }
 
   /** Delete/Backspace removes the selected blur region. */
@@ -368,7 +410,22 @@
       onpointerup={onPointerUp}
     >
       {#each redactions as r, i (i)}
-        <div class="redbox" style={boxStyle(r)} title={`${r.start.toFixed(1)}s–${r.end.toFixed(1)}s`}></div>
+        <!-- Qt parity (video.py:295): only frost the region while the playhead
+             is inside its span — scrubbing previews exactly what gets blurred
+             and when. Outside the span this blur isn't applied, so it vanishes. -->
+        {#if current >= r.start && current <= r.end}
+          <!-- Plain blur by default; only the SELECTED region gets its palette
+               colour, so you can tell which one you're editing. Colour is
+               preview-only CSS — it never reaches the exported video. -->
+          <div
+            class="redbox"
+            class:sel={i === selected}
+            style="{boxStyle(r)};--c:{colorOf(i)}"
+            title={`${r.start.toFixed(1)}s–${r.end.toFixed(1)}s`}
+          >
+            {#if i === selected}<span class="rednum">{i + 1}</span>{/if}
+          </div>
+        {/if}
       {/each}
       {#if drag}
         <div class="redbox active" style={dragStyle}></div>
@@ -394,6 +451,7 @@
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div
           class="spanbar"
+          style="cursor:{spanCursor}"
           bind:this={spanbarEl}
           onpointerdown={spanPointerDown}
           onpointermove={spanPointerMove}
@@ -406,7 +464,7 @@
               <div
                 class="span"
                 class:sel={i === selected}
-                style="left:{(b.start / duration) * 100}%; width:{Math.max(0.6, ((b.end - b.start) / duration) * 100)}%"
+                style="left:{(b.start / duration) * 100}%; width:{Math.max(0.6, ((b.end - b.start) / duration) * 100)}%; --c:{colorOf(i)}"
               >
                 <span class="grip l"></span>
                 <span class="grip r"></span>
@@ -531,17 +589,36 @@
   }
   .redbox {
     position: absolute;
-    border: 1.5px solid var(--accent);
-    background: rgba(255, 255, 255, 0.08);
+    /* Plain blur — neutral hairline only, no colour, so it reads as a frosted
+       region. Colour appears solely on the selected box (.sel). */
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    background: transparent;
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
     border-radius: 2px;
     pointer-events: none;
   }
+  /* The in-progress draw band (transient) — accent so you see what you're drawing. */
   .redbox.active {
+    border-color: var(--accent);
     background: rgba(59, 130, 246, 0.18);
     backdrop-filter: blur(4px);
     -webkit-backdrop-filter: blur(4px);
+  }
+  .redbox.sel {
+    border: 2px solid var(--c);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+  }
+  .rednum {
+    position: absolute;
+    top: 2px;
+    left: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+    pointer-events: none;
   }
   .hint {
     position: absolute;
@@ -610,19 +687,22 @@
     touch-action: none;
     user-select: none;
   }
+  /* Each band is tinted with its region's palette colour (--c) so multiple
+     blurs are distinguishable; the selected one is more saturated. */
   .span {
     position: absolute;
     top: 1px;
     bottom: 1px;
-    background: color-mix(in srgb, #f59e0b 30%, transparent);
-    border: 1px solid #f59e0b;
+    background: color-mix(in srgb, var(--c) 28%, transparent);
+    border: 1px solid var(--c);
     border-radius: 3px;
     cursor: grab;
     pointer-events: none; /* the bar owns hit-testing (edges need slop) */
   }
   .span.sel {
-    background: color-mix(in srgb, #f59e0b 55%, transparent);
-    border-color: #fbbf24;
+    background: color-mix(in srgb, var(--c) 60%, transparent);
+    border-width: 2px;
+    z-index: 1;
   }
   .grip {
     position: absolute;
@@ -630,7 +710,7 @@
     bottom: 2px;
     width: 4px;
     border-radius: 2px;
-    background: #fde68a;
+    background: rgba(255, 255, 255, 0.92);
     box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
   }
   .grip.l { left: -2px; }

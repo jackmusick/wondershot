@@ -106,6 +106,16 @@ pub fn start() -> u16 {
 /// fighting over it.
 static CAMERA_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
+/// Force any live camera stream to end — frees the camera + PipeWire node
+/// deterministically, instead of trusting WebKitGTK to close the MJPEG socket
+/// when the bubble's `<img>` is removed (it often doesn't, leaving the gst
+/// pipeline PLAYING → camera node stays "in use" → the machine never idles).
+/// The active MjpegReader notices the generation bump within ~500ms, returns
+/// EOF, and its drop sets the pipeline to Null. Called when the bubble hides.
+pub fn stop_camera() {
+    CAMERA_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+}
+
 /// Streams MJPEG parts from a backend camera pipeline. tiny_http pulls this
 /// Reader until the client disconnects; dropping it tears the pipeline down.
 struct MjpegReader {

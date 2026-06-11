@@ -70,6 +70,16 @@ finish-args:
   # Portals (screenshot/screencast) ride the session bus
   - --talk-name=org.freedesktop.portal.Desktop
   - --talk-name=org.freedesktop.portal.OpenURI
+  # System tray (StatusNotifierItem). The Qt app got a tray for free via Qt's
+  # native SNI; Tauri needs the bundled libayatana-appindicator (modules below)
+  # AND bus access to KDE Plasma's watcher, plus the right to own its own
+  # StatusNotifierItem-<pid>-<id> name. Without these the icon never appears.
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.StatusNotifierWatcher
+  # The tray item registers a dynamic bus name org.kde.StatusNotifierItem-<pid>-<id>.
+  # Flatpak only wildcards on dot boundaries (the "-*" form is rejected), so own
+  # the org.kde.* subtree — the narrowest valid grant that covers the live name.
+  - --own-name=org.kde.*
   # AI background removal downloads u2net to ~/.cache/wondershot on first use
   # (168 MB — deliberately NOT bundled; it would dominate the bundle size).
 
@@ -130,6 +140,68 @@ modules:
 
   # u2net model: NOT bundled — the app downloads it (sha256-verified) to
   # ~/.cache/wondershot/u2net.onnx on the first Remove BG (commands::bg_model_download).
+
+  # System tray: the GNOME runtime ships no appindicator library, so tray-icon's
+  # dlopen("libayatana-appindicator3.so.1") panics (caught → silent "no tray").
+  # Build the Ayatana appindicator stack into /app/lib so the dlopen succeeds.
+  # Order matters: intltool → libdbusmenu → libayatana-indicator → libayatana-appindicator.
+  # intltool: the GNOME SDK dropped it (deprecated), but libdbusmenu's 2016
+  # autotools hard-requires it. Build-only — stripped from the bundle.
+  - name: intltool
+    cleanup:
+      - '*'
+    sources:
+      - type: archive
+        url: https://launchpad.net/intltool/trunk/0.51.0/+download/intltool-0.51.0.tar.gz
+        sha256: 67c74d94196b153b774ab9f89b2fa6c6ba79352407037c8c14d5aeb334e959cd
+  - name: libdbusmenu
+    buildsystem: autotools
+    # libdbusmenu's Makefiles have a broken valgrind probe that aborts the build;
+    # the HAVE_VALGRIND_* env override is the well-known fix. -Wno-error keeps its
+    # ancient (2016) source compiling under the modern SDK's strict gcc.
+    build-options:
+      cflags: '-Wno-error'
+      env:
+        HAVE_VALGRIND_TRUE: ''
+        HAVE_VALGRIND_FALSE: '#'
+    config-opts:
+      - --with-gtk=3
+      - --disable-dumper
+      - --disable-static
+      - --disable-tests
+      - --disable-gtk-doc
+      - --disable-vala
+      - --enable-introspection=no
+    sources:
+      - type: archive
+        url: https://launchpad.net/libdbusmenu/16.04/16.04.0/+download/libdbusmenu-16.04.0.tar.gz
+        sha256: b9cc4a2acd74509435892823607d966d424bd9ad5d0b00938f27240a1bfa878a
+  - name: ayatana-ido
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DENABLE_GTKDOC=NO
+    sources:
+      - type: archive
+        url: https://github.com/AyatanaIndicators/ayatana-ido/archive/refs/tags/0.10.4.tar.gz
+        sha256: bd59abd5f1314e411d0d55ce3643e91cef633271f58126be529de5fb71c5ab38
+  - name: libayatana-indicator
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DENABLE_GTKDOC=NO
+    sources:
+      - type: archive
+        url: https://github.com/AyatanaIndicators/libayatana-indicator/archive/refs/tags/0.9.4.tar.gz
+        sha256: a18d3c682e29afd77db24366f8475b26bda22b0e16ff569a2ec71cd6eb4eac95
+  - name: libayatana-appindicator
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DENABLE_BINDINGS_MONO=NO
+      - -DENABLE_BINDINGS_VALA=NO
+      - -DENABLE_GTKDOC=NO
+    sources:
+      - type: archive
+        url: https://github.com/AyatanaIndicators/libayatana-appindicator/archive/refs/tags/0.5.93.tar.gz
+        sha256: cbefed7a918a227bf71286246e237fcd3a9c8499b3eaac4897811a869409edf0
 
   # The Tauri app: unpack the prebuilt .deb (ar -> data.tar.* -> usr/ tree).
   - name: wondershot
