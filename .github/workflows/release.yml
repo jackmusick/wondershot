@@ -75,6 +75,10 @@ jobs:
 
           flatpak-builder --user --force-clean --repo=fp-repo \
             fp-build packaging/flatpak/io.github.jackmusick.wondershot.yml
-          flatpak build-bundle fp-repo wondershot.flatpak io.github.jackmusick.wondershot
+          # --runtime-repo is mandatory: without it the bundle can't fetch
+          # org.gnome.Platform on machines that don't already have it.
+          flatpak build-bundle \
+            --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo \
+            fp-repo wondershot.flatpak io.github.jackmusick.wondershot
 
           gh release upload "${{ github.ref_name }}" wondershot.flatpak --clobber
