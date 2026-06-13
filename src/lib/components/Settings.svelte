@@ -51,6 +51,7 @@
   let isLinux = $derived(platform === 'linux');
   let isWindows = $derived(platform === 'windows');
   let isMac = $derived(platform === 'macos');
+  let recordingHotkey = $state(false);
 
   async function loadSettings() {
     const data = (await ipcInvoke<SettingsData>('get_settings')) ?? {};
@@ -236,7 +237,51 @@
     close();
   }
 
+  function startHotkeyRecording() {
+    recordingHotkey = true;
+  }
+
+  function stopHotkeyRecording() {
+    recordingHotkey = false;
+  }
+
+  function normalizedHotkeyKey(e: KeyboardEvent): string | null {
+    const key = e.key;
+    if (key === 'Control' || key === 'Shift' || key === 'Alt' || key === 'Meta') return null;
+    if (key === 'PrintScreen') return 'Print';
+    if (/^F([1-9]|1[0-9]|2[0-4])$/.test(key)) return key;
+    if (/^[a-zA-Z0-9]$/.test(key)) return key.toUpperCase();
+    return null;
+  }
+
+  function hotkeyFromEvent(e: KeyboardEvent): string | null {
+    const key = normalizedHotkeyKey(e);
+    if (!key) return null;
+    const parts: string[] = [];
+    if (e.ctrlKey) parts.push('Ctrl');
+    if (e.altKey) parts.push('Alt');
+    if (e.shiftKey) parts.push('Shift');
+    if (e.metaKey) parts.push(isMac ? 'Cmd' : 'Win');
+    if (!parts.length) return null;
+    parts.push(key);
+    return parts.join('+');
+  }
+
   function onKey(e: KeyboardEvent) {
+    if (recordingHotkey) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.key === 'Escape') {
+        stopHotkeyRecording();
+        return;
+      }
+      const next = hotkeyFromEvent(e);
+      if (next) {
+        s.hotkey_capture = next;
+        stopHotkeyRecording();
+      }
+      return;
+    }
     if (e.key === 'Escape') close();
   }
 
@@ -340,8 +385,20 @@
           {#if isWindows}
             <label class="field">
               <span>Capture hotkey</span>
-              <input type="text" bind:value={s.hotkey_capture} placeholder="Ctrl+Shift+Print" />
-              <small>Registered directly by Wondershot while the app is running.</small>
+              <span class="hotkey-row">
+                <button
+                  class="hotkey-recorder"
+                  class:listening={recordingHotkey}
+                  type="button"
+                  onclick={startHotkeyRecording}
+                >
+                  {recordingHotkey ? 'Press shortcut…' : String(s.hotkey_capture || 'Set shortcut')}
+                </button>
+                <button class="btn ghost" type="button" onclick={recordingHotkey ? stopHotkeyRecording : startHotkeyRecording}>
+                  {recordingHotkey ? 'Cancel' : 'Record'}
+                </button>
+              </span>
+              <small>{recordingHotkey ? 'Use Ctrl, Alt, Shift, or Win with a letter, number, function key, or Print Screen.' : 'Registered directly by Wondershot while the app is running.'}</small>
             </label>
           {:else if isMac}
             <label class="field">
@@ -716,6 +773,33 @@
     align-items: center;
   }
   .withbtn input { flex: 1; min-width: 0; }
+  .hotkey-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .hotkey-recorder {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 34px;
+    padding: 0 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-field);
+    color: var(--fg-primary);
+    font-family: var(--font-ui);
+    font-size: var(--text-base);
+    text-align: left;
+    cursor: pointer;
+  }
+  .hotkey-recorder:hover,
+  .hotkey-recorder.listening {
+    border-color: var(--accent);
+    background: var(--bg-hover);
+  }
+  .hotkey-recorder.listening {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 28%, transparent);
+  }
   .btn {
     height: 28px;
     padding: 0 12px;
