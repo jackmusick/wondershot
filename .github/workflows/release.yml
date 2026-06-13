@@ -1,16 +1,15 @@
 name: Release
 
-# Tag-gated: pushing a `v*` tag (e.g. v0.1.0) builds the Linux Tauri bundles
-# (AppImage + rpm + deb) and the Flatpak, uploading them to a DRAFT prerelease
-# for review before publishing. M6 is Linux-first (per the rewrite roadmap);
-# macOS/Windows packaging is deferred. Builds are UNSIGNED.
+# Tag-gated: pushing a `v*` tag (e.g. v0.1.0) builds unsigned Rust/Tauri
+# installers for Linux and Windows, uploading them to a DRAFT prerelease for
+# review before publishing.
 on:
   push:
     tags:
       - "v*"
 
 jobs:
-  release:
+  linux:
     permissions:
       contents: write
     # NOT ubuntu-latest: pinned for libwebkit2gtk-4.1 availability (Tauri's
@@ -82,3 +81,39 @@ jobs:
             fp-repo wondershot.flatpak io.github.jackmusick.wondershot
 
           gh release upload "${{ github.ref_name }}" wondershot.flatpak --clobber
+
+  windows:
+    permissions:
+      contents: write
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Stage FFmpeg sidecar
+        shell: pwsh
+        run: ./scripts/Prepare-WindowsFfmpeg.ps1
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "Wondershot ${{ github.ref_name }}"
+          releaseBody: "Unsigned Rust/Tauri builds for Linux and Windows. Windows installers bundle FFmpeg for native recording/device support."
+          releaseDraft: true
+          prerelease: true
+          args: "--bundles nsis --bundles msi"

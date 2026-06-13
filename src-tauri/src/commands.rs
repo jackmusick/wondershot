@@ -1,12 +1,29 @@
 use std::path::Path;
 use std::sync::Mutex;
 use wondershot_core::{bgremove, capture, clipboard, library, paths, settings::Settings, sidecar, video};
-use wondershot_core::record::{files, pipeline, portal, recorder};
-use crate::graph;
+use wondershot_core::record::{files, recorder};
+#[cfg(target_os = "linux")]
+use wondershot_core::record::{pipeline, portal};
+use crate::{graph, logging};
 
 #[tauri::command]
 pub fn health() -> String {
     "ok".into()
+}
+
+#[tauri::command]
+pub fn debug_log(message: String) {
+    logging::log(format!("frontend: {message}"));
+}
+
+#[tauri::command]
+pub fn log_path() -> String {
+    logging::log_path().display().to_string()
+}
+
+#[tauri::command]
+pub fn platform() -> &'static str {
+    std::env::consts::OS
 }
 
 #[tauri::command]
@@ -229,7 +246,9 @@ async fn do_capture(app: tauri::AppHandle, mode: capture::CaptureMode) -> Result
     let out = paths::unique_path(Path::new(&s.library_dir), &paths::timestamp_name("Screenshot"));
     let out_str = out.to_string_lossy().to_string();
 
-    let result: Result<String, String> = if s.backend != "portal" && spectacle_on_path() {
+    let result: Result<String, String> = if capture::native::handles_capture() {
+        capture::native::capture_to(&out, mode, s.capture_cursor).map(|_| out_str.clone())
+    } else if s.backend != "portal" && spectacle_on_path() {
         match run_spectacle(mode, &out_str, s.capture_cursor, s.capture_delay).await {
             Ok(()) => Ok(out_str.clone()),
             Err(e) => Err(e),
@@ -272,6 +291,113 @@ pub async fn capture_fullscreen(app: tauri::AppHandle) -> Result<String, String>
 #[tauri::command]
 pub async fn capture_window(app: tauri::AppHandle) -> Result<String, String> {
     do_capture(app, capture::CaptureMode::Window).await
+}
+
+#[tauri::command]
+pub fn native_capture_frame_b64() -> Result<serde_json::Value, String> {
+    use base64::Engine;
+    use std::io::Cursor;
+
+    let img = capture::native::capture_rgba()?;
+    let (width, height) = img.dimensions();
+    let (origin_x, origin_y) = capture::native::virtual_origin();
+    let monitors: Vec<serde_json::Value> = capture::native::monitor_rects()
+        .into_iter()
+        .enumerate()
+        .map(|(i, monitor)| {
+            serde_json::json!({
+                "id": i,
+                "x": monitor.x - origin_x,
+                "y": monitor.y - origin_y,
+                "screenX": monitor.x,
+                "screenY": monitor.y,
+                "width": monitor.width,
+                "height": monitor.height,
+            })
+        })
+        .collect();
+    let windows: Vec<serde_json::Value> = capture::native::window_rects()
+        .into_iter()
+        .enumerate()
+        .map(|(i, window)| {
+            serde_json::json!({
+                "id": i,
+                "title": window.title,
+                "x": window.x - origin_x,
+                "y": window.y - origin_y,
+                "screenX": window.x,
+                "screenY": window.y,
+                "width": window.width,
+                "height": window.height,
+            })
+        })
+        .collect();
+    let mut bytes = Vec::new();
+    img.write_to(&mut Cursor::new(&mut bytes), image::ImageFormat::Png)
+        .map_err(|e| e.to_string())?;
+    Ok(serde_json::json!({
+        "width": width,
+        "height": height,
+        "originX": origin_x,
+        "originY": origin_y,
+        "monitors": monitors,
+        "windows": windows,
+        "pngB64": base64::engine::general_purpose::STANDARD.encode(bytes),
+    }))
+}
+
+#[tauri::command]
+pub fn native_capture_capabilities() -> serde_json::Value {
+    let caps = capture::native::capabilities();
+    serde_json::json!({
+        "fullscreen": caps.fullscreen,
+        "frame": caps.frame,
+        "crop": caps.crop,
+        "regionSelector": caps.region_selector,
+        "screenSelector": caps.screen_selector,
+        "windowSelector": caps.window_selector,
+        "monitors": caps.monitors,
+        "windows": caps.windows,
+    })
+}
+
+#[tauri::command]
+pub fn save_native_capture_crop(
+    app: tauri::AppHandle,
+    rect: (u32, u32, u32, u32),
+) -> Result<String, String> {
+    use tauri::Emitter;
+
+    let s = Settings::load();
+    std::fs::create_dir_all(&s.library_dir).map_err(|e| e.to_string())?;
+    let img = capture::native::capture_rgba_with_cursor(s.capture_cursor)?;
+    let (img_w, img_h) = img.dimensions();
+    let (x, y, w, h) = rect;
+    if w < 2 || h < 2 || x >= img_w || y >= img_h {
+        return Err("empty capture region".into());
+    }
+    let w = w.min(img_w.saturating_sub(x));
+    let h = h.min(img_h.saturating_sub(y));
+    let out_img = image::imageops::crop_imm(&img, x, y, w, h).to_image();
+    let out = paths::unique_path(Path::new(&s.library_dir), &paths::timestamp_name("Screenshot"));
+    out_img.save(&out).map_err(|e| e.to_string())?;
+    let path = out.to_string_lossy().to_string();
+    let _ = app.emit("capture://done", path.clone());
+    Ok(path)
+}
+
+fn crop_capture_image(
+    img: image::RgbaImage,
+    rect: (u32, u32, u32, u32),
+) -> Result<image::RgbaImage, String> {
+    let (img_w, img_h) = img.dimensions();
+    let (x, y, w, h) = rect;
+    if w < 2 || h < 2 || x >= img_w || y >= img_h {
+        return Err("empty capture region".into());
+    }
+    let w = w.min(img_w.saturating_sub(x));
+    let h = h.min(img_h.saturating_sub(y));
+    Ok(image::imageops::crop_imm(&img, x, y, w, h).to_image())
 }
 
 // --- imageops: raster pixel operations -------------------------------------
@@ -428,6 +554,42 @@ pub fn read_image_b64(path: String) -> Result<String, String> {
     Ok(base64::engine::general_purpose::STANDARD.encode(&bytes))
 }
 
+/// Save a browser-recorded video blob into the library and emit the same
+/// recording completion events as the native Linux recorder.
+#[tauri::command]
+pub fn save_recording_b64(app: tauri::AppHandle, data_b64: String, ext: Option<String>) -> Result<String, String> {
+    use base64::Engine;
+    use tauri::Emitter;
+
+    let s = Settings::load();
+    let library_dir = Path::new(&s.library_dir);
+    std::fs::create_dir_all(library_dir).map_err(|e| e.to_string())?;
+
+    let ext = ext
+        .as_deref()
+        .map(str::trim)
+        .filter(|x| !x.is_empty())
+        .unwrap_or("webm")
+        .trim_start_matches('.')
+        .to_ascii_lowercase();
+    let name = paths::timestamp_name("Recording").replace(".png", &format!(".{ext}"));
+    let out = paths::unique_path(library_dir, &name);
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(data_b64.as_bytes())
+        .map_err(|e| e.to_string())?;
+    if bytes.is_empty() {
+        return Err("recording produced no data".into());
+    }
+    std::fs::write(&out, bytes).map_err(|e| e.to_string())?;
+    let path = out.to_string_lossy().to_string();
+    let _ = app.emit("recording://done", path.clone());
+    let _ = app.emit(
+        "recording://state",
+        serde_json::json!({ "status": "idle", "paused": false }),
+    );
+    Ok(path)
+}
+
 /// Read base `n` from the sidecar dir, returning it as base64 PNG body (no
 /// `data:` prefix) if it exists, else `None`.
 #[tauri::command]
@@ -450,16 +612,22 @@ pub struct RecState {
     /// The live portal session — closed when the recording ends (any way it
     /// ends), or the compositor keeps showing its "screen is being shared"
     /// indicator and every new recording stacks another one.
+    #[cfg(target_os = "linux")]
     pub session: Mutex<Option<portal::CastSession>>,
 }
 
 impl Default for RecState {
     fn default() -> Self {
-        RecState { recorder: Mutex::new(None), session: Mutex::new(None) }
+        RecState {
+            recorder: Mutex::new(None),
+            #[cfg(target_os = "linux")]
+            session: Mutex::new(None),
+        }
     }
 }
 
 /// Close (best-effort) the stored portal session, asynchronously.
+#[cfg(target_os = "linux")]
 fn close_cast_session(app: &tauri::AppHandle) {
     use tauri::Manager;
     let taken = app.state::<RecState>().session.lock().ok().and_then(|mut s| s.take());
@@ -477,6 +645,7 @@ fn close_cast_session(app: &tauri::AppHandle) {
 ///   - `recording://tick`   "M:SS" elapsed string
 ///   - `recording://done`   the finished file path
 ///   - `recording://failed` the error message
+#[cfg(target_os = "linux")]
 fn emit_rec_event(app: &tauri::AppHandle, ev: recorder::RecEvent) {
     use recorder::RecEvent;
     use tauri::Emitter;
@@ -530,6 +699,7 @@ fn emit_rec_event(app: &tauri::AppHandle, ev: recorder::RecEvent) {
 /// already finalized (external termination). Dropping the handle is safe: the
 /// pipeline was already set to NULL by the salvage path and the watchdog
 /// thread exits after emitting the terminal event.
+#[cfg(target_os = "linux")]
 fn drop_recorder_handle(app: &tauri::AppHandle) {
     use tauri::Manager;
     if let Ok(mut r) = app.state::<RecState>().recorder.lock() {
@@ -539,6 +709,7 @@ fn drop_recorder_handle(app: &tauri::AppHandle) {
 
 /// Remove `.rendering` tmp files older than 1h (orphaned by a crash).
 /// Ports the effect of record.py's `sweep_stale_tmp`.
+#[cfg(target_os = "linux")]
 fn sweep_stale_tmp(rendering: &Path) {
     let _ = std::fs::create_dir_all(rendering);
     let Ok(entries) = std::fs::read_dir(rendering) else { return };
@@ -566,7 +737,44 @@ fn sweep_stale_tmp(rendering: &Path) {
 pub async fn start_recording(
     app: tauri::AppHandle,
     state: tauri::State<'_, RecState>,
+    rect: Option<(u32, u32, u32, u32)>,
 ) -> Result<(), String> {
+    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+    {
+        let _ = (app, state, rect);
+        return Err("screen recording is not available on this platform yet".into());
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let s = Settings::load();
+        let library_dir = Path::new(&s.library_dir);
+        std::fs::create_dir_all(library_dir).map_err(|e| e.to_string())?;
+        let rendering = files::rendering_dir(library_dir);
+        std::fs::create_dir_all(&rendering).map_err(|e| e.to_string())?;
+
+        let name = files::recording_name();
+        let tmp = rendering.join(&name);
+        let out = paths::unique_path(library_dir, &name);
+        let desc = recorder::build_recording_args(
+            &tmp,
+            rect,
+            s.capture_cursor,
+            s.mic_enabled,
+            &s.mic_device,
+        )
+        .join("\n");
+        let app_for_cb = app.clone();
+        let rec = recorder::Recorder::launch(&desc, tmp, out, move |ev| {
+            emit_rec_event(&app_for_cb, ev)
+        })?;
+        *state.recorder.lock().map_err(|e| e.to_string())? = Some(rec);
+        Ok(())
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+    let _ = rect;
     use std::os::fd::AsRawFd;
 
     let s = Settings::load();
@@ -616,6 +824,50 @@ pub async fn start_recording(
     *state.recorder.lock().map_err(|e| e.to_string())? = Some(rec);
     *state.session.lock().map_err(|e| e.to_string())? = Some(session);
     Ok(())
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn emit_rec_event(app: &tauri::AppHandle, ev: recorder::RecEvent) {
+    use recorder::RecEvent;
+    use tauri::Emitter;
+    match ev {
+        RecEvent::Started => {
+            let _ = app.emit(
+                "recording://state",
+                serde_json::json!({ "status": "recording", "paused": false }),
+            );
+        }
+        RecEvent::Stopping => {
+            let _ = app.emit(
+                "recording://state",
+                serde_json::json!({ "status": "stopping", "paused": false }),
+            );
+        }
+        RecEvent::PausedChanged(paused) => {
+            let _ = app.emit(
+                "recording://state",
+                serde_json::json!({ "status": "recording", "paused": paused }),
+            );
+        }
+        RecEvent::Tick(elapsed) => {
+            let _ = app.emit("recording://tick", elapsed);
+        }
+        RecEvent::Finished(path) => {
+            let _ = app.emit("recording://done", path.to_string_lossy().to_string());
+            let _ = app.emit(
+                "recording://state",
+                serde_json::json!({ "status": "idle", "paused": false }),
+            );
+        }
+        RecEvent::Failed(msg) => {
+            let _ = app.emit("recording://failed", msg);
+            let _ = app.emit(
+                "recording://state",
+                serde_json::json!({ "status": "idle", "paused": false }),
+            );
+        }
+    }
 }
 
 /// Stop the active recording. `stop()` consumes the recorder and emits
@@ -657,21 +909,16 @@ pub fn resume_recording(state: tauri::State<'_, RecState>) -> Result<(), String>
 /// Locate the ffmpeg binary. M2/M4 have no bundled-ffmpeg helper, so resolve
 /// it on PATH (the flatpak ships ffmpeg in the runtime; dev hosts have it too).
 fn find_ffmpeg() -> Result<String, String> {
-    std::env::var_os("PATH")
-        .and_then(|paths| {
-            std::env::split_paths(&paths)
-                .map(|p| p.join("ffmpeg"))
-                .find(|p| p.is_file())
-        })
-        .map(|p| p.to_string_lossy().into_owned())
-        .or_else(|| {
-            // Common absolute fallbacks if PATH is sparse.
-            ["/usr/bin/ffmpeg", "/usr/local/bin/ffmpeg", "/app/bin/ffmpeg"]
-                .into_iter()
-                .find(|p| Path::new(p).is_file())
-                .map(|s| s.to_string())
-        })
-        .ok_or_else(|| "ffmpeg not found on PATH".to_string())
+    wondershot_core::ffmpeg::find_ffmpeg().map(|p| p.to_string_lossy().into_owned())
+}
+
+fn ffmpeg_command(ffmpeg: &str) -> tokio::process::Command {
+    let mut command = tokio::process::Command::new(ffmpeg);
+    #[cfg(target_os = "windows")]
+    {
+        command.creation_flags(0x08000000);
+    }
+    command
 }
 
 /// The library dir and the `.rendering` tmp dir (created), as paths.
@@ -710,7 +957,7 @@ async fn run_ffmpeg_to_library(
     out_name: &str,
 ) -> Result<String, String> {
     let ffmpeg = find_ffmpeg()?;
-    let output = tokio::process::Command::new(&ffmpeg)
+    let output = ffmpeg_command(&ffmpeg)
         .args(args)
         .output()
         .await
@@ -766,7 +1013,7 @@ pub async fn video_thumb(path: String) -> Result<String, String> {
             "scale=480:-2".into(),
             thumb.to_string_lossy().into_owned(),
         ];
-        let out = tokio::process::Command::new(&ffmpeg)
+        let out = ffmpeg_command(&ffmpeg)
             .args(&args)
             .output()
             .await
@@ -1107,16 +1354,19 @@ pub fn open_url(url: String) -> Result<(), String> {
     open_target(&url)
 }
 
-/// xdg-open a path/URL, routing through the host opener when sandboxed.
+/// Open a path/URL with the platform's native launcher. Linux routes through
+/// the host opener when sandboxed.
 fn open_target(target: &str) -> Result<(), String> {
-    let res = if in_flatpak() {
-        std::process::Command::new("flatpak-spawn")
-            .args(["--host", "xdg-open", target])
-            .spawn()
-    } else {
-        std::process::Command::new("xdg-open").arg(target).spawn()
-    };
-    res.map(|_| ()).map_err(|e| e.to_string())
+    let (program, args) = wondershot_core::opener::open_command(
+        wondershot_core::opener::OpenPlatform::current(),
+        in_flatpak(),
+        target,
+    )?;
+    std::process::Command::new(program)
+        .args(args)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
 // --- OneDrive / SharePoint (Microsoft Graph) --------------------------------
@@ -1306,28 +1556,229 @@ pub fn test_ai_endpoint(endpoint: String, model: String, api_key: String) -> Res
     }
 }
 
-/// Show + focus the framed capture window (header "Capture"). Mirrors
-/// `toggle_camera_bubble`'s proven show path rather than a JS getByLabel lookup.
+/// Show + focus the native capture picker. The header Capture
+/// button and CLI capture entrypoint should both land here: one click, then
+/// choose a region or hover-click a window.
 #[tauri::command]
 pub fn show_capture_window(app: tauri::AppHandle) -> Result<(), String> {
-    use tauri::Manager;
-    if let Some(w) = app.get_webview_window("capture") {
-        w.show().map_err(|e| e.to_string())?;
-        let _ = w.unminimize();
-        let _ = w.set_focus();
+    #[cfg(target_os = "windows")]
+    {
+        use tauri::Emitter;
+
+        logging::log("show_capture_window: spawning Windows picker thread");
+        let app_for_thread = app.clone();
+        std::thread::Builder::new()
+            .name("wondershot-capture-picker".into())
+            .spawn(move || {
+                logging::log("Windows picker thread started");
+                if let Err(e) = run_windows_capture_picker(app_for_thread.clone()) {
+                    logging::log(format!("Windows picker failed: {e}"));
+                    let _ = app_for_thread.emit("capture://failed", e);
+                }
+                logging::log("Windows picker thread finished");
+            })
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        use tauri::Manager;
+        if let Some(w) = app.get_webview_window("capture") {
+            w.show().map_err(|e| e.to_string())?;
+            let _ = w.unminimize();
+            let _ = w.set_focus();
+            return Ok(());
+        }
+
+        tauri::WebviewWindowBuilder::new(&app, "capture", tauri::WebviewUrl::App("/capture".into()))
+            .title("Capture")
+            .inner_size(380.0, 224.0)
+            .resizable(false)
+            .decorations(false)
+            .center()
+            .build()
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn run_windows_capture_picker(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::Emitter;
+
+    let app_for_bar = app.clone();
+    let listener_ids = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let listener_ids_for_bar = listener_ids.clone();
+    logging::log("Windows picker: entering native picker");
+    let choice = capture::win::pick_action_with_toolbar(move |toolbar, signal| {
+        logging::log(format!(
+            "Windows picker: request actionbar rect={:?} toolbar={:?}",
+            toolbar.rect, toolbar.toolbar
+        ));
+        show_capture_action_bar(
+            app_for_bar.clone(),
+            toolbar,
+            signal,
+            listener_ids_for_bar.clone(),
+        );
+    })?;
+    cleanup_capture_action_bar(&app, listener_ids);
+
+    let Some(choice) = choice else {
+        logging::log("Windows picker: cancelled");
+        return Ok(());
+    };
+    logging::log(format!(
+        "Windows picker: selected action={:?} rect={:?} hwnd={:?}",
+        choice.action, choice.rect, choice.hwnd
+    ));
+
+    let rect = choice.rect;
+    if choice.action == capture::win::PickerAction::Record {
+        logging::log("Windows picker: emitting region://record-rect");
+        let _ = app.emit("region://record-rect", rect);
         return Ok(());
     }
-    // The window was natively closed (X destroys it) — recreate it so the
-    // header "Capture" button always reopens a fresh, movable window.
-    tauri::WebviewWindowBuilder::new(&app, "capture", tauri::WebviewUrl::App("/capture".into()))
-        .title("Capture")
-        .inner_size(380.0, 224.0)
-        .resizable(false)
-        .decorations(false)
-        .center()
-        .build()
-        .map_err(|e| e.to_string())?;
+
+    let s = Settings::load();
+    std::fs::create_dir_all(&s.library_dir).map_err(|e| e.to_string())?;
+    let out_img = if let Some(hwnd) = choice.hwnd {
+        match capture::win::capture_window_rgba(hwnd) {
+            Ok(img) => {
+                logging::log("Windows picker: captured selected window with native window capture");
+                img
+            }
+            Err(e) => {
+                logging::log(format!(
+                    "Windows picker: window capture failed, falling back to crop: {e}"
+                ));
+                let img = capture::native::capture_rgba_with_cursor(s.capture_cursor)?;
+                crop_capture_image(img, rect)?
+            }
+        }
+    } else {
+        logging::log("Windows picker: capturing desktop crop");
+        let img = capture::native::capture_rgba_with_cursor(s.capture_cursor)?;
+        crop_capture_image(img, rect)?
+    };
+    let out = paths::unique_path(Path::new(&s.library_dir), &paths::timestamp_name("Screenshot"));
+    out_img.save(&out).map_err(|e| e.to_string())?;
+    let path = out.to_string_lossy().to_string();
+    logging::log(format!("Windows picker: saved capture {path}"));
+    let _ = app.emit("capture://done", path);
     Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn show_capture_action_bar(
+    app: tauri::AppHandle,
+    toolbar: capture::win::PickerToolbar,
+    signal: std::sync::Arc<std::sync::Mutex<Option<capture::win::PickerToolbarResult>>>,
+    listener_ids: std::sync::Arc<std::sync::Mutex<Vec<tauri::EventId>>>,
+) {
+    use tauri::{Listener, Manager};
+
+    const LABEL: &str = "capture-actionbar";
+
+    let signal_for_event = signal.clone();
+    let listener = app.once("capture-actionbar://action", move |event| {
+        let value = serde_json::from_str::<String>(event.payload())
+            .unwrap_or_else(|_| event.payload().trim_matches('"').to_string());
+        logging::log(format!("actionbar: event action={value}"));
+        let mapped = match value.as_str() {
+            "capture" => capture::win::PickerToolbarResult::Capture,
+            "record" => capture::win::PickerToolbarResult::Record,
+            _ => capture::win::PickerToolbarResult::Cancel,
+        };
+        if let Ok(mut slot) = signal_for_event.lock() {
+            *slot = Some(mapped);
+        }
+    });
+    if let Ok(mut ids) = listener_ids.lock() {
+        ids.push(listener);
+    }
+
+    let url = format!(
+        "/capture-actionbar?w={}&h={}",
+        toolbar.rect.2,
+        toolbar.rect.3
+    );
+    let (built_tx, built_rx) = std::sync::mpsc::channel();
+    let app_for_ui = app.clone();
+    logging::log(format!("actionbar: scheduling build url={url}"));
+    if let Err(e) = app.run_on_main_thread(move || {
+        if let Some(w) = app_for_ui.get_webview_window(LABEL) {
+            let _ = w.close();
+        }
+        let result = tauri::WebviewWindowBuilder::new(
+            &app_for_ui,
+            LABEL,
+            tauri::WebviewUrl::App(url.into()),
+        )
+        .background_color(tauri::utils::config::Color(20, 20, 23, 255))
+            .title("")
+            .position(toolbar.toolbar.0 as f64, toolbar.toolbar.1 as f64)
+            .inner_size(toolbar.toolbar.2 as f64, toolbar.toolbar.3 as f64)
+            .resizable(false)
+            .decorations(false)
+            .always_on_top(true)
+            .skip_taskbar(true)
+            .shadow(true)
+            .build()
+            .map(|_| ())
+            .map_err(|e| e.to_string());
+        let _ = built_tx.send(result);
+    }) {
+        logging::log(format!("actionbar: could not schedule build: {e}"));
+        set_toolbar_signal(signal, capture::win::PickerToolbarResult::Cancel);
+        return;
+    }
+
+    match built_rx.recv_timeout(std::time::Duration::from_secs(3)) {
+        Ok(Ok(())) => logging::log("actionbar: built"),
+        Ok(Err(e)) => {
+            logging::log(format!("actionbar: build failed: {e}"));
+            set_toolbar_signal(signal, capture::win::PickerToolbarResult::Cancel);
+        }
+        Err(e) => {
+            logging::log(format!("actionbar: build timed out: {e}"));
+            set_toolbar_signal(signal, capture::win::PickerToolbarResult::Cancel);
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn set_toolbar_signal(
+    signal: std::sync::Arc<std::sync::Mutex<Option<capture::win::PickerToolbarResult>>>,
+    value: capture::win::PickerToolbarResult,
+) {
+    if let Ok(mut slot) = signal.lock() {
+        *slot = Some(value);
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn cleanup_capture_action_bar(
+    app: &tauri::AppHandle,
+    listener_ids: std::sync::Arc<std::sync::Mutex<Vec<tauri::EventId>>>,
+) {
+    use tauri::{Listener, Manager};
+    logging::log("actionbar: cleanup requested");
+    let app_for_ui = app.clone();
+    if let Err(e) = app.run_on_main_thread(move || {
+        if let Some(w) = app_for_ui.get_webview_window("capture-actionbar") {
+            let _ = w.hide();
+            let _ = w.close();
+        }
+    }) {
+        logging::log(format!("actionbar: cleanup schedule failed: {e}"));
+    }
+    if let Ok(mut ids) = listener_ids.lock() {
+        for id in ids.drain(..) {
+            app.unlisten(id);
+        }
+    }
 }
 
 /// Move a library item to the desktop trash (filmstrip hover-delete). Best-effort
@@ -1467,6 +1918,13 @@ pub fn list_media_devices() -> Vec<serde_json::Value> {
         .collect()
 }
 
+#[tauri::command]
+pub fn recorder_capabilities() -> serde_json::Value {
+    serde_json::json!({
+        "pause": recorder::Recorder::supports_pause(),
+    })
+}
+
 // --- AI Redact / Simplify (crate::ai) ----------------------------------------
 
 /// Endpoint/model/key from the shared conf's AI keys. The key is optional
@@ -1585,4 +2043,5 @@ mod tests {
         .unwrap();
         assert_eq!(read_image_b64(target.to_string_lossy().into()).unwrap(), body);
     }
+
 }

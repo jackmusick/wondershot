@@ -10,18 +10,26 @@ import { get } from 'svelte/store';
 import { recording, loadLibrary } from '$lib/stores';
 import { ipcInvoke } from '$lib/ipc';
 import { pushMockRecording } from '$lib/ipc.mock';
-
-const USE_MOCK =
-  import.meta.env.VITE_MOCK_IPC === '1' ||
-  typeof (globalThis as any).__TAURI_INTERNALS__ === 'undefined';
+import { USE_MOCK, usesBrowserMedia } from '$lib/platform';
+import { startBrowserRecording, type BrowserRecordingSession } from '$lib/media/browserRecorder';
+import {
+  selectNativeRegionRect,
+  selectNativeScreenRect,
+  supportsNativeScreenPicker,
+  supportsNativeRegionPicker,
+  type NativeRect
+} from '$lib/capture/nativeRegion';
 
 interface RecorderSettings {
   record_countdown?: number;
   camera_device?: string;
+  mic_enabled?: boolean;
+  mic_device?: string;
 }
 
 let starting = false;
 let cancelCountdown: (() => void) | undefined;
+let browserSession: BrowserRecordingSession | undefined;
 
 // --- mock simulation state ---
 let mockTimer: ReturnType<typeof setInterval> | undefined;
@@ -127,16 +135,33 @@ async function runCountdown(secs: number): Promise<'done' | 'cancel'> {
 }
 
 /** Issue the actual start (bubble + backend command, or mock timer). */
-async function doStart(cameraEnabled: boolean) {
+async function doStart(cameraEnabled: boolean, rect?: NativeRect) {
   if (USE_MOCK) {
     startMockTimer();
     return;
   }
+  const settings = await readSettings();
+  if (await usesBrowserMedia()) {
+    browserSession = await startBrowserRecording(
+      settings,
+      startMockTimer,
+      () => {
+        browserSession = undefined;
+        stopMockTimer();
+      },
+      loadLibrary,
+      (e) => {
+        console.error('save browser recording failed', e);
+        recording.set({ status: 'idle' });
+      }
+    );
+    return;
+  }
   if (cameraEnabled) await showBubble();
-  await ipcInvoke('start_recording');
+  await ipcInvoke('start_recording', rect ? { rect } : {});
 }
 
-export async function startRecording(): Promise<void> {
+export async function startRecording(mode: 'screen' | 'region' | 'display' = 'screen'): Promise<void> {
   if (starting) return;
   if (get(recording).status !== 'idle') return;
   starting = true;
@@ -144,14 +169,42 @@ export async function startRecording(): Promise<void> {
     const s = await readSettings();
     const countdown = Math.max(0, Number(s.record_countdown ?? 0) || 0);
     const cameraEnabled = !!(s.camera_device && s.camera_device.length > 0);
+    let rect: NativeRect | undefined;
+    if (mode === 'region' && (await supportsNativeRegionPicker())) {
+      rect = await selectNativeRegionRect();
+      if (!rect) return;
+    } else if (mode === 'display' && (await supportsNativeScreenPicker())) {
+      rect = await selectNativeScreenRect();
+      if (!rect) return;
+    }
 
     if (countdown > 0) {
       const result = await runCountdown(countdown);
       if (result === 'cancel') return;
     }
-    await doStart(cameraEnabled);
+    await doStart(cameraEnabled, rect);
   } catch (e) {
     console.error('startRecording failed', e);
+  } finally {
+    starting = false;
+  }
+}
+
+export async function startRecordingRect(rect: NativeRect): Promise<void> {
+  if (starting) return;
+  if (get(recording).status !== 'idle') return;
+  starting = true;
+  try {
+    const s = await readSettings();
+    const countdown = Math.max(0, Number(s.record_countdown ?? 0) || 0);
+    const cameraEnabled = !!(s.camera_device && s.camera_device.length > 0);
+    if (countdown > 0) {
+      const result = await runCountdown(countdown);
+      if (result === 'cancel') return;
+    }
+    await doStart(cameraEnabled, rect);
+  } catch (e) {
+    console.error('startRecordingRect failed', e);
   } finally {
     starting = false;
   }
@@ -164,6 +217,13 @@ export async function stopRecording(): Promise<void> {
     recording.set({ status: 'idle' });
     pushMockRecording();
     await loadLibrary();
+    return;
+  }
+  if (await usesBrowserMedia()) {
+    if (browserSession) {
+      recording.set({ status: 'idle' });
+      browserSession.stop();
+    }
     return;
   }
   try {
@@ -181,6 +241,11 @@ export async function pauseRecording(): Promise<void> {
     recording.set({ ...cur, paused: true });
     return;
   }
+  if (await usesBrowserMedia()) {
+    browserSession?.pause();
+    recording.set({ ...cur, paused: true });
+    return;
+  }
   try {
     await ipcInvoke('pause_recording');
   } catch (e) {
@@ -192,6 +257,11 @@ export async function resumeRecording(): Promise<void> {
   const cur = get(recording);
   if (cur.status !== 'recording' || !cur.paused) return;
   if (USE_MOCK) {
+    recording.set({ ...cur, paused: false });
+    return;
+  }
+  if (await usesBrowserMedia()) {
+    browserSession?.resume();
     recording.set({ ...cur, paused: false });
     return;
   }

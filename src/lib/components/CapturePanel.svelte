@@ -1,8 +1,6 @@
 <script lang="ts">
-  // Compact "Snagit-style" capture panel (Qt CaptureWindow parity): a few capture
-  // defaults + a big Capture button, plus Full screen / Record. Region capture
-  // offloads to Spectacle's drag-selection (host Spectacle via flatpak-spawn in
-  // the Flatpak), then the result lands in the editor.
+  // Compact "Snagit-style" capture panel: a few capture defaults + a big
+  // selection button, plus full screen and recording actions.
   import { capturePanelOpen, takeCapture } from '$lib/stores';
   import { ipcInvoke } from '$lib/ipc';
   import { startRecording } from '$lib/recorder/control';
@@ -41,16 +39,16 @@
     capturePanelOpen.set(false);
   }
 
-  function capture(mode: 'region' | 'fullscreen' | 'window') {
+  function capture(mode: 'region' | 'fullscreen') {
     persist();
     close();
     takeCapture(mode);
   }
 
-  function record() {
+  function record(mode: 'screen' | 'region' = 'screen') {
     persist();
     close();
-    startRecording();
+    startRecording(mode);
   }
 </script>
 
@@ -67,13 +65,13 @@
           <input type="number" min="0" max="10" bind:value={delay} /> s
         </label>
       </div>
-      <button class="capture" onclick={() => capture('region')} title="Drag a region (Spectacle)">
+      <button class="capture" onclick={() => capture('region')} title="Select a region or hover a window">
         Capture
       </button>
       <div class="links">
         <button class="link" onclick={() => capture('fullscreen')}>Full screen</button>
-        <button class="link" onclick={() => capture('window')}>Window</button>
-        <button class="link" onclick={record}>Record</button>
+        <button class="link" onclick={() => record()}>Record</button>
+        <button class="link" onclick={() => record('region')}>Record Region</button>
       </div>
     </div>
   </div>

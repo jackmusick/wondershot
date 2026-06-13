@@ -2,23 +2,22 @@
   import { onMount } from 'svelte';
   import { ipcInvoke, ipcEmit } from '$lib/ipc';
   import { settingsOpen } from '$lib/stores';
+  import { listMediaDevices } from '$lib/media/devices';
+  import { currentPlatform } from '$lib/platform';
 
   type Device = { id: string; label: string };
   let cameras = $state<Device[]>([]);
   let mics = $state<Device[]>([]);
 
-  /** Enumerate webcam / mic inputs for the device dropdowns — from the
-   * BACKEND (gst DeviceMonitor), not the webview: WebKit anonymizes labels
-   * ("Camera 1") until a getUserMedia grant, which made the dropdowns useless
-   * and popped a permission prompt just for opening Settings. Backend labels
-   * are the same descriptions resolve_mic_source matches at record time. */
+  /** Enumerate webcam / mic inputs for the device dropdowns. Platform-specific
+   * device discovery lives in $lib/media/devices. */
   async function enumerateDevices() {
     try {
-      const devs = (await ipcInvoke<{ kind: string; label: string }[]>('list_media_devices')) ?? [];
+      const devs = await listMediaDevices();
       // Dedupe defensively: duplicate labels would be duplicate keys in the
       // keyed {#each}, which throws and makes the Recording tab unrenderable.
       const pick = (kind: string) =>
-        [...new Set(devs.filter((d) => d.kind === kind).map((d) => d.label))].map((label) => ({
+        [...new Set(devs.filter((d) => d.kind === kind && d.label).map((d) => d.label))].map((label) => ({
           id: label,
           label,
         }));
@@ -45,9 +44,11 @@
   type Tab = 'general' | 'capture' | 'recording' | 'output' | 'sharing' | 'ai';
   let tab = $state<Tab>('general');
 
-  type SettingsData = Record<string, unknown>;
+  type SettingsData = Record<string, any>;
   let s = $state<SettingsData>({});
   let loaded = $state(false);
+  let platform = $state('unknown');
+  let isLinux = $derived(platform === 'linux');
 
   async function loadSettings() {
     const data = (await ipcInvoke<SettingsData>('get_settings')) ?? {};
@@ -57,6 +58,7 @@
     loaded = true;
     void enumerateDevices();
     void loadGraph();
+    void currentPlatform().then((p) => (platform = String(p)));
   }
 
   onMount(() => {
@@ -333,30 +335,34 @@
             <span>Quick bar timeout (s)</span>
             <input type="number" min="2" max="60" value={num('quick_bar_timeout')} oninput={(e) => setNum('quick_bar_timeout', e.currentTarget.valueAsNumber)} />
           </label>
-          <label class="field">
-            <span>Capture hotkey</span>
-            <input type="text" bind:value={s.hotkey_capture} />
-            <small>On Linux, bind this manually in KDE settings — shown here for reference.</small>
-          </label>
-          <fieldset class="group">
-            <legend>Global capture hotkey</legend>
-            <small>
-              Bind a key (e.g. <b>Meta+Shift+S</b>) to the command below in your desktop's
-              shortcut settings. It reaches the running Wondershot instantly.
-            </small>
-            <input type="text" readonly value={captureCmd} onfocus={(e) => e.currentTarget.select()} />
-            <button class="btn wide" onclick={openShortcuts}>Open KDE Shortcuts settings</button>
-            {#if shortcutsErr}<small class="err">{shortcutsErr}</small>{/if}
-          </fieldset>
+          {#if isLinux}
+            <label class="field">
+              <span>Capture hotkey</span>
+              <input type="text" bind:value={s.hotkey_capture} />
+              <small>Bind this manually in KDE settings — shown here for reference.</small>
+            </label>
+            <fieldset class="group">
+              <legend>Global capture hotkey</legend>
+              <small>
+                Bind a key (e.g. <b>Meta+Shift+S</b>) to the command below in your desktop's
+                shortcut settings. It reaches the running Wondershot instantly.
+              </small>
+              <input type="text" readonly value={captureCmd} onfocus={(e) => e.currentTarget.select()} />
+              <button class="btn wide" onclick={openShortcuts}>Open KDE Shortcuts settings</button>
+              {#if shortcutsErr}<small class="err">{shortcutsErr}</small>{/if}
+            </fieldset>
+          {/if}
         {:else if tab === 'capture'}
-          <label class="field row">
-            <span>Backend</span>
-            <select bind:value={s.backend}>
-              <option value="auto">Auto</option>
-              <option value="spectacle">Spectacle</option>
-              <option value="portal">Portal</option>
-            </select>
-          </label>
+          {#if isLinux}
+            <label class="field row">
+              <span>Backend</span>
+              <select bind:value={s.backend}>
+                <option value="auto">Auto</option>
+                <option value="spectacle">Spectacle</option>
+                <option value="portal">Portal</option>
+              </select>
+            </label>
+          {/if}
           <label class="check"><input type="checkbox" bind:checked={s.capture_cursor} /> Capture cursor</label>
           <label class="field row">
             <span>Capture delay (s)</span>
@@ -757,7 +763,6 @@
     font-size: var(--text-small);
     line-height: 1.3;
   }
-  .ai-result.ok { color: var(--accent); }
   .ai-result.err { color: var(--danger); }
   .ai-btn { display: inline-flex; align-items: center; gap: 7px; min-width: 132px; justify-content: center; }
   .ai-btn.ok { border-color: var(--accent); color: var(--accent); }

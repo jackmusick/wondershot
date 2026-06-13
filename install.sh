@@ -1,9 +1,9 @@
 #!/bin/sh
-# Wondershot installer/updater for Linux (Tauri AppImage path).
+# Wondershot installer/updater for Linux (Rust/Tauri AppImage path).
 #
 #   curl -fsSL https://raw.githubusercontent.com/jackmusick/wondershot/main/install.sh | sh
 #
-# Downloads the latest Wondershot AppImage from GitHub Releases into
+# Downloads the latest Rust/Tauri Wondershot AppImage from GitHub Releases into
 # ~/.local/share/wondershot, links a `wondershot` launcher in ~/.local/bin, and
 # installs a .desktop entry. User-local, no sudo. Re-run to update in place.
 # The Flatpak (install via wondershot's flatpak bundle) remains the recommended
@@ -66,9 +66,9 @@ api="https://api.github.com/repos/$REPO/releases/latest"
 url=$(curl -fsSL "$api" \
     | grep -o '"browser_download_url": *"[^"]*\.AppImage"' \
     | head -n1 | cut -d'"' -f4)
-[ -n "$url" ] || fail "no .AppImage asset in the latest release of $REPO"
+[ -n "$url" ] || fail "no Rust/Tauri .AppImage asset in the latest release of $REPO"
 
-tmp=$(mktemp --suffix=.AppImage)
+tmp=$(mktemp "${TMPDIR:-/tmp}/wondershot.XXXXXX.AppImage")
 trap 'rm -f "$tmp"' EXIT
 say "downloading $url"
 curl -fsSL "$url" -o "$tmp"

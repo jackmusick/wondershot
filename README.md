@@ -61,11 +61,10 @@ point.
 irm https://raw.githubusercontent.com/jackmusick/wondershot/main/Install-Wondershot.ps1 | iex
 ```
 
-Installs the latest release silently, per-user, no admin. Re-run the
-same command to update. Or download `WondershotSetup-<version>.exe`
+Installs the latest Rust/Tauri Windows release silently. Re-run the
+same command to update. Or download the `.msi` / `*-setup.exe` asset
 from [Releases](https://github.com/jackmusick/wondershot/releases)
-yourself — fully self-contained, no runtimes to install, supports
-`/VERYSILENT`.
+yourself.
 
 > The installer isn't code-signed yet, so SmartScreen will interject —
 > **More info → Run anyway**.
@@ -93,15 +92,15 @@ are missing. Re-run the same command to update.
 
 ### From source (developers)
 
-```sh
+```powershell
 git clone https://github.com/jackmusick/wondershot && cd wondershot
-python -m venv --system-site-packages .venv   # system gi/GStreamer
-.venv/bin/pip install -e .
-.venv/bin/wondershot
+npm ci
+npm run tauri dev
 ```
 
-Linux needs `python3-gobject`, GStreamer with the PipeWire plugin, and
-ffmpeg from your distro. Run the suite with `pytest tests/`.
+Linux needs GStreamer with the PipeWire plugin, ffmpeg, and a Rust
+toolchain. Run the Rust/frontend suites with `cargo test --workspace`
+and `npm run test`.
 
 ## Platform notes
 
@@ -112,8 +111,9 @@ ffmpeg from your distro. Run the suite with `pytest tests/`.
   has a compositor-crash landmine, so we won't auto-register until
   that's provably safe.
 - **Windows**: capture/record/hotkey are native; the hotkey is set in
-  Settings → General. Cursor-in-capture and a window picker are in
-  progress.
+  Settings → General. The capture picker supports full screen, drag
+  selection, and hover-to-target windows. Recording uses native FFmpeg
+  backends for screen, region, microphone, and camera-bubble workflows.
 
 ## CLI
 

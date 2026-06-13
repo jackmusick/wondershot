@@ -1,6 +1,14 @@
 import { writable, get } from 'svelte/store';
 import type { Capture, RecordingState } from '$lib/types';
 import { ipcInvoke, normalizeCaptures } from '$lib/ipc';
+import {
+  selectNativeRegion,
+  selectNativeScreen,
+  selectNativeWindow,
+  supportsNativeScreenPicker,
+  supportsNativeRegionPicker,
+  supportsNativeWindowPicker
+} from '$lib/capture/nativeRegion';
 
 export type View = 'gallery' | 'editor' | 'video';
 
@@ -73,7 +81,34 @@ export async function importPaths(paths: string[]): Promise<void> {
   }
 }
 
-export async function takeCapture(mode: 'region' | 'fullscreen' | 'window'): Promise<void> {
+export async function takeCapture(mode: 'region' | 'fullscreen' | 'window' | 'screen'): Promise<void> {
+  if (mode === 'region' && await supportsNativeRegionPicker()) {
+    const path = await selectNativeRegion();
+    if (!path) return;
+    await loadLibrary();
+    const list = get(captures);
+    const justTaken = list.find((c) => c.path === path) ?? list[0];
+    if (justTaken) activeItem.set(justTaken);
+    return;
+  }
+  if (mode === 'screen' && await supportsNativeScreenPicker()) {
+    const path = await selectNativeScreen();
+    if (!path) return;
+    await loadLibrary();
+    const list = get(captures);
+    const justTaken = list.find((c) => c.path === path) ?? list[0];
+    if (justTaken) activeItem.set(justTaken);
+    return;
+  }
+  if (mode === 'window' && await supportsNativeWindowPicker()) {
+    const path = await selectNativeWindow();
+    if (!path) return;
+    await loadLibrary();
+    const list = get(captures);
+    const justTaken = list.find((c) => c.path === path) ?? list[0];
+    if (justTaken) activeItem.set(justTaken);
+    return;
+  }
   const cmd = `capture_${mode}`;
   try {
     const path = await ipcInvoke<string>(cmd);

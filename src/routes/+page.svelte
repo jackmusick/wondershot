@@ -3,7 +3,7 @@
   import { get } from 'svelte/store';
   import { loadLibrary, takeCapture, openEditorByPath, importPaths } from '$lib/stores';
   import { ipcListen, ipcEmit, ipcInvoke } from '$lib/ipc';
-  import { initRecordingEvents, startRecording } from '$lib/recorder/control';
+  import { initRecordingEvents, startRecording, startRecordingRect } from '$lib/recorder/control';
   import { activeItem, captures } from '$lib/stores';
   import CaptureHeader from '$lib/components/CaptureHeader.svelte';
   import ContentView from '$lib/components/ContentView.svelte';
@@ -18,6 +18,8 @@
     loadLibrary().then(async () => {
       uns.push(await ipcListen<string>('capture://done', async (path) => {
         await loadLibrary();
+        const justTaken = get(captures).find((c) => c.path === path);
+        if (justTaken) activeItem.set(justTaken);
         // Copy-after-capture: honor the setting (also driven from the CapturePanel
         // toggle). The capture://done event fires for every capture path
         // (panel, CLI, global hotkey), so this is the single place to do it.
@@ -31,19 +33,24 @@
         }
       }));
       // Live folder watching: the backend debounce-emits this when a media file
-      // lands in / leaves a watched dir (Spectacle hotkey, external drop).
+      // lands in / leaves a watched dir (global hotkey, external drop).
       uns.push(await ipcListen('library://changed', () => void loadLibrary()));
       // CLI / global-hotkey forwarding (parity with the Python --capture model).
-      uns.push(await ipcListen('cli://capture', () => takeCapture('region')));
+      uns.push(await ipcListen('cli://capture', () => void ipcInvoke('show_capture_window')));
       uns.push(await ipcListen('cli://fullscreen', () => takeCapture('fullscreen')));
       uns.push(await ipcListen<string>('cli://edit', (p) => openEditorByPath(p)));
       uns.push(await ipcListen<string[]>('cli://import', (fs) => importPaths(fs)));
+      uns.push(await ipcListen<[number, number, number, number]>('region://record-rect', (rect) => {
+        void startRecordingRect(rect);
+      }));
       // The framed capture window forwards its actions here so the result lands
       // in this window's library + editor.
-      uns.push(await ipcListen<{ kind: 'capture' | 'record'; mode?: 'region' | 'fullscreen' | 'window' }>(
+      uns.push(await ipcListen<{ kind: 'capture' | 'record'; mode?: 'region' | 'fullscreen' | 'window' | 'screen' }>(
         'capture-cmd',
         (p) => {
-          if (p.kind === 'record') void startRecording();
+          if (p.kind === 'record') {
+            void startRecording(p.mode === 'screen' ? 'display' : p.mode === 'region' ? 'region' : 'screen');
+          }
           else void takeCapture(p.mode ?? 'region');
         }
       ));

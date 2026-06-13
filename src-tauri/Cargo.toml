@@ -18,9 +18,9 @@ image = "0.25"
 base64 = "0.22"
 tokio = { version = "1", features = ["rt-multi-thread", "time", "process"] }
 trash = "5"
-# Native "Save as…" via the desktop file-chooser portal (DBus/ashpd) — works in
-# the Flatpak sandbox and off the GTK main thread (async).
-rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "tokio"] }
+# Native "Save as…" via the desktop file chooser. Linux uses the portal so the
+# Flatpak sandbox works; Windows uses rfd's native backend.
+rfd = { version = "0.15", default-features = false, features = ["tokio"] }
 # Blocking HTTP for the AI-endpoint connectivity test + OneDrive Graph calls.
 ureq = { version = "2", features = ["json"] }
 # PKCE for the interactive OneDrive sign-in (S256 challenge + CSRF state).
@@ -43,6 +43,9 @@ tiny_http = "0.12"
 # (load-dynamic; needs libonnxruntime + the u2net model at runtime). Release
 # builds pass --features bgremove; the default build omits it.
 bgremove = ["wondershot-core/bgremove-onnx"]
+
+[target.'cfg(target_os = "linux")'.dependencies]
+rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "tokio"] }
 
 [lib]
 name = "wondershot_lib"

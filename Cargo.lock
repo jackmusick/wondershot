@@ -6635,6 +6635,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "windows-sys 0.61.2",
  "zbus 4.4.0",
 ]
 

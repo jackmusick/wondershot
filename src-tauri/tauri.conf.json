@@ -61,10 +61,10 @@
   "bundle": {
     "active": true,
     "targets": ["appimage", "rpm", "deb"],
-    "icon": ["icons/icon.png"],
+    "icon": ["icons/icon.png", "icons/icon.ico", "icons/icon.icns"],
     "category": "Utility",
     "shortDescription": "Screenshot & screen-recording with annotation",
-    "longDescription": "Capture, annotate, record, and redact your screen on Wayland/KDE.",
+    "longDescription": "Capture, annotate, record, and redact screenshots and screen recordings.",
     "linux": {
       "rpm": {
         "depends": ["ffmpeg", "wl-clipboard", "gstreamer1-plugin-pipewire", "onnxruntime"]

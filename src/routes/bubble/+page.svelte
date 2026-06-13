@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { ipcInvoke, ipcListen } from '$lib/ipc';
+  import { openCameraSource } from '$lib/media/camera';
 
   const USE_MOCK = typeof (globalThis as any).__TAURI_INTERNALS__ === 'undefined';
 
@@ -15,9 +16,14 @@
    *  unreliable in the Flatpak (launch crashes, silent black feeds); the
    *  backend reads the camera with GStreamer and serves multipart JPEG. */
   let camSrc = $state('');
+  let videoEl: HTMLVideoElement | undefined;
+  let webStream: MediaStream | undefined;
   let unwatch: (() => void) | undefined;
 
   function stopStream() {
+    webStream?.getTracks().forEach((track) => track.stop());
+    webStream = undefined;
+    if (videoEl) videoEl.srcObject = null;
     camSrc = '';
     hasCamera = false;
   }
@@ -26,13 +32,25 @@
     try {
       const s = (await ipcInvoke<Record<string, unknown>>('get_settings')) ?? {};
       const label = String(s.camera_device ?? '');
-      const port = await ipcInvoke<number>('media_server_port');
-      if (!port) {
+      const source = await openCameraSource(label);
+      stopStream();
+      if (source.type === 'stream') {
+        webStream = source.stream;
+        if (videoEl) {
+          videoEl.srcObject = webStream;
+          await videoEl.play();
+          hasCamera = true;
+        }
+        return;
+      }
+      if (source.type === 'url') {
+        camSrc = source.src;
+        return;
+      }
+      if (source.type === 'none') {
         hasCamera = false;
         return;
       }
-      // Cache-buster so a re-show always opens a fresh stream connection.
-      camSrc = `http://127.0.0.1:${port}/camera?label=${encodeURIComponent(label)}&t=${Date.now()}`;
     } catch {
       hasCamera = false;
     }
@@ -130,6 +148,14 @@
       onerror={() => (hasCamera = false)}
     />
   {/if}
+  <video
+    bind:this={videoEl}
+    class="cam"
+    class:hidden={!hasCamera || !!camSrc}
+    autoplay
+    muted
+    playsinline
+  ></video>
   {#if !hasCamera}
     <div class="placeholder" aria-label="no camera">
       <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.6">

@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Wondershot core capabilities",
-  "windows": ["main", "bubble", "capture", "countdown", "screen"],
+  "windows": ["main", "bubble", "capture", "capture-actionbar", "countdown", "screen", "region-picker"],
   "permissions": [
     "core:default",
     "core:event:default",

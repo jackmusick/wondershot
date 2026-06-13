@@ -112,7 +112,7 @@
         <img class="thumb" src={c.thumbnail} alt={c.title} draggable="true" ondragstart={(e) => onDragStart(e, c)} />
       {:else}
         <!-- No poster available (e.g. ffmpeg missing): dark card, play badge only. -->
-        <span class="thumb fallback" draggable="true" ondragstart={(e) => onDragStart(e, c)}></span>
+        <span class="thumb fallback" role="img" aria-label={c.title} draggable="true" ondragstart={(e) => onDragStart(e, c)}></span>
       {/if}
       {#if c.kind === 'video'}<span class="play">▶</span>{/if}
       <span class="pin" class:on={$pinned.includes(c.path)} role="button" tabindex="-1"

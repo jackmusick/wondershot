@@ -1,0 +1,15 @@
+{
+  "bundle": {
+    "targets": ["nsis", "msi"],
+    "externalBin": ["binaries/ffmpeg"],
+    "windows": {
+      "wix": {
+        "language": "en-US"
+      },
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": ["English"]
+      }
+    }
+  }
+}

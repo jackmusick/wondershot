@@ -1,9 +1,7 @@
 <script lang="ts">
-  // Frameless, secondary capture window with a custom titlebar — the native
-  // titlebar's min/close buttons don't function for Tauri secondary windows on
-  // this Wayland/KWin setup, so we draw our own and wire them to the window API
-  // directly. Capture/record actions are forwarded to the main window (which
-  // owns the library + editor) over the `capture-cmd` event.
+  // Frameless secondary capture window with a custom titlebar. Capture/record
+  // actions are forwarded to the main window, which owns the library + editor,
+  // over the `capture-cmd` event.
   import { onMount } from 'svelte';
   import { ipcInvoke, ipcEmit } from '$lib/ipc';
 
@@ -41,7 +39,7 @@
   async function hideSelf() { if (!USE_MOCK) try { await (await win()).hide(); } catch {} }
   async function closeSelf() { if (!USE_MOCK) try { await (await win()).close(); } catch {} }
 
-  async function run(kind: 'capture' | 'record', mode?: 'region' | 'fullscreen' | 'window') {
+  async function run(kind: 'capture' | 'record', mode?: 'region' | 'fullscreen') {
     persist();
     await hideSelf();
     void ipcEmit('capture-cmd', { kind, mode });
@@ -72,13 +70,13 @@
       <input type="number" min="0" max="10" bind:value={delay} /> s
     </label>
   </div>
-  <button class="capture" onclick={() => run('capture', 'region')} title="Drag a region (Spectacle)">
+  <button class="capture" onclick={() => run('capture', 'region')} title="Select a region or hover a window">
     Capture
   </button>
   <div class="actions">
     <button class="act" onclick={() => run('capture', 'fullscreen')}>Full screen</button>
-    <button class="act" onclick={() => run('capture', 'window')}>Window</button>
     <button class="act" onclick={() => run('record')}>Record</button>
+    <button class="act" onclick={() => run('record', 'region')}>Record Region</button>
   </div>
 </div>
 

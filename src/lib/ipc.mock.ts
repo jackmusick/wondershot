@@ -68,6 +68,10 @@ export async function mockInvoke(cmd: string, _args?: unknown): Promise<unknown>
   switch (cmd) {
     case 'health':
       return 'ok';
+    case 'debug_log':
+      return null;
+    case 'log_path':
+      return '/mock/wondershot.log';
     case 'list_library':
       return mockList;
     case 'get_settings':

@@ -21,6 +21,8 @@ artifacts/
 src-tauri/target/
 /target/
 test-results/
+.tauri-sidecars/
+src-tauri/binaries/
 
 # Tauri build-generated schemas/capabilities
 src-tauri/gen/

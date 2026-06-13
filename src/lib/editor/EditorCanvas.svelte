@@ -1375,8 +1375,9 @@
     // real mouse events and assert Konva state (items, current selection, the
     // transformer's handles, zoom) without a DOM representation of the scene.
     if (import.meta.env.DEV || import.meta.env.VITE_MOCK_IPC) {
+      const currentStage = stage!;
       (window as unknown as { __wsEditor?: unknown }).__wsEditor = {
-        stage,
+        stage: currentStage,
         transformer,
         itemCount: () => items.length,
         items: () => items.map((i) => ({ ...i })),
@@ -1393,9 +1394,9 @@
         // Anchor size in SCREEN pixels — shrinks with zoom-out unless countered.
         anchorScreenSize: () => {
           const a = transformer.findOne('.top-left') as any;
-          return a ? a.width() * stage.scaleX() * (a.scaleX?.() ?? 1) : 0;
+          return a ? a.width() * currentStage.scaleX() * (a.scaleX?.() ?? 1) : 0;
         },
-        scale: () => stage.scaleX(),
+        scale: () => currentStage.scaleX(),
         imageSize: () => ({ w: imgW, h: imgH }),
         draggableCount: () =>
           annotationsLayer.find(`.${WS_NODE_NAME}`).filter((n: any) => n.draggable()).length,
