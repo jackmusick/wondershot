@@ -28,14 +28,14 @@ in sync as Windows, Linux, and macOS converge.
 | Feature | Windows | Linux | macOS | Notes / Decision |
 | --- | --- | --- | --- | --- |
 | Main app shell | Implemented | Implemented | Planned | Tauri/Svelte is the shared shell. |
-| Capture entry button | Implemented | Fallback / needs review | Planned | Windows opens the unified native selector. Linux currently keeps the mini `/capture` window path. Removing it should be a deliberate decision, not incidental cleanup. |
-| Capture action bar | Implemented | Planned | Planned | Windows uses a Svelte action bar after selecting a monitor/window/region. Target behavior should become shared where native overlay support allows. |
+| Capture entry button | Implemented | Fallback / needs review | Planned | Windows opens the unified native selector. Linux currently keeps the mini `/capture` window path, which delegates to Spectacle/portal behavior. Removing it should be a deliberate decision, not incidental cleanup. |
+| Capture action bar | Implemented | Fallback | Planned | Windows uses a Svelte action bar after selecting a monitor/window/region. Linux gets the Spectacle action flow when Spectacle is available, mostly validated on Fedora/KDE; non-KDE behavior needs review. |
 | Region screenshot | Implemented | Fallback | Planned | Windows uses native Rust overlay. Linux uses Spectacle when available, then portal fallback. macOS should use native capture APIs. |
 | Window screenshot | Implemented | Fallback | Planned | Windows hover-selects windows and attempts native window capture. Linux relies on Spectacle/portal. macOS needs native window enumeration/capture. |
 | Fullscreen screenshot | Implemented | Fallback | Planned | Windows selects one monitor, including desktop/edge hover. Linux uses Spectacle/portal. |
 | Multi-monitor targeting | Implemented | Fallback | Planned | Windows selector works per monitor. Linux behavior depends on Spectacle/portal. |
 | Region recording | Implemented | Fallback / needs review | Planned | Windows records the selected rect from the unified selector. Linux recording currently goes through the Linux recording path and should be reviewed for region parity. |
-| Window recording | Partial | Fallback / needs review | Planned | Windows records the selected window bounds as a rect, not a live window handle. That is acceptable for now but should be called out if users expect window-following behavior. |
+| Window recording | Implemented | Fallback / needs review | Planned | Windows records the selected window bounds as a region. It does not follow the window if it moves after recording starts, which is acceptable for current parity. |
 | Fullscreen recording | Implemented | Implemented | Planned | Windows uses FFmpeg gdigrab. Linux uses the GStreamer/portal path. |
 | Pause/resume recording | Implemented | Implemented | Planned | Windows sends FFmpeg pause/resume input. Linux uses the GStreamer pause probe. |
 | Microphone recording | Implemented | Implemented | Planned | Windows uses DirectShow device resolution. Linux uses GStreamer/Pulse/PipeWire resolution. |
@@ -43,8 +43,8 @@ in sync as Windows, Linux, and macOS converge.
 | Camera bubble | Implemented | Implemented | Planned | Windows uses native FFmpeg camera streaming. Linux uses the existing native camera path. macOS camera module is a stub. |
 | Browser media fallback | Implemented | Implemented | Implemented / fallback | Kept as a fallback, but native capture/recording should be preferred in the desktop app to avoid permission popups and browser-feeling UX. |
 | Capture/record crash logging | Implemented | Implemented | Implemented | `src-tauri/src/logging.rs` writes to the Wondershot config directory. Use it for native picker and recording diagnostics. |
-| Installer | Implemented | Implemented / needs review | Planned | Windows uses NSIS. Linux install script exists. macOS packaging is not done. |
-| Global capture hotkey command | Implemented | Implemented | Planned | Uses the installed app command path. macOS shortcut registration needs review. |
+| Installer | Implemented | Implemented | Planned | Windows uses NSIS. Linux install script is validated. macOS packaging is not done. |
+| Global capture hotkey | Implemented | Fallback | Planned | Windows registers the shortcut directly from Settings while the app is running. Linux uses the installed app command path in desktop shortcut settings. macOS native registration is planned. |
 | Open containing folder | Implemented | Implemented | Planned | Shared opener abstraction exists; Linux still accounts for Flatpak host opening. |
 
 ## Current Intentional Differences
@@ -54,6 +54,10 @@ in sync as Windows, Linux, and macOS converge.
 Linux currently still opens the small `/capture` window from `show_capture_window`
 instead of the Windows unified selector. This is preserved because the Linux
 path was already working and used Spectacle/portal behavior that users expect.
+
+The action bar on Linux is effectively Spectacle's native action flow when
+Spectacle is present. That has mostly been validated on Fedora/KDE; GNOME,
+non-KDE desktops, and portal-only behavior need explicit review.
 
 Decision: keep it until Linux has a unified native/Svelte selector with equal or
 better behavior. Removing the mini window is reasonable later, but should happen

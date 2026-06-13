@@ -47,6 +47,13 @@ bgremove = ["wondershot-core/bgremove-onnx"]
 [target.'cfg(target_os = "linux")'.dependencies]
 rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "tokio"] }
 
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
 [lib]
 name = "wondershot_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]

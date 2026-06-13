@@ -151,6 +151,7 @@ pub fn set_settings(
         }
     }
     s.save().map_err(|e| e.to_string())?;
+    crate::hotkeys::update_from_settings(&app);
     // Library / extra dirs may have changed — rebind the live folder watcher.
     crate::watcher::rewatch(&app, watch.inner());
     Ok(())

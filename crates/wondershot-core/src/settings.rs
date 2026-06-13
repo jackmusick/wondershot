@@ -1,6 +1,17 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
+fn default_hotkey_capture() -> String {
+    #[cfg(target_os = "windows")]
+    {
+        "Ctrl+Shift+S".into()
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        "Ctrl+Shift+Print".into()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Settings {
     pub library_dir: String,
@@ -55,7 +66,7 @@ impl Default for Settings {
             record_cursor_halo: false,
             record_countdown: 0,
             camera_device: String::new(),
-            hotkey_capture: "Ctrl+Shift+Print".into(),
+            hotkey_capture: default_hotkey_capture(),
             copy_after_capture: true,
             show_gallery_after_capture: true,
             pin_on_top: false,
@@ -161,6 +172,13 @@ impl Settings {
                     s.extra.insert(k.to_string(), v.to_string());
                 }
             }
+        }
+        #[cfg(target_os = "windows")]
+        if s.hotkey_capture == "Ctrl+Shift+Print" {
+            // Windows 11 commonly reserves Print Screen for Snipping Tool,
+            // which makes RegisterHotKey fail. Migrate the old cross-platform
+            // default to a Windows-friendly native shortcut.
+            s.hotkey_capture = default_hotkey_capture();
         }
         s
     }
@@ -299,6 +317,9 @@ mod tests {
     #[test]
     fn new_keys_parse_and_default() {
         let s = Settings::default();
+        #[cfg(target_os = "windows")]
+        assert_eq!(s.hotkey_capture, "Ctrl+Shift+S");
+        #[cfg(not(target_os = "windows"))]
         assert_eq!(s.hotkey_capture, "Ctrl+Shift+Print");
         assert_eq!(s.copy_after_capture, true);
         assert_eq!(s.show_gallery_after_capture, true);

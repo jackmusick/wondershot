@@ -6616,6 +6616,7 @@ dependencies = [
  "tokio",
  "trash",
  "ureq",
+ "windows-sys 0.61.2",
  "wondershot-core",
 ]
 

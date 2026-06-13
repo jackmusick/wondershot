@@ -49,6 +49,8 @@
   let loaded = $state(false);
   let platform = $state('unknown');
   let isLinux = $derived(platform === 'linux');
+  let isWindows = $derived(platform === 'windows');
+  let isMac = $derived(platform === 'macos');
 
   async function loadSettings() {
     const data = (await ipcInvoke<SettingsData>('get_settings')) ?? {};
@@ -335,7 +337,19 @@
             <span>Quick bar timeout (s)</span>
             <input type="number" min="2" max="60" value={num('quick_bar_timeout')} oninput={(e) => setNum('quick_bar_timeout', e.currentTarget.valueAsNumber)} />
           </label>
-          {#if isLinux}
+          {#if isWindows}
+            <label class="field">
+              <span>Capture hotkey</span>
+              <input type="text" bind:value={s.hotkey_capture} placeholder="Ctrl+Shift+Print" />
+              <small>Registered directly by Wondershot while the app is running.</small>
+            </label>
+          {:else if isMac}
+            <label class="field">
+              <span>Capture hotkey</span>
+              <input type="text" bind:value={s.hotkey_capture} placeholder="Cmd+Shift+5" disabled />
+              <small>Native macOS hotkey registration is planned.</small>
+            </label>
+          {:else if isLinux}
             <label class="field">
               <span>Capture hotkey</span>
               <input type="text" bind:value={s.hotkey_capture} />

@@ -1,6 +1,7 @@
 mod ai;
 mod commands;
 mod graph;
+mod hotkeys;
 mod logging;
 mod media_server;
 mod share;
@@ -298,6 +299,7 @@ pub fn run() {
             dispatch_cli(app, parse_args(argv.into_iter().skip(1)));
         }))
         .plugin(tauri_plugin_drag::init())
+        .manage(hotkeys::HotkeyState::default())
         .manage(commands::RecState::default())
         .manage(commands::AuthRouter::default())
         .manage(watcher::LibWatch::default())
@@ -308,6 +310,10 @@ pub fn run() {
             // Watch the library folders so externally created files (global
             // hotkey captures, drops from other apps) appear live.
             watcher::rewatch(app.handle(), app.state::<watcher::LibWatch>().inner());
+            hotkeys::start(
+                app.handle().clone(),
+                app.state::<hotkeys::HotkeyState>().inner(),
+            );
             // Tray "Record / Stop" item. Tray menu -> command wiring is awkward
             // (the menu handler has no access to the recorder's async start
             // path), so the item emits a `tray://record-toggle` event the
