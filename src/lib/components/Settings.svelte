@@ -52,6 +52,7 @@
   let isWindows = $derived(platform === 'windows');
   let isMac = $derived(platform === 'macos');
   let recordingHotkey = $state(false);
+  let hotkeyRecorderMsg = $state('');
 
   async function loadSettings() {
     const data = (await ipcInvoke<SettingsData>('get_settings')) ?? {};
@@ -239,13 +240,18 @@
 
   function startHotkeyRecording() {
     recordingHotkey = true;
+    hotkeyRecorderMsg = '';
   }
 
   function stopHotkeyRecording() {
     recordingHotkey = false;
+    hotkeyRecorderMsg = '';
   }
 
   function normalizedHotkeyKey(e: KeyboardEvent): string | null {
+    if (e.code.startsWith('Key') && e.code.length === 4) return e.code.slice(3).toUpperCase();
+    if (e.code.startsWith('Digit') && e.code.length === 6) return e.code.slice(5);
+    if (e.code.startsWith('Numpad') && e.code.length === 7 && /^[0-9]$/.test(e.code.slice(6))) return e.code.slice(6);
     const key = e.key;
     if (key === 'Control' || key === 'Shift' || key === 'Alt' || key === 'Meta') return null;
     if (key === 'PrintScreen') return 'Print';
@@ -279,6 +285,10 @@
       if (next) {
         s.hotkey_capture = next;
         stopHotkeyRecording();
+      } else if (e.key === 'Control' || e.key === 'Shift' || e.key === 'Alt' || e.key === 'Meta') {
+        hotkeyRecorderMsg = 'Now press a letter, number, function key, or Print Screen.';
+      } else {
+        hotkeyRecorderMsg = 'That key is not supported for the global shortcut yet.';
       }
       return;
     }
@@ -398,7 +408,7 @@
                   {recordingHotkey ? 'Cancel' : 'Record'}
                 </button>
               </span>
-              <small>{recordingHotkey ? 'Use Ctrl, Alt, Shift, or Win with a letter, number, function key, or Print Screen.' : 'Registered directly by Wondershot while the app is running.'}</small>
+              <small>{recordingHotkey ? hotkeyRecorderMsg || 'Use Ctrl, Alt, Shift, or Win with a letter, number, function key, or Print Screen.' : 'Registered directly by Wondershot while the app is running.'}</small>
             </label>
           {:else if isMac}
             <label class="field">
