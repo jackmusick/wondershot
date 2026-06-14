@@ -23,7 +23,8 @@ jobs:
             libwebkit2gtk-4.1-dev libgtk-3-dev \
             libayatana-appindicator3-dev librsvg2-dev libssl-dev \
             libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
-            gstreamer1.0-pipewire ffmpeg
+            ffmpeg
+          sudo apt-get install -y --no-install-recommends gstreamer1.0-pipewire || true
 
       - uses: actions/setup-node@v4
         with:
@@ -42,6 +43,11 @@ jobs:
         shell: pwsh
         run: ./scripts/Prepare-WindowsFfmpeg.ps1
 
+      - name: Install Windows installer tooling
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: choco install nsis -y --no-progress
+
       - name: Frontend typecheck
         run: npm run check
 
@@ -55,4 +61,17 @@ jobs:
         run: cargo test -p wondershot-core
 
       - name: Tauri build smoke
+        if: runner.os != 'Windows'
         run: npx tauri build --no-bundle
+
+      - name: Windows setup build
+        if: runner.os == 'Windows'
+        run: npx tauri build -b nsis
+
+      - name: Upload Windows setup
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: wondershot-windows-setup
+          path: target/**/bundle/nsis/*.exe
+          if-no-files-found: error
