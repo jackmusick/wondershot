@@ -826,9 +826,16 @@ pub fn capture_window_rgba(hwnd: isize) -> Result<RgbaImage, String> {
         if hwnd.is_null() {
             return Err("empty window handle".into());
         }
-        let rect = window_frame_rect(hwnd);
-        let width = rect.right - rect.left;
-        let height = rect.bottom - rect.top;
+        let visible_rect = window_frame_rect(hwnd);
+        let mut print_rect = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+        if GetWindowRect(hwnd, &mut print_rect) == 0
+            || print_rect.right <= print_rect.left
+            || print_rect.bottom <= print_rect.top
+        {
+            print_rect = visible_rect;
+        }
+        let width = print_rect.right - print_rect.left;
+        let height = print_rect.bottom - print_rect.top;
         if width <= 0 || height <= 0 {
             return Err("window has empty bounds".into());
         }
@@ -862,7 +869,23 @@ pub fn capture_window_rgba(hwnd: isize) -> Result<RgbaImage, String> {
             return Err("PrintWindow failed".into());
         }
 
-        let image = bitmap_to_rgba(mem.0, bitmap.0, width, height);
+        let image = bitmap_to_rgba(mem.0, bitmap.0, width, height).map(|img| {
+            let crop_x = (visible_rect.left - print_rect.left).max(0) as u32;
+            let crop_y = (visible_rect.top - print_rect.top).max(0) as u32;
+            let crop_w = (visible_rect.right - visible_rect.left).max(0) as u32;
+            let crop_h = (visible_rect.bottom - visible_rect.top).max(0) as u32;
+            if crop_w > 0
+                && crop_h > 0
+                && crop_x < img.width()
+                && crop_y < img.height()
+                && crop_x.saturating_add(crop_w) <= img.width()
+                && crop_y.saturating_add(crop_h) <= img.height()
+            {
+                image::imageops::crop_imm(&img, crop_x, crop_y, crop_w, crop_h).to_image()
+            } else {
+                img
+            }
+        });
         SelectObject(mem.0, old);
         image
     }

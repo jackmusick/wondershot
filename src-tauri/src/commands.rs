@@ -26,6 +26,26 @@ pub fn platform() -> &'static str {
     std::env::consts::OS
 }
 
+fn restore_main_after_capture(app: &tauri::AppHandle, settings: &Settings) {
+    if !settings.show_gallery_after_capture {
+        return;
+    }
+    use tauri::Manager;
+    if let Some(w) = app.get_webview_window("main") {
+        if let Err(e) = w.show() {
+            logging::log(format!("restore main after capture: show failed: {e}"));
+        }
+        if let Err(e) = w.unminimize() {
+            logging::log(format!("restore main after capture: unminimize failed: {e}"));
+        }
+        if let Err(e) = w.set_focus() {
+            logging::log(format!("restore main after capture: focus failed: {e}"));
+        }
+    } else {
+        logging::log("restore main after capture: main window not found");
+    }
+}
+
 #[tauri::command]
 pub fn get_settings() -> serde_json::Value {
     let s = Settings::load();
@@ -273,7 +293,10 @@ async fn do_capture(app: tauri::AppHandle, mode: capture::CaptureMode) -> Result
     };
 
     match &result {
-        Ok(path) => { let _ = app.emit("capture://done", path.clone()); }
+        Ok(path) => {
+            restore_main_after_capture(&app, &s);
+            let _ = app.emit("capture://done", path.clone());
+        }
         Err(msg) => { let _ = app.emit("capture://failed", msg.clone()); }
     }
     result
@@ -383,6 +406,7 @@ pub fn save_native_capture_crop(
     let out = paths::unique_path(Path::new(&s.library_dir), &paths::timestamp_name("Screenshot"));
     out_img.save(&out).map_err(|e| e.to_string())?;
     let path = out.to_string_lossy().to_string();
+    restore_main_after_capture(&app, &s);
     let _ = app.emit("capture://done", path.clone());
     Ok(path)
 }
@@ -1667,6 +1691,7 @@ fn run_windows_capture_picker(app: tauri::AppHandle) -> Result<(), String> {
     out_img.save(&out).map_err(|e| e.to_string())?;
     let path = out.to_string_lossy().to_string();
     logging::log(format!("Windows picker: saved capture {path}"));
+    restore_main_after_capture(&app, &s);
     let _ = app.emit("capture://done", path);
     Ok(())
 }
