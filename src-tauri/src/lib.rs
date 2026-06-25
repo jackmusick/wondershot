@@ -43,8 +43,12 @@ fn dispatch_cli(app: &tauri::AppHandle, action: CliAction) {
         CliAction::OpenUrl(url) if url.starts_with("wondershot://auth") => {
             app.state::<commands::AuthRouter>().deliver(url);
         }
-        // Version/MediaCheck are handled before the GUI starts; URL/Launch just focus.
-        CliAction::Version | CliAction::MediaCheck | CliAction::OpenUrl(_) | CliAction::Launch => {}
+        // Version/SelfCheck/MediaCheck are handled before the GUI starts; URL/Launch just focus.
+        CliAction::Version
+        | CliAction::SelfCheck
+        | CliAction::MediaCheck
+        | CliAction::OpenUrl(_)
+        | CliAction::Launch => {}
     }
 }
 
@@ -277,6 +281,13 @@ pub fn run() {
             let _ = std::io::Write::write_all(
                 &mut std::io::stdout(),
                 format!("wondershot {}\n", env!("CARGO_PKG_VERSION")).as_bytes(),
+            );
+            return;
+        }
+        CliAction::SelfCheck => {
+            let _ = std::io::Write::write_all(
+                &mut std::io::stdout(),
+                format!("wondershot self check {}\n", env!("CARGO_PKG_VERSION")).as_bytes(),
             );
             return;
         }

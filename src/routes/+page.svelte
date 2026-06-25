@@ -28,14 +28,18 @@
           if (s.copy_after_capture !== false && path) {
             await ipcInvoke('copy_image', { path });
           }
+          if (s.auto_share_after_capture === true && path) {
+            await ipcInvoke('share_capture', { path });
+          }
         } catch (e) {
-          console.error('copy-after-capture failed', e);
+          console.error('post-capture action failed', e);
         }
       }));
       // Live folder watching: the backend debounce-emits this when a media file
       // lands in / leaves a watched dir (global hotkey, external drop).
       uns.push(await ipcListen('library://changed', () => void loadLibrary()));
-      // CLI / global-hotkey forwarding (parity with the Python --capture model).
+      // CLI / global-hotkey forwarding: the backend starts direct region
+      // capture on Linux and restores the main window when it completes.
       uns.push(await ipcListen('cli://capture', () => void ipcInvoke('show_capture_window')));
       uns.push(await ipcListen('cli://fullscreen', () => takeCapture('fullscreen')));
       uns.push(await ipcListen<string>('cli://edit', (p) => openEditorByPath(p)));

@@ -39,6 +39,10 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Installer smoke tests
+        if: runner.os == 'Linux'
+        run: ./scripts/test-install.sh
+
       - name: Stage Windows FFmpeg sidecar
         if: runner.os == 'Windows'
         shell: pwsh

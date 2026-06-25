@@ -12,6 +12,7 @@ pub enum CliAction {
     Quit,
     InstallDesktop,
     Version,
+    SelfCheck,
     MediaCheck,
     OpenUrl(String),
 }
@@ -28,6 +29,7 @@ pub fn parse_args<I: IntoIterator<Item = String>>(args: I) -> CliAction {
             "--quit" => return CliAction::Quit,
             "--install-desktop" => return CliAction::InstallDesktop,
             "--version" => return CliAction::Version,
+            "--self-check" => return CliAction::SelfCheck,
             "--media-check" => return CliAction::MediaCheck,
             "-e" | "--edit" => {
                 return match args.get(i + 1) {
@@ -95,6 +97,10 @@ mod tests {
     #[test]
     fn version_flag() {
         assert_eq!(p(&["--version"]), CliAction::Version);
+    }
+    #[test]
+    fn self_check_flag() {
+        assert_eq!(p(&["--self-check"]), CliAction::SelfCheck);
     }
     #[test]
     fn url_positional() {

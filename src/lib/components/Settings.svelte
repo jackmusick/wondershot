@@ -521,6 +521,7 @@
             Upload a capture to a cloud target and copy a share link. Credentials are
             shared with the previous Wondershot, so an existing sign-in carries over.
           </p>
+          <label class="check"><input type="checkbox" bind:checked={s.auto_share_after_capture} /> Share automatically after capture</label>
           <label class="field row">
             <span>Default provider</span>
             <select bind:value={s.share_provider}>

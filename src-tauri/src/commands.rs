@@ -30,17 +30,40 @@ fn restore_main_after_capture(app: &tauri::AppHandle, settings: &Settings) {
     if !settings.show_gallery_after_capture {
         return;
     }
-    use tauri::Manager;
-    if let Some(w) = app.get_webview_window("main") {
-        if let Err(e) = w.show() {
-            logging::log(format!("restore main after capture: show failed: {e}"));
-        }
+    use std::time::Duration;
+    use tauri::{Manager, UserAttentionType};
+
+    fn focus_main_window(w: &tauri::WebviewWindow, attempt: &str) {
         if let Err(e) = w.unminimize() {
-            logging::log(format!("restore main after capture: unminimize failed: {e}"));
+            logging::log(format!(
+                "restore main after capture ({attempt}): unminimize failed: {e}"
+            ));
+        }
+        if let Err(e) = w.show() {
+            logging::log(format!(
+                "restore main after capture ({attempt}): show failed: {e}"
+            ));
+        }
+        if let Err(e) = w.request_user_attention(Some(UserAttentionType::Informational)) {
+            logging::log(format!(
+                "restore main after capture ({attempt}): request attention failed: {e}"
+            ));
         }
         if let Err(e) = w.set_focus() {
-            logging::log(format!("restore main after capture: focus failed: {e}"));
+            logging::log(format!(
+                "restore main after capture ({attempt}): focus failed: {e}"
+            ));
         }
+    }
+
+    if let Some(w) = app.get_webview_window("main") {
+        focus_main_window(&w, "initial");
+        tauri::async_runtime::spawn(async move {
+            for attempt in ["retry 1", "retry 2"] {
+                tokio::time::sleep(Duration::from_millis(175)).await;
+                focus_main_window(&w, attempt);
+            }
+        });
     } else {
         logging::log("restore main after capture: main window not found");
     }
@@ -1581,11 +1604,10 @@ pub fn test_ai_endpoint(endpoint: String, model: String, api_key: String) -> Res
     }
 }
 
-/// Show + focus the native capture picker. The header Capture
-/// button and CLI capture entrypoint should both land here: one click, then
-/// choose a region or hover-click a window.
+/// Show + focus the compact capture window on Windows. Linux goes straight to
+/// region capture so shortcuts and the header button are one gesture.
 #[tauri::command]
-pub fn show_capture_window(app: tauri::AppHandle) -> Result<(), String> {
+pub async fn show_capture_window(app: tauri::AppHandle) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         use tauri::Emitter;
@@ -1608,23 +1630,7 @@ pub fn show_capture_window(app: tauri::AppHandle) -> Result<(), String> {
 
     #[cfg(not(target_os = "windows"))]
     {
-        use tauri::Manager;
-        if let Some(w) = app.get_webview_window("capture") {
-            w.show().map_err(|e| e.to_string())?;
-            let _ = w.unminimize();
-            let _ = w.set_focus();
-            return Ok(());
-        }
-
-        tauri::WebviewWindowBuilder::new(&app, "capture", tauri::WebviewUrl::App("/capture".into()))
-            .title("Capture")
-            .inner_size(380.0, 224.0)
-            .resizable(false)
-            .decorations(false)
-            .center()
-            .build()
-            .map_err(|e| e.to_string())?;
-        Ok(())
+        do_capture(app, capture::CaptureMode::Region).await.map(|_| ())
     }
 }
 

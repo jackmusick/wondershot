@@ -88,7 +88,9 @@ curl -fsSL https://raw.githubusercontent.com/jackmusick/wondershot/main/install.
 ```
 
 Installs user-locally (no sudo) and tells you if any system packages
-are missing. Re-run the same command to update.
+are missing. The installer validates the downloaded app before reporting
+success, so stale legacy bundles are refused instead of silently installed.
+Re-run the same command to update.
 
 ### From source (developers)
 
@@ -99,8 +101,16 @@ npm run tauri dev
 ```
 
 Linux needs GStreamer with the PipeWire plugin, ffmpeg, and a Rust
-toolchain. Run the Rust/frontend suites with `cargo test --workspace`
-and `npm run test`.
+toolchain. On Fedora/KDE, the native build packages are:
+
+```sh
+sudo dnf install ffmpeg gstreamer1-plugins-ugly \
+  gstreamer1-devel gstreamer1-plugins-base-devel \
+  webkit2gtk4.1-devel libayatana-appindicator-gtk3-devel
+```
+
+Run the Rust/frontend suites with `cargo test --workspace` and
+`npm run test`.
 
 ## Platform notes
 

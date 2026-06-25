@@ -19,6 +19,45 @@ APPIMAGE="$HOME_DIR/Wondershot.AppImage"
 say()  { printf '\033[1m[wondershot]\033[0m %s\n' "$*"; }
 fail() { printf '\033[1;31m[wondershot]\033[0m %s\n' "$*" >&2; exit 1; }
 
+smoke_command() {
+    cmd=$1
+    out=$(mktemp "${TMPDIR:-/tmp}/wondershot-smoke.XXXXXX")
+    if "$cmd" --self-check >"$out" 2>&1 \
+        && grep -q '^wondershot self check ' "$out"; then
+        rm -f "$out"
+        return 0
+    fi
+    # Compatibility with Tauri builds created before --self-check existed.
+    if "$cmd" --media-check >"$out" 2>&1 \
+        && grep -q '^wondershot media check' "$out"; then
+        rm -f "$out"
+        return 0
+    fi
+    say "validation output:"
+    sed 's/^/  /' "$out" >&2
+    rm -f "$out"
+    return 1
+}
+
+smoke_flatpak() {
+    out=$(mktemp "${TMPDIR:-/tmp}/wondershot-smoke.XXXXXX")
+    if flatpak run "$APPID" --self-check >"$out" 2>&1 \
+        && grep -q '^wondershot self check ' "$out"; then
+        rm -f "$out"
+        return 0
+    fi
+    # Compatibility with Tauri builds created before --self-check existed.
+    if flatpak run "$APPID" --media-check >"$out" 2>&1 \
+        && grep -q '^wondershot media check' "$out"; then
+        rm -f "$out"
+        return 0
+    fi
+    say "validation output:"
+    sed 's/^/  /' "$out" >&2
+    rm -f "$out"
+    return 1
+}
+
 # -- pick the best asset from the latest release -------------------------------
 
 say "looking up the latest release..."
@@ -54,7 +93,10 @@ if [ -n "$appimage_url" ]; then
     trap 'rm -f "$tmp"' EXIT
     say "downloading $appimage_url"
     curl -fsSL "$appimage_url" -o "$tmp"
-    chmod +x "$tmp"; mv "$tmp" "$APPIMAGE"; trap - EXIT
+    chmod +x "$tmp"
+    say "validating downloaded app..."
+    smoke_command "$tmp" || fail "downloaded AppImage is not a current Tauri Wondershot build"
+    mv "$tmp" "$APPIMAGE"; trap - EXIT
     ln -sf "$APPIMAGE" "$BIN_DIR/wondershot"
 
     cat > "$APP_DIR/$APPID.desktop" <<EOF
@@ -87,6 +129,8 @@ elif [ -n "$flatpak_url" ]; then
     curl -fsSL "$flatpak_url" -o "$tmp"
     say "installing the Flatpak bundle (user)..."
     flatpak install --user -y --noninteractive "$tmp"
+    say "validating installed app..."
+    smoke_flatpak || fail "installed Flatpak is not a current Tauri Wondershot build; the release likely contains a stale Python/PySide bundle"
     rm -f "$tmp"; trap - EXIT
     say "done. Launch 'Wondershot' from your menu, or: flatpak run $APPID"
 

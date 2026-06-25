@@ -22,8 +22,8 @@
     }
   });
 
-  /** Enter the capture picker directly in the desktop app. Browser dev keeps
-   * the in-page panel because secondary Tauri windows do not exist there. */
+  /** Desktop capture goes through the backend so Linux shortcuts/header clicks
+   * share the same direct selector path; browser dev keeps the in-page panel. */
   async function openCapture() {
     if (USE_MOCK) {
       capturePanelOpen.set(true);

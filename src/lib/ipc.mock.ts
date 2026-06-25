@@ -90,6 +90,7 @@ export async function mockInvoke(cmd: string, _args?: unknown): Promise<unknown>
         hotkey_capture: 'Ctrl+Shift+Print',
         copy_after_capture: true,
         show_gallery_after_capture: true,
+        auto_share_after_capture: false,
         pin_on_top: false,
         quick_bar_enabled: true,
         quick_bar_timeout: 8,
