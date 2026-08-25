@@ -55,7 +55,7 @@
           if (p.kind === 'record') {
             void startRecording(p.mode === 'screen' ? 'display' : p.mode === 'region' ? 'region' : 'screen');
           }
-          else void takeCapture(p.mode ?? 'region');
+          else void takeCapture(p.mode === 'screen' ? 'fullscreen' : p.mode ?? 'region');
         }
       ));
       // Signal the backend that cli:// listeners are attached; it then dispatches

@@ -151,14 +151,15 @@
   }
 
   // Autosave: the Qt editor had no Save button — edits persist automatically.
-  // Debounced so a burst of edits writes once; save() updates both the flattened
-  // library PNG (thumbnail/display) and the editable sidecar (base.0 + items).
+  // Debounced so a burst of edits writes once. Autosave persists the compact
+  // editable document only; full-resolution canvas export is reserved for an
+  // explicit save or editor teardown and never runs in an input handler.
   let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
   function scheduleAutosave() {
     if (autosaveTimer) clearTimeout(autosaveTimer);
     autosaveTimer = setTimeout(() => {
       autosaveTimer = null;
-      if (!destroyed) void save();
+      if (!destroyed) void saveDocument();
     }, 600);
   }
 
@@ -367,6 +368,7 @@
       return;
     }
     const img = new Image();
+    img.crossOrigin = 'anonymous';
     img.onload = () => {
       if (!stage || !KonvaMod) return;
       const dimsChanged = img.naturalWidth !== imgW || img.naturalHeight !== imgH;
@@ -445,6 +447,32 @@
    * For M3 `bases:1` and only `base.0` is written — the multi-base re-edit stack
    * (getBasePushes) is DEFERRED. Marks history clean so the dirty indicator clears.
    */
+  async function saveDocument(): Promise<void> {
+    try {
+      autosaveState.set('saving');
+      const doc = {
+        version: 1,
+        bases: 1,
+        items: items.map(serializeItem),
+        effects: get(effects),
+      };
+      // Seed base.0 once with a filesystem copy. Normal annotation autosaves
+      // then transfer only the sidecar JSON. Destructive edits replace the
+      // editable base, so persist that data URL before the sidecar references it.
+      if (currentBaseSrc.startsWith('data:image/png;base64,')) {
+        await ipcInvoke('write_base', { path, n: 0, pngB64: bareBase64(currentBaseSrc) });
+      } else {
+        await ipcInvoke('ensure_base', { path, n: 0 });
+      }
+      await ipcInvoke('save_sidecar', { path, doc });
+      history.markClean();
+      autosaveState.set('saved');
+    } catch (e) {
+      console.error('autosave failed', e);
+      autosaveState.set('error');
+    }
+  }
+
   export async function save(): Promise<void> {
     try {
       autosaveState.set('saving');
@@ -465,8 +493,10 @@
         effects: get(effects),
       };
       await ipcInvoke('save_sidecar', { path, doc });
-      if (currentBaseSrc) {
+      if (currentBaseSrc.startsWith('data:image/png;base64,')) {
         await ipcInvoke('write_base', { path, n: 0, pngB64: bareBase64(currentBaseSrc) });
+      } else {
+        await ipcInvoke('ensure_base', { path, n: 0 });
       }
       await ipcInvoke('flatten_save', { path, pngB64: bareBase64(flat) });
       history.markClean();
@@ -498,18 +528,18 @@
       effects.set(doc.effects as Effects);
     }
 
-    let base64: string | null = null;
+    let basePath: string | null = null;
     try {
-      base64 = await ipcInvoke<string | null>('read_base', { path, n: 0 });
+      basePath = await ipcInvoke<string | null>('read_base_path', { path, n: 0 });
     } catch {
-      base64 = null;
+      basePath = null;
     }
 
     // Guard: only restore items if BOTH bases is truthy AND base.0 loaded.
     // Mirrors Python (editor.py:516,519-520): missing/falsy bases or absent
     // base image → drop items, keep the flattened library PNG (annotations
     // already baked in). Normal path (base.0 present + bases>=1) unchanged.
-    const shouldRestoreItems = doc.bases && base64 !== null;
+    const shouldRestoreItems = doc.bases && basePath !== null;
     if (shouldRestoreItems) {
       items = (doc.items ?? [])
         .map((j: any) => deserializeItem(j))
@@ -521,8 +551,8 @@
       history.reset({ baseSrc: currentBaseSrc, items: [...items] });
       syncHistoryApi();
     };
-    if (base64) {
-      setBaseImage(`data:image/png;base64,${base64}`, apply);
+    if (basePath) {
+      setBaseImage(await imageDataSrc(basePath), apply);
     } else {
       apply();
     }
@@ -1324,6 +1354,7 @@
     (async () => {
       const src = await imageDataSrc(path);
       const imageObj = new Image();
+      imageObj.crossOrigin = 'anonymous';
       imageObj.onload = () => {
         if (cancelled || !stage) return;
         imgW = imageObj.naturalWidth;

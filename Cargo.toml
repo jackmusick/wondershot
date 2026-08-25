@@ -1,5 +1,5 @@
 [workspace]
-members = ["src-tauri", "crates/wondershot-core"]
+members = ["src-tauri", "crates/wondershot-core", "crates/wondershot-selector"]
 resolver = "2"
 
 # Smaller, faster release binaries for everything in the workspace: thin LTO +

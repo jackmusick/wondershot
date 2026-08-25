@@ -46,6 +46,49 @@ export const MOCK_CAPTURES: Capture[] = [
 let mockList: Capture[] = [...MOCK_CAPTURES];
 let mockPinned: string[] = [];
 let counter = 0;
+const invocationCounts = new Map<string, number>();
+let mockSettings: Record<string, unknown> = {
+  library_dir: '/mock/Screenshots',
+  backend: 'auto',
+  capture_cursor: false,
+  capture_delay: 0,
+  extra_dirs: [],
+  mic_enabled: true,
+  mic_device: '',
+  noise_suppression: true,
+  record_cursor_halo: false,
+  record_countdown: 0,
+  camera_device: '',
+  hotkey_capture: 'Ctrl+Shift+Print',
+  copy_after_capture: true,
+  show_gallery_after_capture: true,
+  auto_share_after_capture: false,
+  pin_on_top: false,
+  quick_bar_enabled: true,
+  quick_bar_timeout: 8,
+  stroke_width: 10,
+  font_size: 24,
+  tool_color: '#e3242b',
+  video_blur_strength: 14,
+  gif_fps: 12,
+  gif_max_width: 720,
+  effect_rounded: false,
+  effect_corner_radius: 16,
+  effect_fade: false,
+  effect_fade_height: 96
+};
+
+export function getMockInvocationCount(command: string): number {
+  return invocationCounts.get(command) ?? 0;
+}
+
+export function resetMockInvocationCounts(): void {
+  invocationCounts.clear();
+}
+
+export function setMockSettings(values: Record<string, unknown>): void {
+  mockSettings = { ...mockSettings, ...values };
+}
 
 /** Prepend a fake new screen recording (used by the mock record simulation). */
 export function pushMockRecording(): void {
@@ -65,6 +108,7 @@ export function pushMockRecording(): void {
 }
 
 export async function mockInvoke(cmd: string, _args?: unknown): Promise<unknown> {
+  invocationCounts.set(cmd, (invocationCounts.get(cmd) ?? 0) + 1);
   switch (cmd) {
     case 'health':
       return 'ok';
@@ -75,38 +119,10 @@ export async function mockInvoke(cmd: string, _args?: unknown): Promise<unknown>
     case 'list_library':
       return mockList;
     case 'get_settings':
-      return {
-        library_dir: '/mock/Screenshots',
-        backend: 'auto',
-        capture_cursor: false,
-        capture_delay: 0,
-        extra_dirs: [],
-        mic_enabled: true,
-        mic_device: '',
-        noise_suppression: true,
-        record_cursor_halo: false,
-        record_countdown: 0,
-        camera_device: '',
-        hotkey_capture: 'Ctrl+Shift+Print',
-        copy_after_capture: true,
-        show_gallery_after_capture: true,
-        auto_share_after_capture: false,
-        pin_on_top: false,
-        quick_bar_enabled: true,
-        quick_bar_timeout: 8,
-        stroke_width: 10,
-        font_size: 24,
-        tool_color: '#e3242b',
-        video_blur_strength: 14,
-        gif_fps: 12,
-        gif_max_width: 720,
-        effect_rounded: false,
-        effect_corner_radius: 16,
-        effect_fade: false,
-        effect_fade_height: 96
-      };
+      return mockSettings;
     case 'set_settings':
       // No persistence in browser dev; accept and resolve.
+      mockSettings = { ...mockSettings, ...((_args as { values?: Record<string, unknown> } | undefined)?.values ?? {}) };
       return null;
     case 'load_sidecar':
       return null;
@@ -114,10 +130,11 @@ export async function mockInvoke(cmd: string, _args?: unknown): Promise<unknown>
       return true;
     case 'flatten_save':
     case 'write_base':
+    case 'ensure_base':
       // No-op in the mock: there is no real library image / sidecar dir to
       // write. Return ok so save() in the editor resolves cleanly in browser dev.
       return null;
-    case 'read_base':
+    case 'read_base_path':
       // No persisted base in the mock; open falls back to the library PNG.
       return null;
     case 'copy_image':
@@ -196,7 +213,14 @@ export async function mockInvoke(cmd: string, _args?: unknown): Promise<unknown>
         title: `Capture ${counter}`
       };
       mockList = [cap, ...mockList];
-      return cap.path;
+      return {
+        capture: cap,
+        operationId: `mock-${counter}`,
+        backend: 'mock',
+        captureElapsedMs: 1,
+        copyAfterCapture: mockSettings.copy_after_capture !== false,
+        showPreview: mockSettings.show_gallery_after_capture !== false
+      };
     }
     default:
       throw new Error(`mockInvoke: unhandled command ${cmd}`);

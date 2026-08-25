@@ -128,7 +128,7 @@ test('cut (vertical band) removes a strip → image width shrinks', async ({ pag
     .toBeLessThan(before.w);
 });
 
-test('step tool places exactly one badge per click (not drag-existing + add)', async ({ page }) => {
+test('step tool places one badge per empty-canvas click and does not stamp over existing badges', async ({ page }) => {
   await gotoEditor(page);
   const box = await canvasBox(page);
   const cx = box.x + box.width / 2;
@@ -140,9 +140,12 @@ test('step tool places exactly one badge per click (not drag-existing + add)', a
   await page.mouse.click(cx + 40, cy + 40);
   await expect.poll(() => hook(page, () => (window as any).__wsEditor.itemCount())).toBe(2);
 
-  // In a non-select (draw/step) tool, existing nodes must NOT be draggable —
-  // otherwise clicking one drags it AND places a new step.
-  expect(await hook(page, () => (window as any).__wsEditor.draggableCount())).toBe(0);
+  // Existing annotations stay movable in every tool (Snagit behavior), but a
+  // click on one must be consumed as selection/manipulation rather than also
+  // stamping a new badge beneath it.
+  expect(await hook(page, () => (window as any).__wsEditor.draggableCount())).toBe(2);
+  await page.mouse.click(cx - 40, cy - 40);
+  expect(await hook(page, () => (window as any).__wsEditor.itemCount())).toBe(2);
   await pickTool(page, 'Select');
   await expect
     .poll(() => hook(page, () => (window as any).__wsEditor.draggableCount()))

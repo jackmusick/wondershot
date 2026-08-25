@@ -1,14 +1,6 @@
 import { writable, get } from 'svelte/store';
-import type { Capture, RecordingState } from '$lib/types';
+import type { Capture, CaptureOutcome, RecordingState } from '$lib/types';
 import { ipcInvoke, normalizeCaptures } from '$lib/ipc';
-import {
-  selectNativeRegion,
-  selectNativeScreen,
-  selectNativeWindow,
-  supportsNativeScreenPicker,
-  supportsNativeRegionPicker,
-  supportsNativeWindowPicker
-} from '$lib/capture/nativeRegion';
 
 export type View = 'gallery' | 'editor' | 'video';
 
@@ -81,42 +73,27 @@ export async function importPaths(paths: string[]): Promise<void> {
   }
 }
 
-export async function takeCapture(mode: 'region' | 'fullscreen' | 'window' | 'screen'): Promise<void> {
-  if (mode === 'region' && await supportsNativeRegionPicker()) {
-    const path = await selectNativeRegion();
-    if (!path) return;
-    await loadLibrary();
-    const list = get(captures);
-    const justTaken = list.find((c) => c.path === path) ?? list[0];
-    if (justTaken) activeItem.set(justTaken);
-    return;
-  }
-  if (mode === 'screen' && await supportsNativeScreenPicker()) {
-    const path = await selectNativeScreen();
-    if (!path) return;
-    await loadLibrary();
-    const list = get(captures);
-    const justTaken = list.find((c) => c.path === path) ?? list[0];
-    if (justTaken) activeItem.set(justTaken);
-    return;
-  }
-  if (mode === 'window' && await supportsNativeWindowPicker()) {
-    const path = await selectNativeWindow();
-    if (!path) return;
-    await loadLibrary();
-    const list = get(captures);
-    const justTaken = list.find((c) => c.path === path) ?? list[0];
-    if (justTaken) activeItem.set(justTaken);
-    return;
-  }
+export async function takeCapture(mode: 'region' | 'fullscreen' | 'window'): Promise<void> {
   const cmd = `capture_${mode}`;
   try {
-    const path = await ipcInvoke<string>(cmd);
-    await loadLibrary();
-    // select the newest item (the one just captured), best-effort by path match
-    const list = get(captures);
-    const justTaken = list.find((c) => c.path === path) ?? list[0];
-    if (justTaken) activeItem.set(justTaken);
+    const outcome = await ipcInvoke<CaptureOutcome>(cmd);
+    const [justTaken] = await normalizeCaptures([outcome.capture]);
+    if (!justTaken) return;
+
+    // Capture completion is incremental: inserting one known file avoids two
+    // immediate full directory scans (and the watcher provides reconciliation
+    // for genuinely external changes).
+    captures.update((items) => [justTaken, ...items.filter((c) => c.path !== justTaken.path)]);
+    activeItem.set(justTaken);
+    view.set(outcome.showPreview ? 'editor' : 'gallery');
+
+    // Clipboard encoding can be comparatively expensive. It must not hold up
+    // the first usable preview frame.
+    if (outcome.copyAfterCapture) {
+      void ipcInvoke('copy_image', { path: justTaken.path }).catch((e) => {
+        console.error('copy-after-capture failed', e);
+      });
+    }
   } catch (e) {
     console.error('capture failed', e);
   }

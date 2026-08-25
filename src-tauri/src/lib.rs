@@ -17,10 +17,12 @@ use wondershot_core::cli::{parse_args, CliAction};
 /// to `wondershot --capture` triggers a capture in the running instance.
 fn dispatch_cli(app: &tauri::AppHandle, action: CliAction) {
     use tauri::{Emitter, Manager};
-    if let Some(w) = app.get_webview_window("main") {
-        let _ = w.show();
-        let _ = w.set_focus();
-    }
+    let focus_main = || {
+        if let Some(w) = app.get_webview_window("main") {
+            let _ = w.show();
+            let _ = w.set_focus();
+        }
+    };
     match action {
         CliAction::Capture => {
             let _ = app.emit("cli://capture", ());
@@ -29,9 +31,11 @@ fn dispatch_cli(app: &tauri::AppHandle, action: CliAction) {
             let _ = app.emit("cli://fullscreen", ());
         }
         CliAction::Edit(p) => {
+            focus_main();
             let _ = app.emit("cli://edit", p);
         }
         CliAction::Import(fs) => {
+            focus_main();
             let _ = app.emit("cli://import", fs);
         }
         CliAction::Quit => app.exit(0),
@@ -44,11 +48,8 @@ fn dispatch_cli(app: &tauri::AppHandle, action: CliAction) {
             app.state::<commands::AuthRouter>().deliver(url);
         }
         // Version/SelfCheck/MediaCheck are handled before the GUI starts; URL/Launch just focus.
-        CliAction::Version
-        | CliAction::SelfCheck
-        | CliAction::MediaCheck
-        | CliAction::OpenUrl(_)
-        | CliAction::Launch => {}
+        CliAction::OpenUrl(_) | CliAction::Launch => focus_main(),
+        CliAction::Version | CliAction::SelfCheck | CliAction::MediaCheck => {}
     }
 }
 
@@ -273,9 +274,26 @@ fn media_check() {
 
 pub fn run() {
     logging::init();
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if let [flag, session_path] = args.as_slice() {
+        if flag == "--selector-session" {
+            match wondershot_selector::run(session_path) {
+                Ok(result) => println!("{}", serde_json::to_string(&result).unwrap()),
+                Err(error) => {
+                    eprintln!("selector failed: {error}");
+                    println!(
+                        "{}",
+                        serde_json::to_string(&wondershot_selector::SelectionResult::Cancelled)
+                            .unwrap()
+                    );
+                }
+            }
+            return;
+        }
+    }
     // Headless-friendly actions short-circuit before building the GUI, matching
     // the Python CLI (`--version`, `--install-desktop` work without a window).
-    let launch = parse_args(std::env::args().skip(1));
+    let launch = parse_args(args);
     match &launch {
         CliAction::Version => {
             let _ = std::io::Write::write_all(
@@ -474,8 +492,8 @@ pub fn run() {
             commands::ai_simplify,
             commands::flatten_save,
             commands::write_base,
-            commands::read_base,
-            commands::read_image_b64,
+            commands::ensure_base,
+            commands::read_base_path,
             commands::save_recording_b64,
             commands::start_recording,
             commands::stop_recording,

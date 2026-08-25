@@ -60,11 +60,15 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["appimage", "rpm", "deb"],
+    "targets": "all",
     "icon": ["icons/icon.png", "icons/icon.ico", "icons/icon.icns"],
     "category": "Utility",
     "shortDescription": "Screenshot & screen-recording with annotation",
     "longDescription": "Capture, annotate, record, and redact screenshots and screen recordings.",
+    "macOS": {
+      "minimumSystemVersion": "14.0",
+      "infoPlist": "Info.plist"
+    },
     "linux": {
       "rpm": {
         "depends": ["ffmpeg", "wl-clipboard", "gstreamer1-plugin-pipewire", "onnxruntime"]

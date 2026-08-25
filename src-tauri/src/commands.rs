@@ -1,10 +1,16 @@
-use std::path::Path;
+use crate::{graph, logging};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
-use wondershot_core::{bgremove, capture, clipboard, library, paths, settings::Settings, sidecar, video};
+use std::time::Instant;
 use wondershot_core::record::{files, recorder};
 #[cfg(target_os = "linux")]
 use wondershot_core::record::{pipeline, portal};
-use crate::{graph, logging};
+use wondershot_core::{
+    bgremove, capture, clipboard, library, paths, settings::Settings, sidecar, video,
+};
+
+static CAPTURE_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
 #[tauri::command]
 pub fn health() -> String {
@@ -26,10 +32,7 @@ pub fn platform() -> &'static str {
     std::env::consts::OS
 }
 
-fn restore_main_after_capture(app: &tauri::AppHandle, settings: &Settings) {
-    if !settings.show_gallery_after_capture {
-        return;
-    }
+fn restore_main_window(app: &tauri::AppHandle) {
     use std::time::Duration;
     use tauri::{Manager, UserAttentionType};
 
@@ -66,6 +69,12 @@ fn restore_main_after_capture(app: &tauri::AppHandle, settings: &Settings) {
         });
     } else {
         logging::log("restore main after capture: main window not found");
+    }
+}
+
+fn restore_main_after_capture(app: &tauri::AppHandle, settings: &Settings) {
+    if settings.show_gallery_after_capture {
+        restore_main_window(app);
     }
 }
 
@@ -121,6 +130,8 @@ pub fn set_settings(
     values: serde_json::Value,
 ) -> Result<(), String> {
     let mut s = Settings::load();
+    let before = s.clone();
+    let old_dirs = s.library_dirs();
     let obj = values
         .as_object()
         .ok_or_else(|| "set_settings expects an object".to_string())?;
@@ -135,10 +146,26 @@ pub fn set_settings(
 
     for (k, v) in obj {
         match k.as_str() {
-            "library_dir" => if let Some(x) = get_str(v) { s.library_dir = x },
-            "backend" => if let Some(x) = get_str(v) { s.backend = x },
-            "capture_cursor" => if let Some(x) = get_bool(v) { s.capture_cursor = x },
-            "capture_delay" => if let Some(x) = get_u32(v) { s.capture_delay = x },
+            "library_dir" => {
+                if let Some(x) = get_str(v) {
+                    s.library_dir = x
+                }
+            }
+            "backend" => {
+                if let Some(x) = get_str(v) {
+                    s.backend = x
+                }
+            }
+            "capture_cursor" => {
+                if let Some(x) = get_bool(v) {
+                    s.capture_cursor = x
+                }
+            }
+            "capture_delay" => {
+                if let Some(x) = get_u32(v) {
+                    s.capture_delay = x
+                }
+            }
             "extra_dirs" => {
                 if let Some(arr) = v.as_array() {
                     s.extra_dirs = arr
@@ -154,28 +181,116 @@ pub fn set_settings(
                         .collect();
                 }
             }
-            "mic_enabled" => if let Some(x) = get_bool(v) { s.mic_enabled = x },
-            "mic_device" => if let Some(x) = get_str(v) { s.mic_device = x },
-            "noise_suppression" => if let Some(x) = get_bool(v) { s.noise_suppression = x },
-            "record_cursor_halo" => if let Some(x) = get_bool(v) { s.record_cursor_halo = x },
-            "record_countdown" => if let Some(x) = get_u32(v) { s.record_countdown = x },
-            "camera_device" => if let Some(x) = get_str(v) { s.camera_device = x },
-            "hotkey_capture" => if let Some(x) = get_str(v) { s.hotkey_capture = x },
-            "copy_after_capture" => if let Some(x) = get_bool(v) { s.copy_after_capture = x },
-            "show_gallery_after_capture" => if let Some(x) = get_bool(v) { s.show_gallery_after_capture = x },
-            "pin_on_top" => if let Some(x) = get_bool(v) { s.pin_on_top = x },
-            "quick_bar_enabled" => if let Some(x) = get_bool(v) { s.quick_bar_enabled = x },
-            "quick_bar_timeout" => if let Some(x) = get_u32(v) { s.quick_bar_timeout = x },
-            "stroke_width" => if let Some(x) = get_u32(v) { s.stroke_width = x },
-            "font_size" => if let Some(x) = get_u32(v) { s.font_size = x },
-            "tool_color" => if let Some(x) = get_str(v) { s.tool_color = x },
-            "video_blur_strength" => if let Some(x) = get_u32(v) { s.video_blur_strength = x },
-            "gif_fps" => if let Some(x) = get_u32(v) { s.gif_fps = x },
-            "gif_max_width" => if let Some(x) = get_u32(v) { s.gif_max_width = x },
-            "effect_rounded" => if let Some(x) = get_bool(v) { s.effect_rounded = x },
-            "effect_corner_radius" => if let Some(x) = get_u32(v) { s.effect_corner_radius = x },
-            "effect_fade" => if let Some(x) = get_bool(v) { s.effect_fade = x },
-            "effect_fade_height" => if let Some(x) = get_u32(v) { s.effect_fade_height = x },
+            "mic_enabled" => {
+                if let Some(x) = get_bool(v) {
+                    s.mic_enabled = x
+                }
+            }
+            "mic_device" => {
+                if let Some(x) = get_str(v) {
+                    s.mic_device = x
+                }
+            }
+            "noise_suppression" => {
+                if let Some(x) = get_bool(v) {
+                    s.noise_suppression = x
+                }
+            }
+            "record_cursor_halo" => {
+                if let Some(x) = get_bool(v) {
+                    s.record_cursor_halo = x
+                }
+            }
+            "record_countdown" => {
+                if let Some(x) = get_u32(v) {
+                    s.record_countdown = x
+                }
+            }
+            "camera_device" => {
+                if let Some(x) = get_str(v) {
+                    s.camera_device = x
+                }
+            }
+            "hotkey_capture" => {
+                if let Some(x) = get_str(v) {
+                    s.hotkey_capture = x
+                }
+            }
+            "copy_after_capture" => {
+                if let Some(x) = get_bool(v) {
+                    s.copy_after_capture = x
+                }
+            }
+            "show_gallery_after_capture" => {
+                if let Some(x) = get_bool(v) {
+                    s.show_gallery_after_capture = x
+                }
+            }
+            "pin_on_top" => {
+                if let Some(x) = get_bool(v) {
+                    s.pin_on_top = x
+                }
+            }
+            "quick_bar_enabled" => {
+                if let Some(x) = get_bool(v) {
+                    s.quick_bar_enabled = x
+                }
+            }
+            "quick_bar_timeout" => {
+                if let Some(x) = get_u32(v) {
+                    s.quick_bar_timeout = x
+                }
+            }
+            "stroke_width" => {
+                if let Some(x) = get_u32(v) {
+                    s.stroke_width = x
+                }
+            }
+            "font_size" => {
+                if let Some(x) = get_u32(v) {
+                    s.font_size = x
+                }
+            }
+            "tool_color" => {
+                if let Some(x) = get_str(v) {
+                    s.tool_color = x
+                }
+            }
+            "video_blur_strength" => {
+                if let Some(x) = get_u32(v) {
+                    s.video_blur_strength = x
+                }
+            }
+            "gif_fps" => {
+                if let Some(x) = get_u32(v) {
+                    s.gif_fps = x
+                }
+            }
+            "gif_max_width" => {
+                if let Some(x) = get_u32(v) {
+                    s.gif_max_width = x
+                }
+            }
+            "effect_rounded" => {
+                if let Some(x) = get_bool(v) {
+                    s.effect_rounded = x
+                }
+            }
+            "effect_corner_radius" => {
+                if let Some(x) = get_u32(v) {
+                    s.effect_corner_radius = x
+                }
+            }
+            "effect_fade" => {
+                if let Some(x) = get_bool(v) {
+                    s.effect_fade = x
+                }
+            }
+            "effect_fade_height" => {
+                if let Some(x) = get_u32(v) {
+                    s.effect_fade_height = x
+                }
+            }
             // Unmodeled keys (sharing creds, AI endpoint, …): store as strings in
             // `extra` so they persist back to the shared conf. Numbers/bools are
             // stringified to match QSettings' text format.
@@ -193,10 +308,15 @@ pub fn set_settings(
             }
         }
     }
+    if s == before {
+        return Ok(());
+    }
+    let dirs_changed = s.library_dirs() != old_dirs;
     s.save().map_err(|e| e.to_string())?;
     crate::hotkeys::update_from_settings(&app);
-    // Library / extra dirs may have changed — rebind the live folder watcher.
-    crate::watcher::rewatch(&app, watch.inner());
+    if dirs_changed {
+        crate::watcher::rewatch(&app, watch.inner());
+    }
     Ok(())
 }
 
@@ -256,7 +376,12 @@ fn spectacle_on_path() -> bool {
     })
 }
 
-async fn run_spectacle(mode: capture::CaptureMode, out: &str, cursor: bool, delay: u32) -> Result<(), String> {
+async fn run_spectacle(
+    mode: capture::CaptureMode,
+    out: &str,
+    cursor: bool,
+    delay: u32,
+) -> Result<(), String> {
     let args = capture::spectacle::spectacle_args(mode, out, cursor, delay);
     // In a Flatpak, run the HOST spectacle (its rectangular drag-selection UI)
     // via flatpak-spawn; the output path is under the user's home, which both the
@@ -283,61 +408,494 @@ async fn run_spectacle(mode: capture::CaptureMode, out: &str, cursor: bool, dela
     Ok(())
 }
 
-async fn do_capture(app: tauri::AppHandle, mode: capture::CaptureMode) -> Result<String, String> {
-    use tauri::Emitter;
-    let s = Settings::load();
-    let _ = std::fs::create_dir_all(&s.library_dir);
-    let out = paths::unique_path(Path::new(&s.library_dir), &paths::timestamp_name("Screenshot"));
-    let out_str = out.to_string_lossy().to_string();
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CaptureOutcome {
+    capture: library::Capture,
+    operation_id: String,
+    backend: &'static str,
+    capture_elapsed_ms: u64,
+    copy_after_capture: bool,
+    show_preview: bool,
+}
 
-    let result: Result<String, String> = if capture::native::handles_capture() {
-        capture::native::capture_to(&out, mode, s.capture_cursor).map(|_| out_str.clone())
-    } else if s.backend != "portal" && spectacle_on_path() {
-        match run_spectacle(mode, &out_str, s.capture_cursor, s.capture_delay).await {
-            Ok(()) => Ok(out_str.clone()),
-            Err(e) => Err(e),
-        }
-    } else {
-        // Portal fallback: interactive for region/window, non-interactive for fullscreen.
-        let interactive = mode != capture::CaptureMode::Fullscreen;
-        match capture::portal::screenshot(interactive).await {
-            Some(p) => {
-                if p.parent() == Some(Path::new(&s.library_dir)) {
-                    Ok(p.to_string_lossy().to_string())
-                } else {
-                    match std::fs::rename(&p, &out).or_else(|_| std::fs::copy(&p, &out).map(|_| ())) {
-                        Ok(()) => Ok(out_str.clone()),
-                        Err(e) => Err(format!("could not move screenshot: {e}")),
-                    }
-                }
+async fn do_capture(
+    mode: capture::CaptureMode,
+    app: &tauri::AppHandle,
+    watch: &crate::watcher::LibWatch,
+) -> Result<CaptureOutcome, String> {
+    use tauri::Manager;
+
+    let started = Instant::now();
+    let s = Settings::load();
+    let main_was_visible = app
+        .get_webview_window("main")
+        .and_then(|window| window.is_visible().ok().map(|visible| (window, visible)));
+    if let Some((window, true)) = &main_was_visible {
+        window.hide().map_err(|e| format!("could not hide Wondershot before capture: {e}"))?;
+        tokio::task::yield_now().await;
+    }
+    let _ = std::fs::create_dir_all(&s.library_dir);
+    let out = paths::unique_path(
+        Path::new(&s.library_dir),
+        &paths::timestamp_name("Screenshot"),
+    );
+    let out_str = out.to_string_lossy().to_string();
+    let operation_id = format!(
+        "capture-{}-{}",
+        std::process::id(),
+        CAPTURE_SEQUENCE.fetch_add(1, Ordering::Relaxed)
+    );
+
+    let (result, backend) = platform_capture(
+        mode,
+        app,
+        &out,
+        &out_str,
+        s.capture_cursor,
+        s.capture_delay,
+        &s.backend,
+        &s.library_dir,
+        &operation_id,
+    )
+    .await;
+    let path = match result {
+        Ok(path) => path,
+        Err(error) => {
+            if main_was_visible.as_ref().is_some_and(|(_, visible)| *visible) {
+                restore_main_window(app);
             }
-            None => Err("portal screenshot cancelled or failed".into()),
+            return Err(error);
         }
     };
+    let capture = library::from_path(Path::new(&path))
+        .ok_or_else(|| "capture completed but output metadata could not be read".to_string())?;
+    crate::watcher::acknowledge(watch, Path::new(&path));
+    let outcome = CaptureOutcome {
+        capture,
+        operation_id,
+        backend,
+        capture_elapsed_ms: started.elapsed().as_millis() as u64,
+        copy_after_capture: s.copy_after_capture,
+        show_preview: s.show_gallery_after_capture,
+    };
+    restore_main_after_capture(app, &s);
+    Ok(outcome)
+}
 
-    match &result {
-        Ok(path) => {
-            restore_main_after_capture(&app, &s);
-            let _ = app.emit("capture://done", path.clone());
-        }
-        Err(msg) => { let _ = app.emit("capture://failed", msg.clone()); }
+fn selection_dir(library_dir: &str, operation_id: &str) -> PathBuf {
+    Path::new(library_dir)
+        .join(".wondershot")
+        .join("selection")
+        .join(operation_id)
+}
+
+fn selector_session(
+    operation_id: &str,
+    mode: capture::CaptureMode,
+    displays: &[capture::FrozenDisplay],
+) -> wondershot_selector::SelectionSession {
+    let mode = match mode {
+        capture::CaptureMode::Region => wondershot_selector::SelectionMode::Region,
+        capture::CaptureMode::Window => wondershot_selector::SelectionMode::Window,
+        capture::CaptureMode::Fullscreen => unreachable!("fullscreen does not use the selector"),
+    };
+    wondershot_selector::SelectionSession {
+        operation_id: operation_id.to_string(),
+        mode,
+        displays: displays
+            .iter()
+            .map(|display| wondershot_selector::FrozenDisplay {
+                id: display.id.clone(),
+                frame_path: display.frame_path.to_string_lossy().into_owned(),
+                x: display.x,
+                y: display.y,
+                pixel_width: display.pixel_width,
+                pixel_height: display.pixel_height,
+                windows: display
+                    .windows
+                    .iter()
+                    .map(|window| wondershot_selector::WindowTarget {
+                        id: window.id.clone(),
+                        title: window.title.clone(),
+                        application: window.application.clone(),
+                        x: window.x,
+                        y: window.y,
+                        width: window.width,
+                        height: window.height,
+                        z_order: window.z_order,
+                        capturable: window.capturable,
+                    })
+                    .collect(),
+            })
+            .collect(),
     }
-    result
+}
+
+async fn run_selector(
+    session_dir: &Path,
+    session: &wondershot_selector::SelectionSession,
+) -> Result<wondershot_selector::SelectionResult, String> {
+    std::fs::create_dir_all(session_dir).map_err(|e| e.to_string())?;
+    let session_path = session_dir.join("session.json");
+    let bytes = serde_json::to_vec(session).map_err(|e| e.to_string())?;
+    std::fs::write(&session_path, bytes).map_err(|e| e.to_string())?;
+    let executable = std::env::current_exe().map_err(|e| e.to_string())?;
+    let output = tokio::process::Command::new(executable)
+        .arg("--selector-session")
+        .arg(&session_path)
+        .output()
+        .await
+        .map_err(|e| format!("could not start Wondershot selector: {e}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "Wondershot selector failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    let stdout = String::from_utf8(output.stdout)
+        .map_err(|_| "Wondershot selector returned invalid UTF-8".to_string())?;
+    serde_json::from_str(stdout.trim())
+        .map_err(|e| format!("Wondershot selector returned invalid output: {e}"))
+}
+
+fn crop_frozen_region(
+    displays: &[capture::FrozenDisplay],
+    display_id: &str,
+    rect: (u32, u32, u32, u32),
+    out: &Path,
+) -> Result<(), String> {
+    let display = displays
+        .iter()
+        .find(|display| display.id == display_id)
+        .ok_or_else(|| "selected display is no longer available".to_string())?;
+    let image = image::open(&display.frame_path).map_err(|e| e.to_string())?;
+    let (x, y, width, height) = rect;
+    if width < 2
+        || height < 2
+        || x.checked_add(width)
+            .is_none_or(|right| right > image.width())
+        || y.checked_add(height)
+            .is_none_or(|bottom| bottom > image.height())
+    {
+        return Err("selected region falls outside its frozen display".into());
+    }
+    image
+        .crop_imm(x, y, width, height)
+        .save(out)
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(target_os = "linux")]
+fn freeze_portal_displays(
+    app: &tauri::AppHandle,
+    portal_frame: &Path,
+    session_dir: &Path,
+) -> Result<Vec<capture::FrozenDisplay>, String> {
+    let image = image::open(portal_frame).map_err(|e| e.to_string())?;
+    let monitors = app.available_monitors().map_err(|e| e.to_string())?;
+    if monitors.is_empty() {
+        return Err("the compositor reported no displays".into());
+    }
+    let min_x = monitors
+        .iter()
+        .map(|monitor| monitor.position().x)
+        .min()
+        .unwrap_or(0);
+    let min_y = monitors
+        .iter()
+        .map(|monitor| monitor.position().y)
+        .min()
+        .unwrap_or(0);
+    let max_x = monitors
+        .iter()
+        .map(|monitor| monitor.position().x as i64 + monitor.size().width as i64)
+        .max()
+        .unwrap_or(i64::from(image.width()));
+    let max_y = monitors
+        .iter()
+        .map(|monitor| monitor.position().y as i64 + monitor.size().height as i64)
+        .max()
+        .unwrap_or(i64::from(image.height()));
+    let desktop_width = (max_x - i64::from(min_x)).max(1) as f64;
+    let desktop_height = (max_y - i64::from(min_y)).max(1) as f64;
+    let scale_x = f64::from(image.width()) / desktop_width;
+    let scale_y = f64::from(image.height()) / desktop_height;
+
+    monitors
+        .iter()
+        .enumerate()
+        .map(|(index, monitor)| {
+            let x = (f64::from(monitor.position().x - min_x) * scale_x).round() as u32;
+            let y = (f64::from(monitor.position().y - min_y) * scale_y).round() as u32;
+            let width = (f64::from(monitor.size().width) * scale_x).round() as u32;
+            let height = (f64::from(monitor.size().height) * scale_y).round() as u32;
+            let width = width.min(image.width().saturating_sub(x));
+            let height = height.min(image.height().saturating_sub(y));
+            if width == 0 || height == 0 {
+                return Err("portal screenshot does not match compositor display geometry".into());
+            }
+            let frame_path = session_dir.join(format!("portal-display-{index}.png"));
+            image
+                .crop_imm(x, y, width, height)
+                .save(&frame_path)
+                .map_err(|e| e.to_string())?;
+            Ok(capture::FrozenDisplay {
+                id: format!("portal-display-{index}"),
+                frame_path,
+                x: monitor.position().x,
+                y: monitor.position().y,
+                pixel_width: width,
+                pixel_height: height,
+                windows: Vec::new(),
+            })
+        })
+        .collect()
+}
+
+#[cfg(target_os = "windows")]
+async fn platform_capture(
+    mode: capture::CaptureMode,
+    _app: &tauri::AppHandle,
+    out: &Path,
+    _out_str: &str,
+    cursor: bool,
+    delay: u32,
+    _backend: &str,
+    library_dir: &str,
+    operation_id: &str,
+) -> (Result<String, String>, &'static str) {
+    if delay > 0 {
+        tokio::time::sleep(std::time::Duration::from_secs(delay as u64)).await;
+    }
+    let out = out.to_path_buf();
+    let result = if mode == capture::CaptureMode::Fullscreen {
+        let capture_out = out.clone();
+        tokio::task::spawn_blocking(move || {
+            capture::windows::capture_once(mode, &capture_out, cursor)
+                .map(|_| capture_out.to_string_lossy().into_owned())
+        })
+        .await
+        .map_err(|err| format!("Windows capture task failed: {err}"))
+        .and_then(|result| result)
+    } else {
+        let session_dir = selection_dir(library_dir, operation_id);
+        let freeze_dir = session_dir.clone();
+        let frozen = tokio::task::spawn_blocking(move || {
+            capture::windows::freeze_displays(&freeze_dir, false)
+        })
+        .await
+        .map_err(|err| format!("Windows freeze task failed: {err}"))
+        .and_then(|result| result);
+        let selected = match frozen {
+            Ok(displays) => {
+                let session = selector_session(operation_id, mode, &displays);
+                match run_selector(&session_dir, &session).await {
+                    Ok(wondershot_selector::SelectionResult::Region {
+                        display_id,
+                        x,
+                        y,
+                        width,
+                        height,
+                    }) => crop_frozen_region(&displays, &display_id, (x, y, width, height), &out)
+                        .map(|_| out.to_string_lossy().into_owned()),
+                    Ok(wondershot_selector::SelectionResult::Window { window_id }) => {
+                        let capture_out = out.clone();
+                        tokio::task::spawn_blocking(move || {
+                            capture::windows::capture_window_by_id(&window_id, &capture_out, cursor)
+                                .map(|_| capture_out.to_string_lossy().into_owned())
+                        })
+                        .await
+                        .map_err(|err| format!("Windows window capture task failed: {err}"))
+                        .and_then(|result| result)
+                    }
+                    Ok(wondershot_selector::SelectionResult::Cancelled) => {
+                        Err("capture cancelled".into())
+                    }
+                    Err(error) => Err(error),
+                }
+            }
+            Err(error) => Err(error),
+        };
+        let _ = std::fs::remove_dir_all(&session_dir);
+        selected
+    };
+    (result, "windows-graphics-capture")
+}
+
+#[cfg(target_os = "macos")]
+async fn platform_capture(
+    mode: capture::CaptureMode,
+    _app: &tauri::AppHandle,
+    out: &Path,
+    _out_str: &str,
+    cursor: bool,
+    delay: u32,
+    _backend: &str,
+    library_dir: &str,
+    operation_id: &str,
+) -> (Result<String, String>, &'static str) {
+    if delay > 0 {
+        tokio::time::sleep(std::time::Duration::from_secs(delay as u64)).await;
+    }
+    let out = out.to_path_buf();
+    if mode == capture::CaptureMode::Fullscreen {
+        let result = tokio::task::spawn_blocking(move || {
+            capture::macos::capture_once(mode, &out, cursor)
+                .map(|backend| (out.to_string_lossy().into_owned(), backend))
+        })
+        .await
+        .map_err(|err| format!("macOS capture task failed: {err}"))
+        .and_then(|result| result);
+        return match result {
+            Ok((path, backend)) => (Ok(path), backend),
+            Err(error) => (Err(error), "macos-native-capture"),
+        };
+    }
+
+    let session_dir = selection_dir(library_dir, operation_id);
+    let freeze_dir = session_dir.clone();
+    let frozen =
+        tokio::task::spawn_blocking(move || capture::macos::freeze_displays(&freeze_dir, false))
+            .await
+            .map_err(|err| format!("macOS freeze task failed: {err}"))
+            .and_then(|result| result);
+    let result = match frozen {
+        Ok(displays) => {
+            let session = selector_session(operation_id, mode, &displays);
+            match run_selector(&session_dir, &session).await {
+                Ok(wondershot_selector::SelectionResult::Region {
+                    display_id,
+                    x,
+                    y,
+                    width,
+                    height,
+                }) => crop_frozen_region(&displays, &display_id, (x, y, width, height), &out)
+                    .map(|_| out.to_string_lossy().into_owned()),
+                Ok(wondershot_selector::SelectionResult::Window { window_id }) => {
+                    let capture_out = out.clone();
+                    tokio::task::spawn_blocking(move || {
+                        capture::macos::capture_window_by_id(&window_id, &capture_out, cursor)
+                            .map(|_| capture_out.to_string_lossy().into_owned())
+                    })
+                    .await
+                    .map_err(|err| format!("macOS window capture task failed: {err}"))
+                    .and_then(|result| result)
+                }
+                Ok(wondershot_selector::SelectionResult::Cancelled) => {
+                    Err("capture cancelled".into())
+                }
+                Err(error) => Err(error),
+            }
+        }
+        Err(error) => Err(error),
+    };
+    let _ = std::fs::remove_dir_all(&session_dir);
+    (result, "screen-capture-kit")
+}
+
+#[cfg(target_os = "linux")]
+async fn platform_capture(
+    mode: capture::CaptureMode,
+    app: &tauri::AppHandle,
+    out: &Path,
+    out_str: &str,
+    cursor: bool,
+    delay: u32,
+    backend: &str,
+    library_dir: &str,
+    operation_id: &str,
+) -> (Result<String, String>, &'static str) {
+    // The compositor portal is the low-latency default on Linux. Spectacle is
+    // used only when explicitly selected, avoiding a process/path probe on
+    // every capture and keeping the fast portal behavior deterministic.
+    if backend == "spectacle" && spectacle_on_path() {
+        let result = match run_spectacle(mode, out_str, cursor, delay).await {
+            Ok(()) => Ok(out_str.to_string()),
+            Err(e) => Err(e),
+        };
+        return (result, "spectacle");
+    }
+
+    // The portal remains the compositor-owned source of pixels. For region
+    // mode it captures once, then Wondershot selects and crops that frozen
+    // frame locally. Wayland window discovery remains compositor-private, so
+    // window mode uses the portal's native picker.
+    let interactive = mode == capture::CaptureMode::Window;
+    let result = match capture::portal::screenshot(interactive).await {
+        Some(p) => {
+            if mode == capture::CaptureMode::Region {
+                let session_dir = selection_dir(library_dir, operation_id);
+                let frozen = std::fs::create_dir_all(&session_dir)
+                    .map_err(|e| e.to_string())
+                    .and_then(|_| freeze_portal_displays(app, &p, &session_dir));
+                let _ = std::fs::remove_file(&p);
+                let selected = match frozen {
+                    Ok(displays) => {
+                        let session = selector_session(operation_id, mode, &displays);
+                        match run_selector(&session_dir, &session).await {
+                            Ok(wondershot_selector::SelectionResult::Region {
+                                display_id,
+                                x,
+                                y,
+                                width,
+                                height,
+                            }) => crop_frozen_region(
+                                &displays,
+                                &display_id,
+                                (x, y, width, height),
+                                out,
+                            )
+                            .map(|_| out_str.to_string()),
+                            Ok(wondershot_selector::SelectionResult::Cancelled) => {
+                                Err("capture cancelled".into())
+                            }
+                            Ok(wondershot_selector::SelectionResult::Window { .. }) => {
+                                Err("portal region selector returned a window".into())
+                            }
+                            Err(error) => Err(error),
+                        }
+                    }
+                    Err(error) => Err(error),
+                };
+                let _ = std::fs::remove_dir_all(&session_dir);
+                selected
+            } else if p.parent() == Some(Path::new(library_dir)) {
+                Ok(p.to_string_lossy().to_string())
+            } else {
+                match std::fs::rename(&p, out).or_else(|_| std::fs::copy(&p, out).map(|_| ())) {
+                    Ok(()) => Ok(out_str.to_string()),
+                    Err(e) => Err(format!("could not move screenshot: {e}")),
+                }
+            }
+        }
+        None => Err("portal screenshot cancelled or failed".into()),
+    };
+    (result, "portal")
 }
 
 #[tauri::command]
-pub async fn capture_region(app: tauri::AppHandle) -> Result<String, String> {
-    do_capture(app, capture::CaptureMode::Region).await
+pub async fn capture_region(
+    app: tauri::AppHandle,
+    watch: tauri::State<'_, crate::watcher::LibWatch>,
+) -> Result<CaptureOutcome, String> {
+    do_capture(capture::CaptureMode::Region, &app, watch.inner()).await
 }
 
 #[tauri::command]
-pub async fn capture_fullscreen(app: tauri::AppHandle) -> Result<String, String> {
-    do_capture(app, capture::CaptureMode::Fullscreen).await
+pub async fn capture_fullscreen(
+    app: tauri::AppHandle,
+    watch: tauri::State<'_, crate::watcher::LibWatch>,
+) -> Result<CaptureOutcome, String> {
+    do_capture(capture::CaptureMode::Fullscreen, &app, watch.inner()).await
 }
 
 #[tauri::command]
-pub async fn capture_window(app: tauri::AppHandle) -> Result<String, String> {
-    do_capture(app, capture::CaptureMode::Window).await
+pub async fn capture_window(
+    app: tauri::AppHandle,
+    watch: tauri::State<'_, crate::watcher::LibWatch>,
+) -> Result<CaptureOutcome, String> {
+    do_capture(capture::CaptureMode::Window, &app, watch.inner()).await
 }
 
 #[tauri::command]
@@ -434,20 +992,6 @@ pub fn save_native_capture_crop(
     Ok(path)
 }
 
-fn crop_capture_image(
-    img: image::RgbaImage,
-    rect: (u32, u32, u32, u32),
-) -> Result<image::RgbaImage, String> {
-    let (img_w, img_h) = img.dimensions();
-    let (x, y, w, h) = rect;
-    if w < 2 || h < 2 || x >= img_w || y >= img_h {
-        return Err("empty capture region".into());
-    }
-    let w = w.min(img_w.saturating_sub(x));
-    let h = h.min(img_h.saturating_sub(y));
-    Ok(image::imageops::crop_imm(&img, x, y, w, h).to_image())
-}
-
 // --- imageops: raster pixel operations -------------------------------------
 
 /// PNG-encode an RGBA image and base64-encode the result.
@@ -468,13 +1012,21 @@ fn encode_png_b64(img: &image::RgbaImage) -> Result<String, String> {
 fn open_patch_source(path: &str) -> Result<image::RgbaImage, String> {
     let p = Path::new(path);
     let base0 = sidecar::base_path(p, 0);
-    let src = if base0.exists() { base0 } else { p.to_path_buf() };
+    let src = if base0.exists() {
+        base0
+    } else {
+        p.to_path_buf()
+    };
     Ok(image::open(&src).map_err(|e| e.to_string())?.to_rgba8())
 }
 
 /// Pixelate the rect region of the base PNG; returns the patch as base64 PNG.
 #[tauri::command]
-pub fn pixelate_patch(path: String, rect: (u32, u32, u32, u32), block: u32) -> Result<String, String> {
+pub fn pixelate_patch(
+    path: String,
+    rect: (u32, u32, u32, u32),
+    block: u32,
+) -> Result<String, String> {
     let img = open_patch_source(&path)?;
     let patch = wondershot_core::imageops::pixelated_patch(&img, rect, block);
     encode_png_b64(&patch)
@@ -590,16 +1142,20 @@ pub fn write_base(path: String, n: u32, png_b64: String) -> Result<(), String> {
     write_atomic(&base, &bytes)
 }
 
-/// Read an image file, returning its base64 body (no `data:` prefix). The
-/// editor loads its base image through this rather than the asset protocol:
-/// WebKit treats `asset.localhost` as cross-origin (no CORS fetch on a plain
-/// `Image`), which taints the Konva canvas and silently breaks
-/// `stage.toDataURL()` — and with it save/flatten.
+/// Seed an editable base from the original capture without transferring or
+/// re-encoding the image. Existing bases are immutable and left untouched.
 #[tauri::command]
-pub fn read_image_b64(path: String) -> Result<String, String> {
-    use base64::Engine;
-    let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
-    Ok(base64::engine::general_purpose::STANDARD.encode(&bytes))
+pub fn ensure_base(path: String, n: u32) -> Result<(), String> {
+    let source = Path::new(&path);
+    let base = sidecar::base_path(source, n);
+    if base.exists() {
+        return Ok(());
+    }
+    if let Some(parent) = base.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let bytes = std::fs::read(source).map_err(|e| e.to_string())?;
+    write_atomic(&base, &bytes)
 }
 
 /// Save a browser-recorded video blob into the library and emit the same
@@ -638,17 +1194,16 @@ pub fn save_recording_b64(app: tauri::AppHandle, data_b64: String, ext: Option<S
     Ok(path)
 }
 
-/// Read base `n` from the sidecar dir, returning it as base64 PNG body (no
-/// `data:` prefix) if it exists, else `None`.
+/// Return the path of editable base `n` when it exists. The webview streams it
+/// from the allow-listed loopback image server instead of copying it through
+/// IPC as base64.
 #[tauri::command]
-pub fn read_base(path: String, n: u32) -> Result<Option<String>, String> {
-    use base64::Engine;
+pub fn read_base_path(path: String, n: u32) -> Option<String> {
     let base = sidecar::base_path(Path::new(&path), n);
     if !base.exists() {
-        return Ok(None);
+        return None;
     }
-    let bytes = std::fs::read(&base).map_err(|e| e.to_string())?;
-    Ok(Some(base64::engine::general_purpose::STANDARD.encode(&bytes)))
+    Some(base.to_string_lossy().into_owned())
 }
 
 // --- screen recording (M4 T6) ----------------------------------------------
@@ -668,7 +1223,6 @@ impl Default for RecState {
     fn default() -> Self {
         RecState {
             recorder: Mutex::new(None),
-            #[cfg(target_os = "linux")]
             session: Mutex::new(None),
         }
     }
@@ -678,7 +1232,12 @@ impl Default for RecState {
 #[cfg(target_os = "linux")]
 fn close_cast_session(app: &tauri::AppHandle) {
     use tauri::Manager;
-    let taken = app.state::<RecState>().session.lock().ok().and_then(|mut s| s.take());
+    let taken = app
+        .state::<RecState>()
+        .session
+        .lock()
+        .ok()
+        .and_then(|mut s| s.take());
     if let Some(session) = taken {
         tauri::async_runtime::spawn(async move {
             portal::close_session(&session).await;
@@ -760,7 +1319,9 @@ fn drop_recorder_handle(app: &tauri::AppHandle) {
 #[cfg(target_os = "linux")]
 fn sweep_stale_tmp(rendering: &Path) {
     let _ = std::fs::create_dir_all(rendering);
-    let Ok(entries) = std::fs::read_dir(rendering) else { return };
+    let Ok(entries) = std::fs::read_dir(rendering) else {
+        return;
+    };
     for entry in entries.flatten() {
         let Ok(meta) = entry.metadata() else { continue };
         if !meta.is_file() {
@@ -861,9 +1422,8 @@ pub async fn start_recording(
     let desc = pipeline::build_pipeline_description(fd.as_raw_fd(), node, &tmp_str, &opts);
 
     let app_for_cb = app.clone();
-    let rec = recorder::Recorder::launch(&desc, tmp, out, move |ev| {
-        emit_rec_event(&app_for_cb, ev)
-    })?;
+    let rec =
+        recorder::Recorder::launch(&desc, tmp, out, move |ev| emit_rec_event(&app_for_cb, ev))?;
 
     // `fd` (OwnedFd) was kept alive through launch; pipewiresrc has dup'd it,
     // so it may drop now.
@@ -961,6 +1521,7 @@ fn find_ffmpeg() -> Result<String, String> {
 }
 
 fn ffmpeg_command(ffmpeg: &str) -> tokio::process::Command {
+    #[allow(unused_mut)]
     let mut command = tokio::process::Command::new(ffmpeg);
     #[cfg(target_os = "windows")]
     {
@@ -974,7 +1535,7 @@ fn library_and_rendering() -> (std::path::PathBuf, std::path::PathBuf) {
     let s = Settings::load();
     let library_dir = std::path::PathBuf::from(&s.library_dir);
     let _ = std::fs::create_dir_all(&library_dir);
-    let rendering = files::rendering_dir(&library_dir);
+    let rendering = library_dir.join(".rendering");
     let _ = std::fs::create_dir_all(&rendering);
     (library_dir, rendering)
 }
@@ -1013,7 +1574,15 @@ async fn run_ffmpeg_to_library(
     if !output.status.success() {
         let _ = std::fs::remove_file(tmp);
         let stderr = String::from_utf8_lossy(&output.stderr);
-        let tail: String = stderr.lines().rev().take(4).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("\n");
+        let tail: String = stderr
+            .lines()
+            .rev()
+            .take(4)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect::<Vec<_>>()
+            .join("\n");
         return Err(format!("ffmpeg failed: {tail}"));
     }
     if !tmp.exists() {
@@ -1021,7 +1590,11 @@ async fn run_ffmpeg_to_library(
     }
     let out = paths::unique_path(library_dir, out_name);
     std::fs::rename(tmp, &out)
-        .or_else(|_| std::fs::copy(tmp, &out).map(|_| ()).and_then(|_| std::fs::remove_file(tmp)))
+        .or_else(|_| {
+            std::fs::copy(tmp, &out)
+                .map(|_| ())
+                .and_then(|_| std::fs::remove_file(tmp))
+        })
         .map_err(|e| format!("could not move render into library: {e}"))?;
     Ok(out.to_string_lossy().into_owned())
 }
@@ -1367,8 +1940,10 @@ pub async fn pick_folder() -> Result<Option<String>, String> {
 /// errors if neither systemsettings nor kcmshell6 is on PATH.
 #[tauri::command]
 pub fn open_shortcut_settings() -> Result<(), String> {
-    let candidates: [(&str, &[&str]); 2] =
-        [("systemsettings", &["kcm_keys"]), ("kcmshell6", &["kcm_keys"])];
+    let candidates: [(&str, &[&str]); 2] = [
+        ("systemsettings", &["kcm_keys"]),
+        ("kcmshell6", &["kcm_keys"]),
+    ];
     for (bin, args) in candidates {
         let mut cmd = if in_flatpak() {
             // The sandbox has no systemsettings; run the host's.
@@ -1538,7 +2113,10 @@ pub fn graph_connect_start(client_id: String) -> Result<serde_json::Value, Strin
 /// One poll of the device-code flow. `status` is `pending` | `connected`;
 /// errors propagate as a command error.
 #[tauri::command]
-pub fn graph_connect_poll(client_id: String, device_code: String) -> Result<serde_json::Value, String> {
+pub fn graph_connect_poll(
+    client_id: String,
+    device_code: String,
+) -> Result<serde_json::Value, String> {
     match graph::poll_token(&client_id, &device_code)? {
         None => Ok(serde_json::json!({ "status": "pending" })),
         Some(tokens) => {
@@ -1577,7 +2155,11 @@ pub fn graph_site_drives(site_id: String) -> Result<Vec<serde_json::Value>, Stri
 /// Probe the OpenAI-compatible AI endpoint for reachability/auth by GETting its
 /// `/v1/models` (or `/models`) listing. Returns a short status string on success.
 #[tauri::command]
-pub fn test_ai_endpoint(endpoint: String, model: String, api_key: String) -> Result<String, String> {
+pub fn test_ai_endpoint(
+    endpoint: String,
+    model: String,
+    api_key: String,
+) -> Result<String, String> {
     let base = endpoint.trim().trim_end_matches('/');
     if base.is_empty() {
         return Err("No endpoint set".into());
@@ -1594,223 +2176,33 @@ pub fn test_ai_endpoint(endpoint: String, model: String, api_key: String) -> Res
     match req.call() {
         Ok(resp) => {
             let m = model.trim();
-            let suffix = if m.is_empty() { String::new() } else { format!(" · model “{m}” will be used") };
+            let suffix = if m.is_empty() {
+                String::new()
+            } else {
+                format!(" · model “{m}” will be used")
+            };
             Ok(format!("Connected (HTTP {}){suffix}", resp.status()))
         }
-        Err(ureq::Error::Status(code, _)) => {
-            Err(format!("Endpoint reachable but returned HTTP {code} (check API key/model)"))
-        }
+        Err(ureq::Error::Status(code, _)) => Err(format!(
+            "Endpoint reachable but returned HTTP {code} (check API key/model)"
+        )),
         Err(e) => Err(format!("Could not reach endpoint: {e}")),
     }
 }
 
-/// Show + focus the compact capture window on Windows. Linux goes straight to
-/// region capture so shortcuts and the header button are one gesture.
+/// Start the same freeze-first selector used by the capture panel. Keeping this
+/// route shared means CLI and global-hotkey captures do not focus or reveal the
+/// main window before the desktop frame is frozen.
 #[tauri::command]
-pub async fn show_capture_window(app: tauri::AppHandle) -> Result<(), String> {
-    #[cfg(target_os = "windows")]
-    {
-        use tauri::Emitter;
-
-        logging::log("show_capture_window: spawning Windows picker thread");
-        let app_for_thread = app.clone();
-        std::thread::Builder::new()
-            .name("wondershot-capture-picker".into())
-            .spawn(move || {
-                logging::log("Windows picker thread started");
-                if let Err(e) = run_windows_capture_picker(app_for_thread.clone()) {
-                    logging::log(format!("Windows picker failed: {e}"));
-                    let _ = app_for_thread.emit("capture://failed", e);
-                }
-                logging::log("Windows picker thread finished");
-            })
-            .map_err(|e| e.to_string())?;
-        Ok(())
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        do_capture(app, capture::CaptureMode::Region).await.map(|_| ())
-    }
-}
-
-#[cfg(target_os = "windows")]
-fn run_windows_capture_picker(app: tauri::AppHandle) -> Result<(), String> {
+pub async fn show_capture_window(
+    app: tauri::AppHandle,
+    watch: tauri::State<'_, crate::watcher::LibWatch>,
+) -> Result<(), String> {
     use tauri::Emitter;
 
-    let app_for_bar = app.clone();
-    let listener_ids = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-    let listener_ids_for_bar = listener_ids.clone();
-    logging::log("Windows picker: entering native picker");
-    let choice = capture::win::pick_action_with_toolbar(move |toolbar, signal| {
-        logging::log(format!(
-            "Windows picker: request actionbar rect={:?} toolbar={:?}",
-            toolbar.rect, toolbar.toolbar
-        ));
-        show_capture_action_bar(
-            app_for_bar.clone(),
-            toolbar,
-            signal,
-            listener_ids_for_bar.clone(),
-        );
-    })?;
-    cleanup_capture_action_bar(&app, listener_ids);
-
-    let Some(choice) = choice else {
-        logging::log("Windows picker: cancelled");
-        return Ok(());
-    };
-    logging::log(format!(
-        "Windows picker: selected action={:?} rect={:?} hwnd={:?}",
-        choice.action, choice.rect, choice.hwnd
-    ));
-
-    let rect = choice.rect;
-    if choice.action == capture::win::PickerAction::Record {
-        logging::log("Windows picker: emitting region://record-rect");
-        let _ = app.emit("region://record-rect", rect);
-        return Ok(());
-    }
-
-    let s = Settings::load();
-    std::fs::create_dir_all(&s.library_dir).map_err(|e| e.to_string())?;
-    let out_img = if let Some(hwnd) = choice.hwnd {
-        match capture::win::capture_window_rgba(hwnd) {
-            Ok(img) => {
-                logging::log("Windows picker: captured selected window with native window capture");
-                img
-            }
-            Err(e) => {
-                logging::log(format!(
-                    "Windows picker: window capture failed, falling back to crop: {e}"
-                ));
-                let img = capture::native::capture_rgba_with_cursor(s.capture_cursor)?;
-                crop_capture_image(img, rect)?
-            }
-        }
-    } else {
-        logging::log("Windows picker: capturing desktop crop");
-        let img = capture::native::capture_rgba_with_cursor(s.capture_cursor)?;
-        crop_capture_image(img, rect)?
-    };
-    let out = paths::unique_path(Path::new(&s.library_dir), &paths::timestamp_name("Screenshot"));
-    out_img.save(&out).map_err(|e| e.to_string())?;
-    let path = out.to_string_lossy().to_string();
-    logging::log(format!("Windows picker: saved capture {path}"));
-    restore_main_after_capture(&app, &s);
-    let _ = app.emit("capture://done", path);
-    Ok(())
-}
-
-#[cfg(target_os = "windows")]
-fn show_capture_action_bar(
-    app: tauri::AppHandle,
-    toolbar: capture::win::PickerToolbar,
-    signal: std::sync::Arc<std::sync::Mutex<Option<capture::win::PickerToolbarResult>>>,
-    listener_ids: std::sync::Arc<std::sync::Mutex<Vec<tauri::EventId>>>,
-) {
-    use tauri::{Listener, Manager};
-
-    const LABEL: &str = "capture-actionbar";
-
-    let signal_for_event = signal.clone();
-    let listener = app.once("capture-actionbar://action", move |event| {
-        let value = serde_json::from_str::<String>(event.payload())
-            .unwrap_or_else(|_| event.payload().trim_matches('"').to_string());
-        logging::log(format!("actionbar: event action={value}"));
-        let mapped = match value.as_str() {
-            "capture" => capture::win::PickerToolbarResult::Capture,
-            "record" => capture::win::PickerToolbarResult::Record,
-            _ => capture::win::PickerToolbarResult::Cancel,
-        };
-        if let Ok(mut slot) = signal_for_event.lock() {
-            *slot = Some(mapped);
-        }
-    });
-    if let Ok(mut ids) = listener_ids.lock() {
-        ids.push(listener);
-    }
-
-    let url = format!(
-        "/capture-actionbar?w={}&h={}",
-        toolbar.rect.2,
-        toolbar.rect.3
-    );
-    let (built_tx, built_rx) = std::sync::mpsc::channel();
-    let app_for_ui = app.clone();
-    logging::log(format!("actionbar: scheduling build url={url}"));
-    if let Err(e) = app.run_on_main_thread(move || {
-        if let Some(w) = app_for_ui.get_webview_window(LABEL) {
-            let _ = w.close();
-        }
-        let result = tauri::WebviewWindowBuilder::new(
-            &app_for_ui,
-            LABEL,
-            tauri::WebviewUrl::App(url.into()),
-        )
-        .background_color(tauri::utils::config::Color(20, 20, 23, 255))
-            .title("")
-            .position(toolbar.toolbar.0 as f64, toolbar.toolbar.1 as f64)
-            .inner_size(toolbar.toolbar.2 as f64, toolbar.toolbar.3 as f64)
-            .resizable(false)
-            .decorations(false)
-            .always_on_top(true)
-            .skip_taskbar(true)
-            .shadow(true)
-            .build()
-            .map(|_| ())
-            .map_err(|e| e.to_string());
-        let _ = built_tx.send(result);
-    }) {
-        logging::log(format!("actionbar: could not schedule build: {e}"));
-        set_toolbar_signal(signal, capture::win::PickerToolbarResult::Cancel);
-        return;
-    }
-
-    match built_rx.recv_timeout(std::time::Duration::from_secs(3)) {
-        Ok(Ok(())) => logging::log("actionbar: built"),
-        Ok(Err(e)) => {
-            logging::log(format!("actionbar: build failed: {e}"));
-            set_toolbar_signal(signal, capture::win::PickerToolbarResult::Cancel);
-        }
-        Err(e) => {
-            logging::log(format!("actionbar: build timed out: {e}"));
-            set_toolbar_signal(signal, capture::win::PickerToolbarResult::Cancel);
-        }
-    }
-}
-
-#[cfg(target_os = "windows")]
-fn set_toolbar_signal(
-    signal: std::sync::Arc<std::sync::Mutex<Option<capture::win::PickerToolbarResult>>>,
-    value: capture::win::PickerToolbarResult,
-) {
-    if let Ok(mut slot) = signal.lock() {
-        *slot = Some(value);
-    }
-}
-
-#[cfg(target_os = "windows")]
-fn cleanup_capture_action_bar(
-    app: &tauri::AppHandle,
-    listener_ids: std::sync::Arc<std::sync::Mutex<Vec<tauri::EventId>>>,
-) {
-    use tauri::{Listener, Manager};
-    logging::log("actionbar: cleanup requested");
-    let app_for_ui = app.clone();
-    if let Err(e) = app.run_on_main_thread(move || {
-        if let Some(w) = app_for_ui.get_webview_window("capture-actionbar") {
-            let _ = w.hide();
-            let _ = w.close();
-        }
-    }) {
-        logging::log(format!("actionbar: cleanup schedule failed: {e}"));
-    }
-    if let Ok(mut ids) = listener_ids.lock() {
-        for id in ids.drain(..) {
-            app.unlisten(id);
-        }
-    }
+    let outcome = do_capture(capture::CaptureMode::Region, &app, watch.inner()).await?;
+    app.emit("capture://done", outcome.capture.path.clone())
+        .map_err(|e| e.to_string())
 }
 
 /// Move a library item to the desktop trash (filmstrip hover-delete). Best-effort
@@ -1841,9 +2233,10 @@ pub async fn share_capture(path: String) -> Result<serde_json::Value, String> {
         );
     }
     let prov = provider.clone();
-    let url = tauri::async_runtime::spawn_blocking(move || crate::share::share_file(&s, &path, &prov))
-        .await
-        .map_err(|e| e.to_string())??;
+    let url =
+        tauri::async_runtime::spawn_blocking(move || crate::share::share_file(&s, &path, &prov))
+            .await
+            .map_err(|e| e.to_string())??;
     // Best-effort clipboard copy (wl-clipboard path first, arboard fallback).
     let copied = clipboard::copy_text(&url).unwrap_or(false)
         || arboard::Clipboard::new()
@@ -1895,7 +2288,9 @@ pub async fn bg_model_download(app: tauri::AppHandle) -> Result<(), String> {
         let mut done: u64 = 0;
         let mut last_pct: u64 = 0;
         loop {
-            let n = reader.read(&mut buf).map_err(|e| format!("model download failed: {e}"))?;
+            let n = reader
+                .read(&mut buf)
+                .map_err(|e| format!("model download failed: {e}"))?;
             if n == 0 {
                 break;
             }
@@ -1944,10 +2339,17 @@ pub fn capture_command() -> String {
 /// and labels match what `resolve_mic_source` resolves at record time.
 #[tauri::command]
 pub fn list_media_devices() -> Vec<serde_json::Value> {
-    recorder::list_capture_devices()
-        .into_iter()
-        .map(|(kind, label)| serde_json::json!({ "kind": kind, "label": label }))
-        .collect()
+    #[cfg(target_os = "linux")]
+    {
+        recorder::list_capture_devices()
+            .into_iter()
+            .map(|(kind, label)| serde_json::json!({ "kind": kind, "label": label }))
+            .collect()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        Vec::new()
+    }
 }
 
 #[tauri::command]
@@ -1963,7 +2365,12 @@ pub fn recorder_capabilities() -> serde_json::Value {
 /// (local servers); endpoint+model are required.
 fn ai_config() -> Result<(String, String, String), String> {
     let s = Settings::load();
-    let g = |k: &str| s.extra.get(k).map(|v| v.trim().to_string()).unwrap_or_default();
+    let g = |k: &str| {
+        s.extra
+            .get(k)
+            .map(|v| v.trim().to_string())
+            .unwrap_or_default()
+    };
     let (endpoint, model, key) = (g("ai_endpoint"), g("ai_model"), g("ai_api_key"));
     if endpoint.is_empty() || model.is_empty() {
         return Err("Configure an AI endpoint and model in Settings → AI first".into());
@@ -2063,17 +2470,61 @@ mod tests {
     }
 
     #[test]
-    fn read_image_b64_round_trips() {
-        let dir = std::env::temp_dir().join("ws-read-b64");
+    fn selector_session_preserves_physical_window_geometry() {
+        let displays = vec![capture::FrozenDisplay {
+            id: "left".into(),
+            frame_path: PathBuf::from("left.png"),
+            x: -1920,
+            y: 0,
+            pixel_width: 1920,
+            pixel_height: 1080,
+            windows: vec![capture::WindowTarget {
+                id: "window-1".into(),
+                title: "Editor".into(),
+                application: "Example".into(),
+                x: -1200,
+                y: 80,
+                width: 900,
+                height: 700,
+                z_order: 2,
+                capturable: true,
+            }],
+        }];
+        let session = selector_session("capture-1", capture::CaptureMode::Window, &displays);
+        assert_eq!(session.mode, wondershot_selector::SelectionMode::Window);
+        assert_eq!(session.displays[0].x, -1920);
+        assert_eq!(session.displays[0].windows[0].x, -1200);
+        assert_eq!(session.displays[0].windows[0].z_order, 2);
+    }
+
+    #[test]
+    fn frozen_region_crop_uses_the_selected_display_pixels() {
+        let dir = std::env::temp_dir().join(format!(
+            "ws-frozen-crop-{}-{}",
+            std::process::id(),
+            CAPTURE_SEQUENCE.fetch_add(1, Ordering::Relaxed)
+        ));
         std::fs::create_dir_all(&dir).unwrap();
-        let target = dir.join("img.png");
-        let body = png_b64();
-        std::fs::write(
-            &target,
-            base64::engine::general_purpose::STANDARD.decode(&body).unwrap(),
-        )
-        .unwrap();
-        assert_eq!(read_image_b64(target.to_string_lossy().into()).unwrap(), body);
+        let frame = dir.join("display.png");
+        image::RgbaImage::from_fn(8, 6, |x, y| image::Rgba([x as u8, y as u8, 0, 255]))
+            .save(&frame)
+            .unwrap();
+        let displays = vec![capture::FrozenDisplay {
+            id: "display".into(),
+            frame_path: frame,
+            x: 0,
+            y: 0,
+            pixel_width: 8,
+            pixel_height: 6,
+            windows: Vec::new(),
+        }];
+        let out = dir.join("crop.png");
+        crop_frozen_region(&displays, "display", (2, 1, 4, 3), &out).unwrap();
+        let crop = image::open(out).unwrap().to_rgba8();
+        assert_eq!(crop.dimensions(), (4, 3));
+        assert_eq!(crop.get_pixel(0, 0).0, [2, 1, 0, 255]);
+        assert_eq!(crop.get_pixel(3, 2).0, [5, 3, 0, 255]);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
 }

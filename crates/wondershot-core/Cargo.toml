@@ -29,6 +29,11 @@ windows-sys = { version = "0.61", features = [
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_WindowsAndMessaging",
 ] }
+windows-capture = "2.0.1"
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_Graphics_Gdi"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+screencapturekit = { version = "8.0.1", features = ["macos_14_0"] }
 
 [features]
 # AI background removal via ONNX Runtime. `ort` is built with `load-dynamic`:

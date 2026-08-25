@@ -10,6 +10,11 @@
   let cursor = $state(false);
   let delay = $state(0);
   let loaded = $state(false);
+  let lastPersisted = '';
+
+  function snapshot() {
+    return JSON.stringify({ copy_after_capture: copyAfter, show_gallery_after_capture: preview, capture_cursor: cursor, capture_delay: delay });
+  }
 
   async function load() {
     const s = (await ipcInvoke<Record<string, unknown>>('get_settings')) ?? {};
@@ -17,6 +22,7 @@
     preview = s.show_gallery_after_capture !== false;
     cursor = s.capture_cursor === true;
     delay = Number(s.capture_delay ?? 0);
+    lastPersisted = snapshot();
     loaded = true;
   }
 
@@ -24,8 +30,10 @@
     if ($capturePanelOpen && !loaded) load();
   });
 
-  function persist() {
-    void ipcInvoke('set_settings', {
+  async function persist() {
+    const next = snapshot();
+    if (next === lastPersisted) return;
+    await ipcInvoke('set_settings', {
       values: {
         copy_after_capture: copyAfter,
         show_gallery_after_capture: preview,
@@ -33,22 +41,23 @@
         capture_delay: delay,
       },
     });
+    lastPersisted = next;
   }
 
   function close() {
     capturePanelOpen.set(false);
   }
 
-  function capture(mode: 'region' | 'fullscreen') {
-    persist();
+  async function capture(mode: 'region' | 'fullscreen' | 'window') {
+    await persist();
     close();
-    takeCapture(mode);
+    await takeCapture(mode);
   }
 
-  function record(mode: 'screen' | 'region' = 'screen') {
-    persist();
+  async function record(mode: 'screen' | 'region' = 'screen') {
+    await persist();
     close();
-    startRecording(mode);
+    await startRecording(mode);
   }
 </script>
 
@@ -70,6 +79,7 @@
       </button>
       <div class="links">
         <button class="link" onclick={() => capture('fullscreen')}>Full screen</button>
+        <button class="link" onclick={() => capture('window')}>Window</button>
         <button class="link" onclick={() => record()}>Record</button>
         <button class="link" onclick={() => record('region')}>Record Region</button>
       </div>
