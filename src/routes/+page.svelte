@@ -4,8 +4,9 @@
   import { loadLibrary, takeCapture, openEditorByPath, importPaths, trashItems, selectedCapturePaths } from '$lib/stores';
   import { ipcListen, ipcEmit, ipcInvoke } from '$lib/ipc';
   import { initRecordingEvents, startRecording, startRecordingRect } from '$lib/recorder/control';
-  import { activeItem, captures } from '$lib/stores';
+  import { activeItem, captureError, captures } from '$lib/stores';
   import CaptureHeader from '$lib/components/CaptureHeader.svelte';
+  import MainTitlebar from '$lib/components/MainTitlebar.svelte';
   import ContentView from '$lib/components/ContentView.svelte';
   import PropertiesPanel from '$lib/components/PropertiesPanel.svelte';
   import ZoomBar from '$lib/components/ZoomBar.svelte';
@@ -41,6 +42,10 @@
       // CLI / global-hotkey forwarding: the backend starts direct region
       // capture on Linux and restores the main window when it completes.
       uns.push(await ipcListen('cli://capture', () => void ipcInvoke('show_capture_window')));
+      uns.push(await ipcListen<string>('capture://failed', (error) => {
+        const message = String(error);
+        if (!/cancel(?:led|ed)?/i.test(message)) captureError.set(message);
+      }));
       uns.push(await ipcListen('cli://fullscreen', () => takeCapture('fullscreen')));
       uns.push(await ipcListen<string>('cli://edit', (p) => openEditorByPath(p)));
       uns.push(await ipcListen<string[]>('cli://import', (fs) => importPaths(fs)));
@@ -134,7 +139,14 @@
 <svelte:window on:keydown={onKeyDown} />
 
 <div class="shell">
+  <MainTitlebar />
   <CaptureHeader />
+  {#if $captureError}
+    <div class="capture-error" role="alert">
+      <span>Capture failed: {$captureError}</span>
+      <button aria-label="Dismiss capture error" onclick={() => captureError.set('')}>Close</button>
+    </div>
+  {/if}
   <div class="work">
     <ContentView />
     {#if $activeItem && $activeItem.kind !== 'video'}
@@ -152,4 +164,13 @@
 <style>
   .shell { display: flex; flex-direction: column; height: 100vh; background: var(--bg-content); }
   .work { flex: 1; display: flex; min-height: 0; }
+  .capture-error {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    padding: 8px 12px; color: #fff; background: color-mix(in srgb, var(--danger) 78%, #111);
+    border-bottom: 1px solid var(--danger); font-size: var(--text-small); flex-shrink: 0;
+  }
+  .capture-error button {
+    border: 1px solid rgba(255,255,255,.45); border-radius: var(--radius); padding: 3px 9px;
+    background: transparent; color: inherit; cursor: pointer;
+  }
 </style>

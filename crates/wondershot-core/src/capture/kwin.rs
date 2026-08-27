@@ -1,3 +1,114 @@
+#[cfg(target_os = "linux")]
+use std::collections::HashMap;
+
+#[cfg(target_os = "linux")]
+fn qimage_to_rgba(
+    bytes: &[u8],
+    width: u32,
+    height: u32,
+    stride: usize,
+    format: u32,
+) -> Result<Vec<u8>, String> {
+    let row_bytes = width as usize * 4;
+    let expected = stride
+        .checked_mul(height as usize)
+        .ok_or_else(|| "KWin capture dimensions overflowed".to_string())?;
+    if bytes.len() < expected {
+        return Err(format!(
+            "KWin capture was truncated ({} of {expected} bytes)",
+            bytes.len()
+        ));
+    }
+    if stride < row_bytes {
+        return Err("KWin capture stride is smaller than its image width".into());
+    }
+
+    let mut rgba = Vec::with_capacity(row_bytes * height as usize);
+    for row in bytes[..expected].chunks_exact(stride) {
+        let row = &row[..row_bytes];
+        match format {
+            // QImage RGB32 / ARGB32 / ARGB32_Premultiplied are BGRA in memory
+            // on the little-endian Linux systems supported by KWin.
+            4 | 5 | 6 => {
+                for pixel in row.chunks_exact(4) {
+                    rgba.extend_from_slice(&[pixel[2], pixel[1], pixel[0], pixel[3]]);
+                }
+            }
+            // QImage RGBX8888 / RGBA8888 / RGBA8888_Premultiplied are already
+            // byte-ordered RGBA.
+            16 | 17 | 18 => rgba.extend_from_slice(row),
+            other => return Err(format!("unsupported KWin QImage format {other}")),
+        }
+    }
+    Ok(rgba)
+}
+
+/// Capture KWin's complete logical workspace directly into a PNG. KWin writes
+/// raw QImage bytes to the supplied pipe and returns their layout as metadata.
+/// This gives Wondershot a frozen frame without starting Spectacle or asking
+/// the portal to provide its own picker.
+#[cfg(target_os = "linux")]
+pub async fn capture_workspace(path: &std::path::Path, cursor: bool) -> Result<(), String> {
+    use std::io::Read;
+    use std::os::fd::AsFd;
+    use zbus::zvariant::{Fd, OwnedValue, Value};
+
+    let (read_fd, write_fd) = rustix::pipe::pipe().map_err(|error| error.to_string())?;
+    let connection = zbus::Connection::session()
+        .await
+        .map_err(|error| format!("could not connect to the KDE session bus: {error}"))?;
+    let proxy = zbus::Proxy::new(
+        &connection,
+        "org.kde.KWin.ScreenShot2",
+        "/org/kde/KWin/ScreenShot2",
+        "org.kde.KWin.ScreenShot2",
+    )
+    .await
+    .map_err(|error| format!("KWin screenshot service is unavailable: {error}"))?;
+
+    let mut options: HashMap<&str, Value<'_>> = HashMap::new();
+    options.insert("include-cursor", cursor.into());
+    options.insert("native-resolution", false.into());
+    let metadata: HashMap<String, OwnedValue> = proxy
+        .call(
+            "CaptureWorkspace",
+            &(options, Fd::from(write_fd.as_fd())),
+        )
+        .await
+        .map_err(|error| format!("KWin workspace capture failed: {error}"))?;
+    drop(write_fd);
+
+    let number = |key: &str| -> Result<u32, String> {
+        metadata
+            .get(key)
+            .ok_or_else(|| format!("KWin capture omitted {key} metadata"))
+            .and_then(|value| {
+                u32::try_from(value)
+                    .map_err(|_| format!("KWin returned invalid {key} metadata"))
+            })
+    };
+    let width = number("width")?;
+    let height = number("height")?;
+    let stride = number("stride")? as usize;
+    let format = number("format")?;
+    let expected = stride
+        .checked_mul(height as usize)
+        .ok_or_else(|| "KWin capture dimensions overflowed".to_string())?;
+
+    let bytes = tokio::task::spawn_blocking(move || {
+        let mut file = std::fs::File::from(read_fd);
+        let mut bytes = Vec::with_capacity(expected);
+        file.read_to_end(&mut bytes).map_err(|error| error.to_string())?;
+        Ok::<_, String>(bytes)
+    })
+    .await
+    .map_err(|error| format!("KWin capture reader failed: {error}"))??;
+    let rgba = qimage_to_rgba(&bytes, width, height, stride, format)?;
+    let image = image::RgbaImage::from_raw(width, height, rgba)
+        .ok_or_else(|| "KWin returned an invalid image buffer".to_string())?;
+    image.save(path).map_err(|error| error.to_string())
+}
+
 /// Parse KWin's `"x,y,w,h"` callback. None for wrong arity, non-numeric, or w/h <= 0. Floats truncate.
 pub fn parse_geometry_reply(text: &str) -> Option<(i64, i64, i64, i64)> {
     let parts: Vec<&str> = text.split(',').collect();
@@ -97,5 +208,22 @@ mod tests {
         let m2 = map_global_rect((-100, 0, 50, 50), (-100, 0, 1000, 1000), 1000, 1000);
         assert_eq!(m2, Some((0, 0, 50, 50)));
         assert_eq!(map_global_rect((5000, 5000, 10, 10), (0, 0, 1000, 1000), 1000, 1000), None);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn converts_kwin_bgra_and_ignores_row_padding() {
+        let bytes = [3, 2, 1, 255, 7, 6, 5, 255, 99, 99, 99, 99];
+        assert_eq!(
+            qimage_to_rgba(&bytes, 2, 1, 12, 4).unwrap(),
+            [1, 2, 3, 255, 5, 6, 7, 255]
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn preserves_kwin_rgba_bytes() {
+        let bytes = [1, 2, 3, 4];
+        assert_eq!(qimage_to_rgba(&bytes, 1, 1, 4, 17).unwrap(), bytes);
     }
 }

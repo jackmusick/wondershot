@@ -107,6 +107,12 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Cache FFmpeg download
+        uses: actions/cache@v4
+        with:
+          path: .tauri-sidecars/*.zip
+          key: windows-ffmpeg-${{ hashFiles('scripts/Prepare-WindowsFfmpeg.ps1') }}
+
       - name: Stage FFmpeg sidecar
         shell: pwsh
         run: ./scripts/Prepare-WindowsFfmpeg.ps1

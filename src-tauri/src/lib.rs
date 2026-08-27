@@ -25,7 +25,22 @@ fn dispatch_cli(app: &tauri::AppHandle, action: CliAction) {
     };
     match action {
         CliAction::Capture => {
-            let _ = app.emit("cli://capture", ());
+            // Run CLI/global-shortcut captures in the backend. Routing this
+            // through a webview event made Linux shortcuts dependent on the
+            // main page's listener lifecycle and could degrade into merely
+            // focusing the already-running app.
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                let result = commands::show_capture_window(
+                    app.clone(),
+                    app.state::<watcher::LibWatch>(),
+                )
+                .await;
+                if let Err(error) = result {
+                    logging::log(format!("CLI capture failed: {error}"));
+                    let _ = app.emit("capture://failed", error);
+                }
+            });
         }
         CliAction::Fullscreen => {
             let _ = app.emit("cli://fullscreen", ());
@@ -325,7 +340,9 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             // argv includes argv0 here; parse_args expects it stripped.
-            dispatch_cli(app, parse_args(argv.into_iter().skip(1)));
+            let action = parse_args(argv.into_iter().skip(1));
+            logging::log(format!("single-instance CLI action: {action:?}"));
+            dispatch_cli(app, action);
         }))
         .plugin(tauri_plugin_drag::init())
         .manage(hotkeys::HotkeyState::default())
@@ -335,6 +352,18 @@ pub fn run() {
         .manage(media_server::MediaServer(media_server::start()))
         .setup(move |app| {
             use tauri::{Listener, Manager};
+
+            // KDE's server-side GTK decoration intermittently loses its hover
+            // and click input region. Linux uses the app-owned titlebar so the
+            // controls live in the same webview surface as the working UI.
+            #[cfg(target_os = "linux")]
+            if let Some(main) = app.get_webview_window("main") {
+                main.set_decorations(false)?;
+            }
+            #[cfg(target_os = "linux")]
+            if let Err(error) = commands::ensure_kde_capture_authorization() {
+                logging::log(format!("could not authorize KDE capture launchers: {error}"));
+            }
 
             // Watch the library folders so externally created files (global
             // hotkey captures, drops from other apps) appear live.
@@ -453,15 +482,23 @@ pub fn run() {
                 });
             }
 
-            // Act on the launch args once the webview's cli:// listeners are
-            // attached (it emits app://ready), so the event isn't dropped.
-            if launch != CliAction::Launch {
-                let handle = app.handle().clone();
-                let launch = launch.clone();
-                app.listen_any("app://ready", move |_| {
+            // Keep the main window hidden through cold startup. This prevents
+            // `wondershot --capture` from flashing the gallery before the
+            // selector starts. A normal launch is shown only after the webview
+            // is ready; command launches are dispatched at that same point.
+            let handle = app.handle().clone();
+            let launch = launch.clone();
+            app.listen_any("app://ready", move |_| {
+                if launch == CliAction::Launch {
+                    if let Some(window) = handle.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.unminimize();
+                        let _ = window.set_focus();
+                    }
+                } else {
                     dispatch_cli(&handle, launch.clone());
-                });
-            }
+                }
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

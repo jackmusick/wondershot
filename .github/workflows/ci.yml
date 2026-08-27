@@ -43,16 +43,6 @@ jobs:
         if: runner.os == 'Linux'
         run: ./scripts/test-install.sh
 
-      - name: Stage Windows FFmpeg sidecar
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: ./scripts/Prepare-WindowsFfmpeg.ps1
-
-      - name: Install Windows installer tooling
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: choco install nsis -y --no-progress
-
       - name: Frontend typecheck
         run: npm run check
 
@@ -62,8 +52,25 @@ jobs:
       - name: Rust check
         run: cargo check --workspace --all-targets
 
-      - name: Rust core tests
-        run: cargo test -p wondershot-core
+      - name: Rust workspace tests
+        run: cargo test --workspace
+
+      - name: Cache Windows FFmpeg download
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: .tauri-sidecars/*.zip
+          key: windows-ffmpeg-${{ hashFiles('scripts/Prepare-WindowsFfmpeg.ps1') }}
+
+      - name: Stage Windows FFmpeg sidecar
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/Prepare-WindowsFfmpeg.ps1
+
+      - name: Install Windows installer tooling
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: choco install nsis -y --no-progress
 
       - name: Tauri build smoke
         if: runner.os != 'Windows'

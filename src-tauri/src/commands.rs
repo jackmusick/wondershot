@@ -1,5 +1,7 @@
 use crate::{graph, logging};
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux", test))]
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::Instant;
@@ -361,51 +363,16 @@ pub(crate) fn in_flatpak() -> bool {
     std::env::var_os("FLATPAK_ID").is_some() || Path::new("/.flatpak-info").exists()
 }
 
-/// Whether the KDE Spectacle capture tool is reachable. In a Flatpak the sandbox
-/// PATH won't have it, but the HOST does — probe via `flatpak-spawn --host`.
-fn spectacle_on_path() -> bool {
-    if in_flatpak() {
-        return std::process::Command::new("flatpak-spawn")
-            .args(["--host", "which", "spectacle"])
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false);
-    }
-    std::env::var_os("PATH").map_or(false, |paths| {
-        std::env::split_paths(&paths).any(|p| p.join("spectacle").is_file())
-    })
-}
-
-async fn run_spectacle(
-    mode: capture::CaptureMode,
-    out: &str,
-    cursor: bool,
-    delay: u32,
-) -> Result<(), String> {
-    let args = capture::spectacle::spectacle_args(mode, out, cursor, delay);
-    // In a Flatpak, run the HOST spectacle (its rectangular drag-selection UI)
-    // via flatpak-spawn; the output path is under the user's home, which both the
-    // host and the sandbox (--filesystem=home) can see.
-    let mut cmd = if in_flatpak() {
-        let mut c = tokio::process::Command::new("flatpak-spawn");
-        c.arg("--host").arg("spectacle").args(&args);
-        c
-    } else {
-        let mut c = tokio::process::Command::new("spectacle");
-        c.args(&args);
-        c
-    };
-    let status = cmd
-        .status()
-        .await
-        .map_err(|e| format!("could not start spectacle: {e}"))?;
-    if !status.success() {
-        return Err("spectacle exited non-zero (cancelled?)".into());
-    }
-    if !Path::new(out).exists() {
-        return Err("spectacle produced no output file".into());
-    }
-    Ok(())
+#[cfg(target_os = "linux")]
+fn is_kde_desktop() -> bool {
+    ["XDG_CURRENT_DESKTOP", "XDG_SESSION_DESKTOP", "DESKTOP_SESSION"]
+        .into_iter()
+        .filter_map(std::env::var_os)
+        .filter_map(|value| value.into_string().ok())
+        .any(|value| {
+            let value = value.to_ascii_lowercase();
+            value.contains("kde") || value.contains("plasma")
+        })
 }
 
 #[derive(serde::Serialize)]
@@ -419,11 +386,25 @@ pub struct CaptureOutcome {
     show_preview: bool,
 }
 
+#[derive(Debug)]
+enum PlatformCaptureResult {
+    Captured(String),
+    RecordRect((u32, u32, u32, u32)),
+    Cancelled,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CaptureActionBarResult {
+    Capture,
+    Record,
+}
+
 async fn do_capture(
     mode: capture::CaptureMode,
     app: &tauri::AppHandle,
     watch: &crate::watcher::LibWatch,
-) -> Result<CaptureOutcome, String> {
+    show_action_bar: bool,
+) -> Result<Option<CaptureOutcome>, String> {
     use tauri::Manager;
 
     let started = Instant::now();
@@ -432,8 +413,25 @@ async fn do_capture(
         .get_webview_window("main")
         .and_then(|window| window.is_visible().ok().map(|visible| (window, visible)));
     if let Some((window, true)) = &main_was_visible {
-        window.hide().map_err(|e| format!("could not hide Wondershot before capture: {e}"))?;
-        tokio::task::yield_now().await;
+        #[cfg(target_os = "linux")]
+        {
+            // Keep the Wayland surface mapped. Hiding and later remapping the
+            // whole GTK window can leave KWin's server-side decoration input
+            // region stale until another state change (such as maximize).
+            window
+                .minimize()
+                .map_err(|e| format!("could not minimize Wondershot before capture: {e}"))?;
+            // Give the compositor one frame to remove Wondershot before the
+            // native picker freezes the desktop.
+            tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            window
+                .hide()
+                .map_err(|e| format!("could not hide Wondershot before capture: {e}"))?;
+            tokio::task::yield_now().await;
+        }
     }
     let _ = std::fs::create_dir_all(&s.library_dir);
     let out = paths::unique_path(
@@ -457,10 +455,22 @@ async fn do_capture(
         &s.backend,
         &s.library_dir,
         &operation_id,
+        show_action_bar,
     )
     .await;
     let path = match result {
-        Ok(path) => path,
+        Ok(PlatformCaptureResult::Captured(path)) => path,
+        Ok(PlatformCaptureResult::RecordRect(rect)) => {
+            use tauri::Emitter;
+            let _ = app.emit("region://record-rect", rect);
+            return Ok(None);
+        }
+        Ok(PlatformCaptureResult::Cancelled) => {
+            if main_was_visible.as_ref().is_some_and(|(_, visible)| *visible) {
+                restore_main_window(app);
+            }
+            return Ok(None);
+        }
         Err(error) => {
             if main_was_visible.as_ref().is_some_and(|(_, visible)| *visible) {
                 restore_main_window(app);
@@ -480,9 +490,20 @@ async fn do_capture(
         show_preview: s.show_gallery_after_capture,
     };
     restore_main_after_capture(app, &s);
-    Ok(outcome)
+    Ok(Some(outcome))
 }
 
+async fn capture_without_action_bar(
+    mode: capture::CaptureMode,
+    app: &tauri::AppHandle,
+    watch: &crate::watcher::LibWatch,
+) -> Result<CaptureOutcome, String> {
+    do_capture(mode, app, watch, false)
+        .await?
+        .ok_or_else(|| "capture cancelled".to_string())
+}
+
+#[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
 fn selection_dir(library_dir: &str, operation_id: &str) -> PathBuf {
     Path::new(library_dir)
         .join(".wondershot")
@@ -490,6 +511,7 @@ fn selection_dir(library_dir: &str, operation_id: &str) -> PathBuf {
         .join(operation_id)
 }
 
+#[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux", test))]
 fn selector_session(
     operation_id: &str,
     mode: capture::CaptureMode,
@@ -503,6 +525,7 @@ fn selector_session(
     wondershot_selector::SelectionSession {
         operation_id: operation_id.to_string(),
         mode,
+        action_bar: false,
         displays: displays
             .iter()
             .map(|display| wondershot_selector::FrozenDisplay {
@@ -532,6 +555,7 @@ fn selector_session(
     }
 }
 
+#[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
 async fn run_selector(
     session_dir: &Path,
     session: &wondershot_selector::SelectionSession,
@@ -559,6 +583,7 @@ async fn run_selector(
         .map_err(|e| format!("Wondershot selector returned invalid output: {e}"))
 }
 
+#[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux", test))]
 fn crop_frozen_region(
     displays: &[capture::FrozenDisplay],
     display_id: &str,
@@ -586,27 +611,86 @@ fn crop_frozen_region(
         .map_err(|e| e.to_string())
 }
 
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn region_action_geometry(
+    displays: &[capture::FrozenDisplay],
+    display_id: &str,
+    rect: (u32, u32, u32, u32),
+) -> Result<((u32, u32, u32, u32), (i32, i32, u32, u32)), String> {
+    let display = displays
+        .iter()
+        .find(|display| display.id == display_id)
+        .ok_or_else(|| "selected display is no longer available".to_string())?;
+    const BAR_WIDTH: i32 = 296;
+    const BAR_HEIGHT: i32 = 58;
+    const BAR_GAP: i32 = 8;
+    let (x, y, width, height) = rect;
+    let selected_x = display.x.saturating_add_unsigned(x);
+    let selected_y = display.y.saturating_add_unsigned(y);
+    let display_right = display.x.saturating_add_unsigned(display.pixel_width);
+    let display_bottom = display.y.saturating_add_unsigned(display.pixel_height);
+    let toolbar_x = selected_x
+        .saturating_add_unsigned(width)
+        .saturating_sub(BAR_WIDTH)
+        .clamp(display.x, display_right.saturating_sub(BAR_WIDTH));
+    let below = selected_y
+        .saturating_add_unsigned(height)
+        .saturating_add(BAR_GAP);
+    let toolbar_y = if below.saturating_add(BAR_HEIGHT) <= display_bottom {
+        below
+    } else {
+        selected_y
+            .saturating_sub(BAR_HEIGHT + BAR_GAP)
+            .max(display.y)
+    };
+    let record_rect = (
+        selected_x.max(0) as u32,
+        selected_y.max(0) as u32,
+        width,
+        height,
+    );
+
+    Ok((
+        record_rect,
+        (toolbar_x, toolbar_y, BAR_WIDTH as u32, BAR_HEIGHT as u32),
+    ))
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn finish_confirmed_region(
+    displays: &[capture::FrozenDisplay],
+    display_id: &str,
+    rect: (u32, u32, u32, u32),
+    out: &Path,
+    action: CaptureActionBarResult,
+) -> Result<PlatformCaptureResult, String> {
+    match action {
+        CaptureActionBarResult::Capture => {
+            crop_frozen_region(displays, display_id, rect, out)?;
+            Ok(PlatformCaptureResult::Captured(
+                out.to_string_lossy().into_owned(),
+            ))
+        }
+        CaptureActionBarResult::Record => {
+            let (record_rect, _) = region_action_geometry(displays, display_id, rect)?;
+            Ok(PlatformCaptureResult::RecordRect(record_rect))
+        }
+    }
+}
+
 #[cfg(target_os = "linux")]
-fn freeze_portal_displays(
+fn freeze_linux_workspace(
     app: &tauri::AppHandle,
-    portal_frame: &Path,
+    workspace_frame: &Path,
     session_dir: &Path,
 ) -> Result<Vec<capture::FrozenDisplay>, String> {
-    let image = image::open(portal_frame).map_err(|e| e.to_string())?;
-    let monitors = app.available_monitors().map_err(|e| e.to_string())?;
+    let image = image::open(workspace_frame).map_err(|error| error.to_string())?;
+    let monitors = app.available_monitors().map_err(|error| error.to_string())?;
     if monitors.is_empty() {
         return Err("the compositor reported no displays".into());
     }
-    let min_x = monitors
-        .iter()
-        .map(|monitor| monitor.position().x)
-        .min()
-        .unwrap_or(0);
-    let min_y = monitors
-        .iter()
-        .map(|monitor| monitor.position().y)
-        .min()
-        .unwrap_or(0);
+    let min_x = monitors.iter().map(|monitor| monitor.position().x).min().unwrap_or(0);
+    let min_y = monitors.iter().map(|monitor| monitor.position().y).min().unwrap_or(0);
     let max_x = monitors
         .iter()
         .map(|monitor| monitor.position().x as i64 + monitor.size().width as i64)
@@ -633,15 +717,15 @@ fn freeze_portal_displays(
             let width = width.min(image.width().saturating_sub(x));
             let height = height.min(image.height().saturating_sub(y));
             if width == 0 || height == 0 {
-                return Err("portal screenshot does not match compositor display geometry".into());
+                return Err("workspace screenshot does not match compositor display geometry".into());
             }
-            let frame_path = session_dir.join(format!("portal-display-{index}.png"));
+            let frame_path = session_dir.join(format!("linux-display-{index}.png"));
             image
                 .crop_imm(x, y, width, height)
                 .save(&frame_path)
-                .map_err(|e| e.to_string())?;
+                .map_err(|error| error.to_string())?;
             Ok(capture::FrozenDisplay {
-                id: format!("portal-display-{index}"),
+                id: format!("linux-display-{index}"),
                 frame_path,
                 x: monitor.position().x,
                 y: monitor.position().y,
@@ -664,7 +748,9 @@ async fn platform_capture(
     _backend: &str,
     library_dir: &str,
     operation_id: &str,
-) -> (Result<String, String>, &'static str) {
+    show_action_bar: bool,
+) -> (Result<PlatformCaptureResult, String>, &'static str) {
+    let _ = show_action_bar;
     if delay > 0 {
         tokio::time::sleep(std::time::Duration::from_secs(delay as u64)).await;
     }
@@ -673,7 +759,7 @@ async fn platform_capture(
         let capture_out = out.clone();
         tokio::task::spawn_blocking(move || {
             capture::windows::capture_once(mode, &capture_out, cursor)
-                .map(|_| capture_out.to_string_lossy().into_owned())
+                .map(|_| PlatformCaptureResult::Captured(capture_out.to_string_lossy().into_owned()))
         })
         .await
         .map_err(|err| format!("Windows capture task failed: {err}"))
@@ -697,21 +783,20 @@ async fn platform_capture(
                         y,
                         width,
                         height,
+                        ..
                     }) => crop_frozen_region(&displays, &display_id, (x, y, width, height), &out)
-                        .map(|_| out.to_string_lossy().into_owned()),
+                        .map(|_| PlatformCaptureResult::Captured(out.to_string_lossy().into_owned())),
                     Ok(wondershot_selector::SelectionResult::Window { window_id }) => {
                         let capture_out = out.clone();
                         tokio::task::spawn_blocking(move || {
                             capture::windows::capture_window_by_id(&window_id, &capture_out, cursor)
-                                .map(|_| capture_out.to_string_lossy().into_owned())
+                                .map(|_| PlatformCaptureResult::Captured(capture_out.to_string_lossy().into_owned()))
                         })
                         .await
                         .map_err(|err| format!("Windows window capture task failed: {err}"))
                         .and_then(|result| result)
                     }
-                    Ok(wondershot_selector::SelectionResult::Cancelled) => {
-                        Err("capture cancelled".into())
-                    }
+                    Ok(wondershot_selector::SelectionResult::Cancelled) => Ok(PlatformCaptureResult::Cancelled),
                     Err(error) => Err(error),
                 }
             }
@@ -734,7 +819,8 @@ async fn platform_capture(
     _backend: &str,
     library_dir: &str,
     operation_id: &str,
-) -> (Result<String, String>, &'static str) {
+    show_action_bar: bool,
+) -> (Result<PlatformCaptureResult, String>, &'static str) {
     if delay > 0 {
         tokio::time::sleep(std::time::Duration::from_secs(delay as u64)).await;
     }
@@ -748,7 +834,7 @@ async fn platform_capture(
         .map_err(|err| format!("macOS capture task failed: {err}"))
         .and_then(|result| result);
         return match result {
-            Ok((path, backend)) => (Ok(path), backend),
+            Ok((path, backend)) => (Ok(PlatformCaptureResult::Captured(path)), backend),
             Err(error) => (Err(error), "macos-native-capture"),
         };
     }
@@ -762,7 +848,8 @@ async fn platform_capture(
             .and_then(|result| result);
     let result = match frozen {
         Ok(displays) => {
-            let session = selector_session(operation_id, mode, &displays);
+            let mut session = selector_session(operation_id, mode, &displays);
+            session.action_bar = show_action_bar && mode == capture::CaptureMode::Region;
             match run_selector(&session_dir, &session).await {
                 Ok(wondershot_selector::SelectionResult::Region {
                     display_id,
@@ -770,21 +857,30 @@ async fn platform_capture(
                     y,
                     width,
                     height,
-                }) => crop_frozen_region(&displays, &display_id, (x, y, width, height), &out)
-                    .map(|_| out.to_string_lossy().into_owned()),
+                    action,
+                }) => {
+                    finish_confirmed_region(
+                        &displays,
+                        &display_id,
+                        (x, y, width, height),
+                        &out,
+                        match action {
+                            wondershot_selector::SelectionAction::Capture => CaptureActionBarResult::Capture,
+                            wondershot_selector::SelectionAction::Record => CaptureActionBarResult::Record,
+                        },
+                    )
+                }
                 Ok(wondershot_selector::SelectionResult::Window { window_id }) => {
                     let capture_out = out.clone();
                     tokio::task::spawn_blocking(move || {
                         capture::macos::capture_window_by_id(&window_id, &capture_out, cursor)
-                            .map(|_| capture_out.to_string_lossy().into_owned())
+                            .map(|_| PlatformCaptureResult::Captured(capture_out.to_string_lossy().into_owned()))
                     })
                     .await
                     .map_err(|err| format!("macOS window capture task failed: {err}"))
                     .and_then(|result| result)
                 }
-                Ok(wondershot_selector::SelectionResult::Cancelled) => {
-                    Err("capture cancelled".into())
-                }
+                Ok(wondershot_selector::SelectionResult::Cancelled) => Ok(PlatformCaptureResult::Cancelled),
                 Err(error) => Err(error),
             }
         }
@@ -802,76 +898,95 @@ async fn platform_capture(
     out_str: &str,
     cursor: bool,
     delay: u32,
-    backend: &str,
+    _backend: &str,
     library_dir: &str,
     operation_id: &str,
-) -> (Result<String, String>, &'static str) {
-    // The compositor portal is the low-latency default on Linux. Spectacle is
-    // used only when explicitly selected, avoiding a process/path probe on
-    // every capture and keeping the fast portal behavior deterministic.
-    if backend == "spectacle" && spectacle_on_path() {
-        let result = match run_spectacle(mode, out_str, cursor, delay).await {
-            Ok(()) => Ok(out_str.to_string()),
-            Err(e) => Err(e),
-        };
-        return (result, "spectacle");
+    show_action_bar: bool,
+) -> (Result<PlatformCaptureResult, String>, &'static str) {
+    if delay > 0 {
+        tokio::time::sleep(std::time::Duration::from_secs(delay as u64)).await;
     }
 
-    // The portal remains the compositor-owned source of pixels. For region
-    // mode it captures once, then Wondershot selects and crops that frozen
-    // frame locally. Wayland window discovery remains compositor-private, so
-    // window mode uses the portal's native picker.
-    let interactive = mode == capture::CaptureMode::Window;
-    let result = match capture::portal::screenshot(interactive).await {
-        Some(p) => {
-            if mode == capture::CaptureMode::Region {
-                let session_dir = selection_dir(library_dir, operation_id);
-                let frozen = std::fs::create_dir_all(&session_dir)
-                    .map_err(|e| e.to_string())
-                    .and_then(|_| freeze_portal_displays(app, &p, &session_dir));
-                let _ = std::fs::remove_file(&p);
-                let selected = match frozen {
-                    Ok(displays) => {
-                        let session = selector_session(operation_id, mode, &displays);
-                        match run_selector(&session_dir, &session).await {
-                            Ok(wondershot_selector::SelectionResult::Region {
-                                display_id,
-                                x,
-                                y,
-                                width,
-                                height,
-                            }) => crop_frozen_region(
-                                &displays,
-                                &display_id,
-                                (x, y, width, height),
-                                out,
-                            )
-                            .map(|_| out_str.to_string()),
-                            Ok(wondershot_selector::SelectionResult::Cancelled) => {
-                                Err("capture cancelled".into())
-                            }
-                            Ok(wondershot_selector::SelectionResult::Window { .. }) => {
-                                Err("portal region selector returned a window".into())
-                            }
-                            Err(error) => Err(error),
-                        }
-                    }
+    // Explicit fullscreen/window commands retain their platform-native direct
+    // behavior. The default region command freezes the desktop and then opens
+    // the same Wondershot selector used on Windows and macOS.
+    if mode != capture::CaptureMode::Region {
+        let interactive = mode == capture::CaptureMode::Window;
+        let result = match capture::portal::screenshot(interactive).await {
+            Some(path) if path.parent() == Some(Path::new(library_dir)) => {
+                Ok(PlatformCaptureResult::Captured(path.to_string_lossy().into_owned()))
+            }
+            Some(path) => match std::fs::rename(&path, out)
+                .or_else(|_| std::fs::copy(&path, out).map(|_| ()))
+            {
+                Ok(()) => Ok(PlatformCaptureResult::Captured(out_str.to_string())),
+                Err(error) => Err(format!("could not move screenshot: {error}")),
+            },
+            None => Ok(PlatformCaptureResult::Cancelled),
+        };
+        return (result, "portal");
+    }
+
+    let session_dir = selection_dir(library_dir, operation_id);
+    if let Err(error) = std::fs::create_dir_all(&session_dir) {
+        return (Err(error.to_string()), "wondershot-selector");
+    }
+    let workspace_frame = session_dir.join("workspace.png");
+    let frozen = if is_kde_desktop() {
+        match capture::kwin::capture_workspace(&workspace_frame, cursor).await {
+            Ok(()) => freeze_linux_workspace(app, &workspace_frame, &session_dir),
+            Err(error) => Err(error),
+        }
+    } else {
+        match capture::portal::screenshot(false).await {
+            Some(path) => {
+                let copied = std::fs::rename(&path, &workspace_frame)
+                    .or_else(|_| std::fs::copy(&path, &workspace_frame).map(|_| ()))
+                    .map_err(|error| format!("could not stage portal screenshot: {error}"));
+                match copied {
+                    Ok(()) => freeze_linux_workspace(app, &workspace_frame, &session_dir),
                     Err(error) => Err(error),
-                };
-                let _ = std::fs::remove_dir_all(&session_dir);
-                selected
-            } else if p.parent() == Some(Path::new(library_dir)) {
-                Ok(p.to_string_lossy().to_string())
-            } else {
-                match std::fs::rename(&p, out).or_else(|_| std::fs::copy(&p, out).map(|_| ())) {
-                    Ok(()) => Ok(out_str.to_string()),
-                    Err(e) => Err(format!("could not move screenshot: {e}")),
                 }
             }
+            None => Err("portal screenshot cancelled or failed".into()),
         }
-        None => Err("portal screenshot cancelled or failed".into()),
     };
-    (result, "portal")
+
+    let result = match frozen {
+        Ok(displays) => {
+            let mut session = selector_session(operation_id, mode, &displays);
+            session.action_bar = show_action_bar;
+            match run_selector(&session_dir, &session).await {
+                Ok(wondershot_selector::SelectionResult::Region {
+                    display_id,
+                    x,
+                    y,
+                    width,
+                    height,
+                    action,
+                }) => {
+                    finish_confirmed_region(
+                        &displays,
+                        &display_id,
+                        (x, y, width, height),
+                        out,
+                        match action {
+                            wondershot_selector::SelectionAction::Capture => CaptureActionBarResult::Capture,
+                            wondershot_selector::SelectionAction::Record => CaptureActionBarResult::Record,
+                        },
+                    )
+                }
+                Ok(wondershot_selector::SelectionResult::Cancelled) => Ok(PlatformCaptureResult::Cancelled),
+                Ok(wondershot_selector::SelectionResult::Window { .. }) => {
+                    Err("Linux region selector returned a window".into())
+                }
+                Err(error) => Err(error),
+            }
+        }
+        Err(error) => Err(error),
+    };
+    let _ = std::fs::remove_dir_all(&session_dir);
+    (result, "wondershot-selector")
 }
 
 #[tauri::command]
@@ -879,7 +994,7 @@ pub async fn capture_region(
     app: tauri::AppHandle,
     watch: tauri::State<'_, crate::watcher::LibWatch>,
 ) -> Result<CaptureOutcome, String> {
-    do_capture(capture::CaptureMode::Region, &app, watch.inner()).await
+    capture_without_action_bar(capture::CaptureMode::Region, &app, watch.inner()).await
 }
 
 #[tauri::command]
@@ -887,7 +1002,7 @@ pub async fn capture_fullscreen(
     app: tauri::AppHandle,
     watch: tauri::State<'_, crate::watcher::LibWatch>,
 ) -> Result<CaptureOutcome, String> {
-    do_capture(capture::CaptureMode::Fullscreen, &app, watch.inner()).await
+    capture_without_action_bar(capture::CaptureMode::Fullscreen, &app, watch.inner()).await
 }
 
 #[tauri::command]
@@ -895,7 +1010,7 @@ pub async fn capture_window(
     app: tauri::AppHandle,
     watch: tauri::State<'_, crate::watcher::LibWatch>,
 ) -> Result<CaptureOutcome, String> {
-    do_capture(capture::CaptureMode::Window, &app, watch.inner()).await
+    capture_without_action_bar(capture::CaptureMode::Window, &app, watch.inner()).await
 }
 
 #[tauri::command]
@@ -1780,6 +1895,51 @@ fn write_new_base(path: &str, img: &image::RgbaImage) -> Result<String, String> 
 /// Install the per-user `.desktop` launcher + point its Icon at the app-id
 /// (parity with Python `--install-desktop`). Idempotent; best-effort xdg
 /// database refresh. The AppImage path uses this to register a menu entry.
+#[cfg(target_os = "linux")]
+pub(crate) fn ensure_kde_capture_authorization() -> Result<bool, String> {
+    let exe = std::env::current_exe().map_err(|error| error.to_string())?;
+    let data = std::env::var_os("XDG_DATA_HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".local/share")
+        });
+    let apps = data.join("applications");
+    if !apps.is_dir() {
+        return Ok(false);
+    }
+
+    let exec_prefix = format!("Exec={}", exe.display());
+    let permission = "X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2";
+    let mut changed = false;
+    for entry in std::fs::read_dir(&apps).map_err(|error| error.to_string())? {
+        let path = entry.map_err(|error| error.to_string())?.path();
+        if path.extension().and_then(|value| value.to_str()) != Some("desktop") {
+            continue;
+        }
+        let Ok(mut contents) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        if !contents.lines().any(|line| line.starts_with(&exec_prefix))
+            || contents.lines().any(|line| line == permission)
+        {
+            continue;
+        }
+        if !contents.ends_with('\n') {
+            contents.push('\n');
+        }
+        contents.push_str(permission);
+        contents.push('\n');
+        std::fs::write(&path, contents).map_err(|error| error.to_string())?;
+        changed = true;
+    }
+    if changed {
+        let _ = std::process::Command::new("kbuildsycoca6")
+            .arg("--noincremental")
+            .status();
+    }
+    Ok(changed)
+}
+
 #[tauri::command]
 pub fn install_desktop() -> Result<(), String> {
     use std::io::Write;
@@ -1796,6 +1956,7 @@ pub fn install_desktop() -> Result<(), String> {
          Comment=Screenshot & screen-recording with annotation\n\
          Exec={} %U\nIcon=io.github.jackmusick.wondershot\nTerminal=false\n\
          Categories=Utility;Graphics;\nStartupNotify=true\n\
+         X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2\n\
          MimeType=x-scheme-handler/wondershot;\n",
         exe.display()
     );
@@ -1805,6 +1966,8 @@ pub fn install_desktop() -> Result<(), String> {
     let _ = std::process::Command::new("update-desktop-database")
         .arg(&apps)
         .status();
+    #[cfg(target_os = "linux")]
+    let _ = ensure_kde_capture_authorization();
     Ok(())
 }
 
@@ -2191,10 +2354,8 @@ pub fn test_ai_endpoint(
     }
 }
 
-/// Start the interactive capture picker used by the header and global hotkey.
-/// Windows keeps its hybrid region/window hover picker and post-selection
-/// Capture/Record action bar; explicit panel modes continue through the shared
-/// freeze-first selector in `do_capture`.
+/// Start the platform's capture picker directly from the header or global
+/// shortcut, without an intermediate Wondershot window.
 #[tauri::command]
 pub async fn show_capture_window(
     app: tauri::AppHandle,
@@ -2224,9 +2385,18 @@ pub async fn show_capture_window(
     {
         use tauri::Emitter;
 
-        let outcome = do_capture(capture::CaptureMode::Region, &app, _watch.inner()).await?;
-        app.emit("capture://done", outcome.capture.path.clone())
-            .map_err(|error| error.to_string())
+        if let Some(outcome) = do_capture(
+            capture::CaptureMode::Region,
+            &app,
+            _watch.inner(),
+            true,
+        )
+        .await?
+        {
+            app.emit("capture://done", outcome.capture.path.clone())
+                .map_err(|error| error.to_string())?;
+        }
+        Ok(())
     }
 }
 

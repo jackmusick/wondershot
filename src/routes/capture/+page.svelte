@@ -48,6 +48,13 @@
   async function hideSelf() { if (!USE_MOCK) try { await (await win()).hide(); } catch {} }
   async function closeSelf() { if (!USE_MOCK) try { await (await win()).close(); } catch {} }
 
+  async function dragTitlebar(event: PointerEvent) {
+    if (USE_MOCK || event.button !== 0) return;
+    const target = event.target as Element | null;
+    if (target?.closest('button, input, select, textarea, a')) return;
+    try { await (await win()).startDragging(); } catch {}
+  }
+
   async function run(kind: 'capture' | 'record', mode?: 'region' | 'fullscreen' | 'window') {
     await persist();
     await hideSelf();
@@ -57,8 +64,8 @@
   onMount(load);
 </script>
 
-<div class="titlebar" data-tauri-drag-region>
-  <span class="ttitle" data-tauri-drag-region>Capture</span>
+<div class="titlebar" role="presentation" onpointerdown={dragTitlebar}>
+  <span class="ttitle">Capture</span>
   <span class="tbtns">
     <button class="twin" title="Minimize" onclick={minimizeSelf} aria-label="Minimize">
       <svg viewBox="0 0 12 12" width="11" height="11"><path d="M2 6h8" /></svg>

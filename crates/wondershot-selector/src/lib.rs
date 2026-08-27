@@ -51,6 +51,8 @@ pub struct SelectionSession {
     pub operation_id: String,
     pub mode: SelectionMode,
     pub displays: Vec<FrozenDisplay>,
+    #[serde(default)]
+    pub action_bar: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -62,11 +64,21 @@ pub enum SelectionResult {
         y: u32,
         width: u32,
         height: u32,
+        #[serde(default)]
+        action: SelectionAction,
     },
     Window {
         window_id: String,
     },
     Cancelled,
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum SelectionAction {
+    #[default]
+    Capture,
+    Record,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -150,10 +162,64 @@ struct DisplayWindow {
     height: u32,
     cursor: (i32, i32),
     drag_start: Option<(i32, i32)>,
+    locked_region: Option<Rect>,
     selected_window_id: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ActionBarHit {
+    Capture,
+    Record,
+    Cancel,
+}
+
+fn positioned_action_bar(selected: Rect, width: u32, height: u32) -> Rect {
+    const BAR_WIDTH: u32 = 296;
+    const BAR_HEIGHT: u32 = 58;
+    const GAP: i32 = 8;
+    let centered_x = selected
+        .x
+        .saturating_add_unsigned(selected.width / 2)
+        .saturating_sub((BAR_WIDTH / 2) as i32);
+    let x = centered_x.clamp(8, (width as i32 - BAR_WIDTH as i32 - 8).max(8));
+    let below = selected
+        .y
+        .saturating_add_unsigned(selected.height)
+        .saturating_add(GAP);
+    let y = if below.saturating_add_unsigned(BAR_HEIGHT) <= height as i32 - 8 {
+        below
+    } else {
+        selected.y.saturating_sub(BAR_HEIGHT as i32 + GAP).max(8)
+    };
+    Rect {
+        x,
+        y,
+        width: BAR_WIDTH.min(width.saturating_sub(16)),
+        height: BAR_HEIGHT,
+    }
+}
+
 impl DisplayWindow {
+    fn action_bar_rect(&self) -> Option<Rect> {
+        let selected = self.locked_region?;
+        Some(positioned_action_bar(selected, self.width, self.height))
+    }
+
+    fn action_bar_hit(&self) -> Option<ActionBarHit> {
+        let bar = self.action_bar_rect()?;
+        let (x, y) = self.cursor;
+        if !bar.contains(x, y) {
+            return None;
+        }
+        let local_x = x - bar.x;
+        match local_x {
+            7..=50 => Some(ActionBarHit::Capture),
+            59..=102 => Some(ActionBarHit::Record),
+            231..=274 => Some(ActionBarHit::Cancel),
+            _ => None,
+        }
+    }
+
     fn view_to_source_point(&self, point: (i32, i32)) -> (i32, i32) {
         (
             scale_i32(point.0, self.width, self.display.pixel_width),
@@ -181,9 +247,10 @@ impl DisplayWindow {
 
     fn selection_rect(&self, mode: SelectionMode) -> Option<Rect> {
         match mode {
-            SelectionMode::Region => self
-                .drag_start
-                .map(|start| normalized_drag(start, self.cursor, self.width, self.height)),
+            SelectionMode::Region => self.locked_region.or_else(|| {
+                self.drag_start
+                    .map(|start| normalized_drag(start, self.cursor, self.width, self.height))
+            }),
             SelectionMode::Window => self
                 .selected_window_id
                 .as_deref()
@@ -220,6 +287,9 @@ impl DisplayWindow {
         let width = NonZeroU32::new(self.width).ok_or("selector display has zero width")?;
         let height = NonZeroU32::new(self.height).ok_or("selector display has zero height")?;
         let selection_rect = self.selection_rect(mode);
+        let action_bar = self.action_bar_rect();
+        let action_bar_hit = self.action_bar_hit();
+        let locked_region = self.locked_region;
         self.surface
             .resize(width, height)
             .map_err(|e| e.to_string())?;
@@ -238,7 +308,18 @@ impl DisplayWindow {
             draw_border(&mut buffer, self.width, self.height, rect, 3, 0x0028c7fa);
         }
 
-        if mode == SelectionMode::Region {
+        if let Some(bar) = action_bar {
+            draw_action_bar(
+                &mut buffer,
+                self.width,
+                self.height,
+                bar,
+                action_bar_hit,
+                locked_region,
+            );
+        }
+
+        if mode == SelectionMode::Region && self.locked_region.is_none() {
             draw_crosshair(
                 &mut buffer,
                 self.width,
@@ -256,6 +337,7 @@ struct SelectorApp {
     context: Option<Context<Rc<Window>>>,
     windows: HashMap<WindowId, DisplayWindow>,
     result: Option<SelectionResult>,
+    pending_result: Option<SelectionResult>,
     modifiers: winit::keyboard::ModifiersState,
 }
 
@@ -266,6 +348,7 @@ impl SelectorApp {
             context: None,
             windows: HashMap::new(),
             result: None,
+            pending_result: None,
             modifiers: winit::keyboard::ModifiersState::empty(),
         }
     }
@@ -274,6 +357,7 @@ impl SelectorApp {
         self.result = Some(result);
         event_loop.exit();
     }
+
 }
 
 impl ApplicationHandler for SelectorApp {
@@ -355,6 +439,7 @@ impl ApplicationHandler for SelectorApp {
                     height: size.height,
                     cursor: (0, 0),
                     drag_start: None,
+                    locked_region: None,
                     selected_window_id: None,
                 },
             );
@@ -401,7 +486,13 @@ impl ApplicationHandler for SelectorApp {
             WindowEvent::CursorMoved { position, .. } => {
                 if let Some(state) = self.windows.get_mut(&window_id) {
                     state.cursor = (position.x.round() as i32, position.y.round() as i32);
-                    if self.session.mode == SelectionMode::Window {
+                    if self.pending_result.is_some() {
+                        state.window.set_cursor(if state.action_bar_hit().is_some() {
+                            CursorIcon::Pointer
+                        } else {
+                            CursorIcon::Default
+                        });
+                    } else if self.session.mode == SelectionMode::Window {
                         state.update_hover();
                     }
                     state.window.request_redraw();
@@ -423,9 +514,40 @@ impl ApplicationHandler for SelectorApp {
                 button: MouseButton::Left,
                 ..
             } => {
+                if self.session.mode == SelectionMode::Region && self.pending_result.is_some() {
+                    let hit = self
+                        .windows
+                        .get(&window_id)
+                        .and_then(DisplayWindow::action_bar_hit);
+                    match hit {
+                        Some(ActionBarHit::Capture) | Some(ActionBarHit::Record) => {
+                            if let Some(SelectionResult::Region { action, .. }) =
+                                self.pending_result.as_mut()
+                            {
+                                *action = if hit == Some(ActionBarHit::Record) {
+                                    SelectionAction::Record
+                                } else {
+                                    SelectionAction::Capture
+                                };
+                            }
+                            if let Some(result) = self.pending_result.take() {
+                                self.finish(event_loop, result);
+                            }
+                        }
+                        Some(ActionBarHit::Cancel) => {
+                            self.finish(event_loop, SelectionResult::Cancelled);
+                        }
+                        None => {}
+                    }
+                    return;
+                }
                 if let Some(state) = self.windows.get_mut(&window_id) {
                     match self.session.mode {
-                        SelectionMode::Region => state.drag_start = Some(state.cursor),
+                        SelectionMode::Region if self.pending_result.is_none() => {
+                            state.locked_region = None;
+                            state.drag_start = Some(state.cursor);
+                        }
+                        SelectionMode::Region => {}
                         SelectionMode::Window => {
                             if let Some(id) = state.selected_window_id.clone() {
                                 self.finish(event_loop, SelectionResult::Window { window_id: id });
@@ -443,10 +565,13 @@ impl ApplicationHandler for SelectorApp {
                 ..
             } if self.session.mode == SelectionMode::Region => {
                 let result = if let Some(state) = self.windows.get_mut(&window_id) {
-                    let rect = state.drag_start.take().map(|start| {
+                    let rect = state.drag_start.map(|start| {
                         normalized_drag(start, state.cursor, state.width, state.height)
                     });
                     if let Some(rect) = rect.filter(|rect| rect.width >= 2 && rect.height >= 2) {
+                        state.locked_region = Some(rect);
+                        state.drag_start = None;
+                        state.window.set_cursor(CursorIcon::Default);
                         let rect = state.view_to_source_rect(rect);
                         Some(SelectionResult::Region {
                             display_id: state.display.id.clone(),
@@ -454,6 +579,7 @@ impl ApplicationHandler for SelectorApp {
                             y: rect.y as u32,
                             width: rect.width,
                             height: rect.height,
+                            action: SelectionAction::Capture,
                         })
                     } else {
                         state.window.request_redraw();
@@ -463,7 +589,14 @@ impl ApplicationHandler for SelectorApp {
                     None
                 };
                 if let Some(result) = result {
-                    self.finish(event_loop, result);
+                    if self.session.action_bar {
+                        self.pending_result = Some(result);
+                        if let Some(state) = self.windows.get(&window_id) {
+                            state.window.request_redraw();
+                        }
+                    } else {
+                        self.finish(event_loop, result);
+                    }
                 }
             }
             WindowEvent::RedrawRequested => {
@@ -562,6 +695,187 @@ fn draw_border(
     }
 }
 
+fn fill_rect(buffer: &mut [u32], stride: u32, height: u32, rect: Rect, color: u32) {
+    let rect = clamp_rect(rect, stride, height);
+    for y in rect.y as u32..rect.y as u32 + rect.height {
+        let start = (y * stride + rect.x as u32) as usize;
+        let end = start + rect.width as usize;
+        buffer[start..end].fill(color);
+    }
+}
+
+fn outline_rect(buffer: &mut [u32], stride: u32, height: u32, rect: Rect, color: u32) {
+    fill_rect(buffer, stride, height, Rect { height: 1, ..rect }, color);
+    fill_rect(
+        buffer,
+        stride,
+        height,
+        Rect { y: rect.y.saturating_add_unsigned(rect.height.saturating_sub(1)), height: 1, ..rect },
+        color,
+    );
+    fill_rect(buffer, stride, height, Rect { width: 1, ..rect }, color);
+    fill_rect(
+        buffer,
+        stride,
+        height,
+        Rect { x: rect.x.saturating_add_unsigned(rect.width.saturating_sub(1)), width: 1, ..rect },
+        color,
+    );
+}
+
+fn draw_line(
+    buffer: &mut [u32],
+    stride: u32,
+    height: u32,
+    from: (i32, i32),
+    to: (i32, i32),
+    color: u32,
+) {
+    let (mut x, mut y) = from;
+    let dx = (to.0 - x).abs();
+    let sx = if x < to.0 { 1 } else { -1 };
+    let dy = -(to.1 - y).abs();
+    let sy = if y < to.1 { 1 } else { -1 };
+    let mut error = dx + dy;
+    loop {
+        if x >= 0 && y >= 0 && x < stride as i32 && y < height as i32 {
+            buffer[(y as u32 * stride + x as u32) as usize] = color;
+        }
+        if x == to.0 && y == to.1 {
+            break;
+        }
+        let twice = error * 2;
+        if twice >= dy {
+            error += dy;
+            x += sx;
+        }
+        if twice <= dx {
+            error += dx;
+            y += sy;
+        }
+    }
+}
+
+fn fill_circle(
+    buffer: &mut [u32],
+    stride: u32,
+    height: u32,
+    center: (i32, i32),
+    radius: i32,
+    color: u32,
+) {
+    for y in -radius..=radius {
+        for x in -radius..=radius {
+            if x * x + y * y <= radius * radius {
+                let px = center.0 + x;
+                let py = center.1 + y;
+                if px >= 0 && py >= 0 && px < stride as i32 && py < height as i32 {
+                    buffer[(py as u32 * stride + px as u32) as usize] = color;
+                }
+            }
+        }
+    }
+}
+
+fn glyph(character: char) -> [u8; 5] {
+    match character {
+        '0' => [0b111, 0b101, 0b101, 0b101, 0b111],
+        '1' => [0b010, 0b110, 0b010, 0b010, 0b111],
+        '2' => [0b111, 0b001, 0b111, 0b100, 0b111],
+        '3' => [0b111, 0b001, 0b111, 0b001, 0b111],
+        '4' => [0b101, 0b101, 0b111, 0b001, 0b001],
+        '5' => [0b111, 0b100, 0b111, 0b001, 0b111],
+        '6' => [0b111, 0b100, 0b111, 0b101, 0b111],
+        '7' => [0b111, 0b001, 0b010, 0b010, 0b010],
+        '8' => [0b111, 0b101, 0b111, 0b101, 0b111],
+        '9' => [0b111, 0b101, 0b111, 0b001, 0b111],
+        'x' => [0b000, 0b101, 0b010, 0b101, 0b000],
+        _ => [0; 5],
+    }
+}
+
+fn draw_text(
+    buffer: &mut [u32],
+    stride: u32,
+    height: u32,
+    origin: (i32, i32),
+    text: &str,
+    color: u32,
+) {
+    let mut x = origin.0;
+    for character in text.chars() {
+        for (row, bits) in glyph(character).into_iter().enumerate() {
+            for column in 0..3 {
+                if bits & (1 << (2 - column)) != 0 {
+                    fill_rect(
+                        buffer,
+                        stride,
+                        height,
+                        Rect { x: x + column * 2, y: origin.1 + row as i32 * 2, width: 2, height: 2 },
+                        color,
+                    );
+                }
+            }
+        }
+        x += if character == ' ' { 6 } else { 8 };
+    }
+}
+
+fn draw_action_bar(
+    buffer: &mut [u32],
+    stride: u32,
+    height: u32,
+    bar: Rect,
+    hovered: Option<ActionBarHit>,
+    selected: Option<Rect>,
+) {
+    fill_rect(buffer, stride, height, bar, 0x00141417);
+    outline_rect(buffer, stride, height, bar, 0x00404046);
+    let buttons = [
+        (ActionBarHit::Capture, 7, 0x002f7df6),
+        (ActionBarHit::Record, 59, 0x00222226),
+        (ActionBarHit::Cancel, 231, 0x00222226),
+    ];
+    for (action, offset, base_color) in buttons {
+        let color = if hovered == Some(action) {
+            if action == ActionBarHit::Capture { 0x00438bff } else { 0x0037373d }
+        } else {
+            base_color
+        };
+        fill_rect(
+            buffer,
+            stride,
+            height,
+            Rect { x: bar.x + offset, y: bar.y + 7, width: 44, height: 44 },
+            color,
+        );
+    }
+    let size_box = Rect { x: bar.x + 111, y: bar.y + 7, width: 112, height: 44 };
+    fill_rect(buffer, stride, height, size_box, 0x00222226);
+
+    let camera = Rect { x: bar.x + 20, y: bar.y + 21, width: 18, height: 14 };
+    outline_rect(buffer, stride, height, camera, 0x00ffffff);
+    fill_circle(buffer, stride, height, (bar.x + 29, bar.y + 28), 4, 0x00ffffff);
+    fill_circle(buffer, stride, height, (bar.x + 29, bar.y + 28), 2, 0x002f7df6);
+    fill_rect(buffer, stride, height, Rect { x: bar.x + 24, y: bar.y + 18, width: 10, height: 3 }, 0x00ffffff);
+    fill_circle(buffer, stride, height, (bar.x + 81, bar.y + 29), 6, 0x00ff4d5d);
+    draw_line(buffer, stride, height, (bar.x + 245, bar.y + 20), (bar.x + 261, bar.y + 36), 0x00d5d5d8);
+    draw_line(buffer, stride, height, (bar.x + 261, bar.y + 20), (bar.x + 245, bar.y + 36), 0x00d5d5d8);
+
+    if let Some(selected) = selected {
+        let label = format!("{} x {}", selected.width, selected.height);
+        let text_width = label.chars().map(|character| if character == ' ' { 6 } else { 8 }).sum::<i32>();
+        draw_text(
+            buffer,
+            stride,
+            height,
+            (size_box.x + (size_box.width as i32 - text_width) / 2, size_box.y + 17),
+            &label,
+            0x00d5d5d8,
+        );
+    }
+}
+
 fn draw_crosshair(buffer: &mut [u32], width: u32, height: u32, x: i32, y: i32) {
     const COLOR: u32 = 0x00ffffff;
     if y >= 0 && y < height as i32 {
@@ -633,6 +947,31 @@ mod tests {
     }
 
     #[test]
+    fn action_bar_centers_on_selection_and_clamps_to_display() {
+        let centered = positioned_action_bar(
+            Rect { x: 400, y: 200, width: 600, height: 300 },
+            1920,
+            1080,
+        );
+        assert_eq!(centered.x, 552);
+        assert_eq!(centered.y, 508);
+
+        let left_edge = positioned_action_bar(
+            Rect { x: 0, y: 100, width: 100, height: 100 },
+            1920,
+            1080,
+        );
+        assert_eq!(left_edge.x, 8);
+
+        let bottom_edge = positioned_action_bar(
+            Rect { x: 400, y: 1000, width: 600, height: 70 },
+            1920,
+            1080,
+        );
+        assert_eq!(bottom_edge.y, 934);
+    }
+
+    #[test]
     fn overlapping_windows_cycle_in_z_order() {
         let display = display();
         let point = (1200, 200);
@@ -665,6 +1004,7 @@ mod tests {
             operation_id: "capture-1".into(),
             mode: SelectionMode::Region,
             displays: vec![display()],
+            action_bar: false,
         };
         let json = serde_json::to_string(&session).unwrap();
         assert_eq!(

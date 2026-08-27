@@ -10,6 +10,7 @@ export const view = writable<View>('gallery');
 export const recording = writable<RecordingState>({ status: 'idle' });
 export const settingsOpen = writable<boolean>(false);
 export const capturePanelOpen = writable<boolean>(false);
+export const captureError = writable<string>('');
 /** Paths selected in the filmstrip. Kept separate from activeItem so a group
  * can be operated on while one member remains the editor preview. */
 export const selectedCapturePaths = writable<string[]>([]);
@@ -100,6 +101,7 @@ export async function importPaths(paths: string[]): Promise<void> {
 
 export async function takeCapture(mode: 'region' | 'fullscreen' | 'window'): Promise<void> {
   const cmd = `capture_${mode}`;
+  captureError.set('');
   try {
     const outcome = await ipcInvoke<CaptureOutcome>(cmd);
     const [justTaken] = await normalizeCaptures([outcome.capture]);
@@ -120,6 +122,9 @@ export async function takeCapture(mode: 'region' | 'fullscreen' | 'window'): Pro
       });
     }
   } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    if (/cancel(?:led|ed)?/i.test(message)) return;
     console.error('capture failed', e);
+    captureError.set(message);
   }
 }

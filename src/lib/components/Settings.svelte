@@ -417,11 +417,6 @@
               <small>Native macOS hotkey registration is planned.</small>
             </label>
           {:else if isLinux}
-            <label class="field">
-              <span>Capture hotkey</span>
-              <input type="text" bind:value={s.hotkey_capture} />
-              <small>Bind this manually in KDE settings — shown here for reference.</small>
-            </label>
             <fieldset class="group">
               <legend>Global capture hotkey</legend>
               <small>
@@ -434,16 +429,6 @@
             </fieldset>
           {/if}
         {:else if tab === 'capture'}
-          {#if isLinux}
-            <label class="field row">
-              <span>Backend</span>
-              <select bind:value={s.backend}>
-                <option value="auto">Auto</option>
-                <option value="spectacle">Spectacle</option>
-                <option value="portal">Portal</option>
-              </select>
-            </label>
-          {/if}
           <label class="check"><input type="checkbox" bind:checked={s.capture_cursor} /> Capture cursor</label>
           <label class="field row">
             <span>Capture delay (s)</span>
