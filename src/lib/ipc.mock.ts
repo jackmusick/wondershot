@@ -138,6 +138,7 @@ export async function mockInvoke(cmd: string, _args?: unknown): Promise<unknown>
       // No persisted base in the mock; open falls back to the library PNG.
       return null;
     case 'copy_image':
+    case 'copy_files':
       return true;
     case 'list_pinned':
       return mockPinned;

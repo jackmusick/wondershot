@@ -1,6 +1,8 @@
 <script lang="ts">
-  import { captures, activeItem, view, trashItem, pinned, togglePin } from '$lib/stores';
+  import { tick } from 'svelte';
+  import { captures, activeItem, view, trashItem, trashItems, pinned, togglePin, selectedCapturePaths } from '$lib/stores';
   import { ipcInvoke } from '$lib/ipc';
+  import { placeContextMenu, selectGalleryItem } from '$lib/gallerySelection';
   import type { Capture } from '$lib/types';
 
   const USE_MOCK = typeof (globalThis as any).__TAURI_INTERNALS__ === 'undefined';
@@ -34,10 +36,36 @@
 
   // Right-click context menu state.
   let menu = $state<{ x: number; y: number; cap: Capture } | null>(null);
+  let menuElement = $state<HTMLDivElement | null>(null);
+  let selectionAnchor = $state<string | null>(null);
 
-  function open(c: Capture) {
+  let selectedCaptures = $derived.by(() => {
+    const paths = new Set($selectedCapturePaths);
+    return ordered.filter((c) => paths.has(c.path));
+  });
+
+  function focus(c: Capture) {
     activeItem.set(c);
     view.set(c.kind === 'video' ? 'video' : 'editor');
+  }
+
+  function select(e: MouseEvent, c: Capture) {
+    const result = selectGalleryItem(
+      $selectedCapturePaths,
+      ordered.map((item) => item.path),
+      c.path,
+      selectionAnchor,
+      { toggle: e.ctrlKey || e.metaKey, range: e.shiftKey }
+    );
+    selectedCapturePaths.set(result.selected);
+    selectionAnchor = result.anchor;
+
+    if (result.selected.includes(c.path)) focus(c);
+    else if ($activeItem?.path === c.path) {
+      const replacement = ordered.find((item) => result.selected.includes(item.path));
+      activeItem.set(replacement ?? null);
+      if (replacement) view.set(replacement.kind === 'video' ? 'video' : 'editor');
+    }
   }
 
   function del(e: MouseEvent, c: Capture) {
@@ -50,25 +78,50 @@
     void togglePin(c);
   }
 
-  function openMenu(e: MouseEvent, c: Capture) {
+  async function openMenu(e: MouseEvent, c: Capture) {
     e.preventDefault();
+    e.stopPropagation();
+    if (!$selectedCapturePaths.includes(c.path)) {
+      selectedCapturePaths.set([c.path]);
+      selectionAnchor = c.path;
+      focus(c);
+    }
     menu = { x: e.clientX, y: e.clientY, cap: c };
+    await tick();
+    if (!menu || !menuElement) return;
+    const rect = menuElement.getBoundingClientRect();
+    const placed = placeContextMenu(
+      e.clientX, e.clientY, rect.width, rect.height, window.innerWidth, window.innerHeight
+    );
+    menu.x = placed.x;
+    menu.y = placed.y;
   }
 
   function closeMenu() {
     menu = null;
   }
 
+  function onWindowKeydown(e: KeyboardEvent) {
+    if (e.key === 'Escape') closeMenu();
+  }
+
   async function act(kind: 'copy' | 'saveAs' | 'folder' | 'pin' | 'delete') {
     const c = menu?.cap;
+    const targets = selectedCaptures.length > 0 ? [...selectedCaptures] : (c ? [c] : []);
     closeMenu();
     if (!c) return;
     try {
-      if (kind === 'copy') await ipcInvoke('copy_image', { path: c.path });
+      if (kind === 'copy') {
+        if (targets.length === 1 && targets[0].kind === 'image') {
+          await ipcInvoke('copy_image', { path: targets[0].path });
+        } else {
+          await ipcInvoke('copy_files', { paths: targets.map((item) => item.path) });
+        }
+      }
       else if (kind === 'saveAs') await ipcInvoke('save_image_as', { path: c.path });
       else if (kind === 'folder') await ipcInvoke('show_in_folder', { path: c.path });
       else if (kind === 'pin') await togglePin(c);
-      else if (kind === 'delete') await trashItem(c);
+      else if (kind === 'delete') await trashItems(targets);
     } catch (err) {
       console.error(`${kind} failed`, err);
     }
@@ -96,15 +149,17 @@
   }
 </script>
 
-<svelte:window onclick={closeMenu} />
+<svelte:window onclick={closeMenu} onresize={closeMenu} onkeydown={onWindowKeydown} />
 
 <div class="filmstrip">
   {#each ordered as c (c.id)}
     <button
       class="card"
-      class:selected={$activeItem?.id === c.id}
+      class:selected={$selectedCapturePaths.includes(c.path)}
+      class:active={$activeItem?.id === c.id}
       class:pinned={$pinned.includes(c.path)}
-      onclick={() => open(c)}
+      aria-pressed={$selectedCapturePaths.includes(c.path)}
+      onclick={(e) => select(e, c)}
       oncontextmenu={(e) => openMenu(e, c)}
       title={c.title}
     >
@@ -136,13 +191,21 @@
 </div>
 
 {#if menu}
-  <div class="menu" style="left:{menu.x}px; top:{menu.y}px" role="menu">
-    <button role="menuitem" onclick={() => act('copy')}>Copy image</button>
-    <button role="menuitem" onclick={() => act('saveAs')}>Save as…</button>
-    <button role="menuitem" onclick={() => act('folder')}>Show in folder</button>
-    <button role="menuitem" onclick={() => act('pin')}>{$pinned.includes(menu.cap.path) ? 'Unpin' : 'Pin'}</button>
+  <div bind:this={menuElement} class="menu" style="left:{menu.x}px; top:{menu.y}px" role="menu">
+    <button role="menuitem" onclick={() => act('copy')}>
+      {selectedCaptures.length > 1
+        ? `Copy ${selectedCaptures.length} files`
+        : menu.cap.kind === 'video' ? 'Copy file' : 'Copy image'}
+    </button>
+    {#if selectedCaptures.length <= 1}
+      <button role="menuitem" onclick={() => act('saveAs')}>Save as…</button>
+      <button role="menuitem" onclick={() => act('folder')}>Show in folder</button>
+      <button role="menuitem" onclick={() => act('pin')}>{$pinned.includes(menu.cap.path) ? 'Unpin' : 'Pin'}</button>
+    {/if}
     <div class="msep"></div>
-    <button role="menuitem" class="danger" onclick={() => act('delete')}>Move to trash</button>
+    <button role="menuitem" class="danger" onclick={() => act('delete')}>
+      {selectedCaptures.length > 1 ? `Move ${selectedCaptures.length} items to trash` : 'Move to trash'}
+    </button>
   </div>
 {/if}
 
@@ -174,6 +237,7 @@
   }
   .card:hover { border-color: var(--fg-secondary, #6b6b72); }
   .card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .card.active { box-shadow: 0 0 0 1px var(--accent), inset 0 0 0 2px rgba(255,255,255,0.45); }
   .card.pinned { border-color: var(--accent); }
   .thumb { width: 100%; height: 100%; object-fit: cover; display: block; }
   .thumb.fallback { background: var(--bg-sidebar, #222); }

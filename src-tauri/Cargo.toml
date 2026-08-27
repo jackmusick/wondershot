@@ -49,6 +49,7 @@ bgremove = ["wondershot-core/bgremove-onnx"]
 rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "tokio"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
+clipboard-win = "5"
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_UI_Input_KeyboardAndMouse",

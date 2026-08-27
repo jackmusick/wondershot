@@ -475,6 +475,7 @@ pub fn run() {
             commands::load_sidecar,
             commands::save_sidecar,
             commands::copy_image,
+            commands::copy_files,
             commands::capture_region,
             commands::capture_fullscreen,
             commands::capture_window,

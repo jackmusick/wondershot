@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
-  import { loadLibrary, takeCapture, openEditorByPath, importPaths } from '$lib/stores';
+  import { loadLibrary, takeCapture, openEditorByPath, importPaths, trashItems, selectedCapturePaths } from '$lib/stores';
   import { ipcListen, ipcEmit, ipcInvoke } from '$lib/ipc';
   import { initRecordingEvents, startRecording, startRecordingRect } from '$lib/recorder/control';
   import { activeItem, captures } from '$lib/stores';
@@ -87,7 +87,10 @@
     const cur = get(activeItem);
     const idx = cur ? list.findIndex((c) => c.id === cur.id) : -1;
     const next = list[Math.max(0, Math.min(list.length - 1, idx + delta))];
-    if (next && next.id !== cur?.id) activeItem.set(next);
+    if (next && next.id !== cur?.id) {
+      activeItem.set(next);
+      selectedCapturePaths.set([next.path]);
+    }
   }
 
   async function onKeyDown(e: KeyboardEvent) {
@@ -95,13 +98,31 @@
     // Ctrl/Cmd+C → copy the current image to the clipboard.
     if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) {
       const cur = get(activeItem);
-      if (cur && cur.kind !== 'video') {
+      const paths = get(selectedCapturePaths);
+      const selected = get(captures).filter((item) => paths.includes(item.path));
+      if (selected.length > 1 || selected[0]?.kind === 'video') {
         e.preventDefault();
         try {
-          await ipcInvoke('copy_image', { path: cur.path });
+          await ipcInvoke('copy_files', { paths: selected.map((item) => item.path) });
         } catch (err) {
           console.error('copy failed', err);
         }
+      } else if (selected.length === 1 || (cur && cur.kind !== 'video')) {
+        e.preventDefault();
+        try {
+          await ipcInvoke('copy_image', { path: selected[0]?.path ?? cur!.path });
+        } catch (err) {
+          console.error('copy failed', err);
+        }
+      }
+      return;
+    }
+    if (e.key === 'Delete') {
+      const paths = get(selectedCapturePaths);
+      const selected = get(captures).filter((item) => paths.includes(item.path));
+      if (selected.length > 0) {
+        e.preventDefault();
+        await trashItems(selected);
       }
       return;
     }

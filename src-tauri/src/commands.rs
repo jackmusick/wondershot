@@ -1223,6 +1223,7 @@ impl Default for RecState {
     fn default() -> Self {
         RecState {
             recorder: Mutex::new(None),
+            #[cfg(target_os = "linux")]
             session: Mutex::new(None),
         }
     }
@@ -2190,19 +2191,272 @@ pub fn test_ai_endpoint(
     }
 }
 
-/// Start the same freeze-first selector used by the capture panel. Keeping this
-/// route shared means CLI and global-hotkey captures do not focus or reveal the
-/// main window before the desktop frame is frozen.
+/// Start the interactive capture picker used by the header and global hotkey.
+/// Windows keeps its hybrid region/window hover picker and post-selection
+/// Capture/Record action bar; explicit panel modes continue through the shared
+/// freeze-first selector in `do_capture`.
 #[tauri::command]
 pub async fn show_capture_window(
     app: tauri::AppHandle,
-    watch: tauri::State<'_, crate::watcher::LibWatch>,
+    _watch: tauri::State<'_, crate::watcher::LibWatch>,
 ) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use tauri::Emitter;
+
+        logging::log("show_capture_window: spawning Windows picker thread");
+        let app_for_thread = app.clone();
+        std::thread::Builder::new()
+            .name("wondershot-capture-picker".into())
+            .spawn(move || {
+                logging::log("Windows picker thread started");
+                if let Err(error) = run_windows_capture_picker(app_for_thread.clone()) {
+                    logging::log(format!("Windows picker failed: {error}"));
+                    let _ = app_for_thread.emit("capture://failed", error);
+                }
+                logging::log("Windows picker thread finished");
+            })
+            .map_err(|error| error.to_string())?;
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        use tauri::Emitter;
+
+        let outcome = do_capture(capture::CaptureMode::Region, &app, _watch.inner()).await?;
+        app.emit("capture://done", outcome.capture.path.clone())
+            .map_err(|error| error.to_string())
+    }
+}
+
+#[tauri::command]
+pub fn copy_files(paths: Vec<String>) -> Result<bool, String> {
+    if paths.is_empty() {
+        return Ok(false);
+    }
+    for path in &paths {
+        if !Path::new(path).is_file() {
+            return Err(format!("Capture does not exist: {path}"));
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        use clipboard_win::{formats::FileList, Clipboard, Setter};
+        let _clipboard = Clipboard::new_attempts(10).map_err(|e| e.to_string())?;
+        FileList.write_clipboard(&paths).map_err(|e| e.to_string())?;
+        return Ok(true);
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        // File-list clipboard formats differ by desktop. Preserve a useful
+        // fallback without pretending repeated bitmap copies are cumulative.
+        let mut cb = arboard::Clipboard::new().map_err(|e| e.to_string())?;
+        cb.set_text(paths.join("\n")).map_err(|e| e.to_string())?;
+        Ok(true)
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn run_windows_capture_picker(app: tauri::AppHandle) -> Result<(), String> {
     use tauri::Emitter;
 
-    let outcome = do_capture(capture::CaptureMode::Region, &app, watch.inner()).await?;
-    app.emit("capture://done", outcome.capture.path.clone())
-        .map_err(|e| e.to_string())
+    let app_for_bar = app.clone();
+    let listener_ids = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let listener_ids_for_bar = listener_ids.clone();
+    logging::log("Windows picker: entering native picker");
+    let choice = capture::win::pick_action_with_toolbar(move |toolbar, signal| {
+        logging::log(format!(
+            "Windows picker: request actionbar rect={:?} toolbar={:?}",
+            toolbar.rect, toolbar.toolbar
+        ));
+        show_capture_action_bar(
+            app_for_bar.clone(),
+            toolbar,
+            signal,
+            listener_ids_for_bar.clone(),
+        );
+    })?;
+    cleanup_capture_action_bar(&app, listener_ids);
+
+    let Some(choice) = choice else {
+        logging::log("Windows picker: cancelled");
+        return Ok(());
+    };
+    logging::log(format!(
+        "Windows picker: selected action={:?} rect={:?} hwnd={:?}",
+        choice.action, choice.rect, choice.hwnd
+    ));
+
+    if choice.action == capture::win::PickerAction::Record {
+        logging::log("Windows picker: emitting region://record-rect");
+        let _ = app.emit("region://record-rect", choice.rect);
+        return Ok(());
+    }
+
+    let settings = Settings::load();
+    std::fs::create_dir_all(&settings.library_dir).map_err(|error| error.to_string())?;
+    let out = paths::unique_path(
+        Path::new(&settings.library_dir),
+        &paths::timestamp_name("Screenshot"),
+    );
+
+    if let Some(hwnd) = choice.hwnd {
+        let window_id = format!("0x{:x}", hwnd as usize);
+        if let Err(error) =
+            capture::windows::capture_window_by_id(&window_id, &out, settings.capture_cursor)
+        {
+            logging::log(format!(
+                "Windows Graphics Capture failed, falling back to legacy window capture: {error}"
+            ));
+            let image = capture::win::capture_window_rgba(hwnd).or_else(|window_error| {
+                logging::log(format!(
+                    "Windows window capture failed, falling back to desktop crop: {window_error}"
+                ));
+                let desktop =
+                    capture::native::capture_rgba_with_cursor(settings.capture_cursor)?;
+                crop_capture_image(desktop, choice.rect)
+            })?;
+            image.save(&out).map_err(|error| error.to_string())?;
+        }
+    } else {
+        let desktop = capture::native::capture_rgba_with_cursor(settings.capture_cursor)?;
+        crop_capture_image(desktop, choice.rect)?
+            .save(&out)
+            .map_err(|error| error.to_string())?;
+    }
+
+    let path = out.to_string_lossy().to_string();
+    logging::log(format!("Windows picker: saved capture {path}"));
+    restore_main_after_capture(&app, &settings);
+    let _ = app.emit("capture://done", path);
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn crop_capture_image(
+    image: image::RgbaImage,
+    rect: (u32, u32, u32, u32),
+) -> Result<image::RgbaImage, String> {
+    let (image_width, image_height) = image.dimensions();
+    let (x, y, width, height) = rect;
+    if width < 2 || height < 2 || x >= image_width || y >= image_height {
+        return Err("empty capture region".into());
+    }
+    let width = width.min(image_width.saturating_sub(x));
+    let height = height.min(image_height.saturating_sub(y));
+    Ok(image::imageops::crop_imm(&image, x, y, width, height).to_image())
+}
+
+#[cfg(target_os = "windows")]
+fn show_capture_action_bar(
+    app: tauri::AppHandle,
+    toolbar: capture::win::PickerToolbar,
+    signal: std::sync::Arc<std::sync::Mutex<Option<capture::win::PickerToolbarResult>>>,
+    listener_ids: std::sync::Arc<std::sync::Mutex<Vec<tauri::EventId>>>,
+) {
+    use tauri::{Listener, Manager};
+
+    const LABEL: &str = "capture-actionbar";
+
+    let signal_for_event = signal.clone();
+    let listener = app.once("capture-actionbar://action", move |event| {
+        let value = serde_json::from_str::<String>(event.payload())
+            .unwrap_or_else(|_| event.payload().trim_matches('"').to_string());
+        logging::log(format!("actionbar: event action={value}"));
+        let mapped = match value.as_str() {
+            "capture" => capture::win::PickerToolbarResult::Capture,
+            "record" => capture::win::PickerToolbarResult::Record,
+            _ => capture::win::PickerToolbarResult::Cancel,
+        };
+        set_toolbar_signal(signal_for_event.clone(), mapped);
+    });
+    if let Ok(mut ids) = listener_ids.lock() {
+        ids.push(listener);
+    }
+
+    let url = format!(
+        "/capture-actionbar?w={}&h={}",
+        toolbar.rect.2, toolbar.rect.3
+    );
+    let (built_tx, built_rx) = std::sync::mpsc::channel();
+    let app_for_ui = app.clone();
+    logging::log(format!("actionbar: scheduling build url={url}"));
+    if let Err(error) = app.run_on_main_thread(move || {
+        if let Some(window) = app_for_ui.get_webview_window(LABEL) {
+            let _ = window.close();
+        }
+        let result = tauri::WebviewWindowBuilder::new(
+            &app_for_ui,
+            LABEL,
+            tauri::WebviewUrl::App(url.into()),
+        )
+        .background_color(tauri::utils::config::Color(20, 20, 23, 255))
+        .title("")
+        .position(toolbar.toolbar.0 as f64, toolbar.toolbar.1 as f64)
+        .inner_size(toolbar.toolbar.2 as f64, toolbar.toolbar.3 as f64)
+        .resizable(false)
+        .decorations(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .shadow(true)
+        .build()
+        .map(|_| ())
+        .map_err(|error| error.to_string());
+        let _ = built_tx.send(result);
+    }) {
+        logging::log(format!("actionbar: could not schedule build: {error}"));
+        set_toolbar_signal(signal, capture::win::PickerToolbarResult::Cancel);
+        return;
+    }
+
+    match built_rx.recv_timeout(std::time::Duration::from_secs(3)) {
+        Ok(Ok(())) => logging::log("actionbar: built"),
+        Ok(Err(error)) => {
+            logging::log(format!("actionbar: build failed: {error}"));
+            set_toolbar_signal(signal, capture::win::PickerToolbarResult::Cancel);
+        }
+        Err(error) => {
+            logging::log(format!("actionbar: build timed out: {error}"));
+            set_toolbar_signal(signal, capture::win::PickerToolbarResult::Cancel);
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn set_toolbar_signal(
+    signal: std::sync::Arc<std::sync::Mutex<Option<capture::win::PickerToolbarResult>>>,
+    value: capture::win::PickerToolbarResult,
+) {
+    if let Ok(mut slot) = signal.lock() {
+        *slot = Some(value);
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn cleanup_capture_action_bar(
+    app: &tauri::AppHandle,
+    listener_ids: std::sync::Arc<std::sync::Mutex<Vec<tauri::EventId>>>,
+) {
+    use tauri::{Listener, Manager};
+
+    logging::log("actionbar: cleanup requested");
+    let app_for_ui = app.clone();
+    if let Err(error) = app.run_on_main_thread(move || {
+        if let Some(window) = app_for_ui.get_webview_window("capture-actionbar") {
+            let _ = window.hide();
+            let _ = window.close();
+        }
+    }) {
+        logging::log(format!("actionbar: cleanup schedule failed: {error}"));
+    }
+    if let Ok(mut ids) = listener_ids.lock() {
+        for id in ids.drain(..) {
+            app.unlisten(id);
+        }
+    }
 }
 
 /// Move a library item to the desktop trash (filmstrip hover-delete). Best-effort

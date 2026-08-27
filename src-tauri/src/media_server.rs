@@ -124,9 +124,13 @@ static CAMERA_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::
 /// pipeline PLAYING → camera node stays "in use" → the machine never idles).
 /// The active MjpegReader notices the generation bump within ~500ms, returns
 /// EOF, and its drop sets the pipeline to Null. Called when the bubble hides.
+#[cfg(target_os = "linux")]
 pub fn stop_camera() {
     CAMERA_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 }
+
+#[cfg(not(target_os = "linux"))]
+pub fn stop_camera() {}
 
 /// Streams MJPEG parts from a backend camera pipeline. tiny_http pulls this
 /// Reader until the client disconnects; dropping it tears the pipeline down.

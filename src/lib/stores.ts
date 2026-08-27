@@ -10,6 +10,9 @@ export const view = writable<View>('gallery');
 export const recording = writable<RecordingState>({ status: 'idle' });
 export const settingsOpen = writable<boolean>(false);
 export const capturePanelOpen = writable<boolean>(false);
+/** Paths selected in the filmstrip. Kept separate from activeItem so a group
+ * can be operated on while one member remains the editor preview. */
+export const selectedCapturePaths = writable<string[]>([]);
 /** Pinned capture paths (filmstrip pin affordance). */
 export const pinned = writable<string[]>([]);
 /** Editor autosave status — drives the toolbar indicator ('error' = the last
@@ -18,7 +21,10 @@ export const autosaveState = writable<'saved' | 'saving' | 'error'>('saved');
 
 export async function loadLibrary(): Promise<void> {
   const caps = await ipcInvoke<Capture[]>('list_library');
-  captures.set(await normalizeCaptures(caps));
+  const normalized = await normalizeCaptures(caps);
+  captures.set(normalized);
+  const available = new Set(normalized.map((c) => c.path));
+  selectedCapturePaths.update((paths) => paths.filter((path) => available.has(path)));
   await loadPinned();
 }
 
@@ -43,14 +49,33 @@ export async function togglePin(c: Capture): Promise<void> {
 }
 
 /** Move a library item to the trash (filmstrip hover-delete) + refresh. */
-export async function trashItem(c: Capture): Promise<void> {
+export async function trashItems(items: Capture[]): Promise<void> {
+  if (items.length === 0) return;
+  const removed = new Set<string>();
+  const failures: unknown[] = [];
+  for (const item of items) {
+    try {
+      await ipcInvoke('trash_item', { path: item.path });
+      removed.add(item.path);
+    } catch (e) {
+      failures.push(e);
+    }
+  }
+
+  const active = get(activeItem);
+  if (active && removed.has(active.path)) activeItem.set(null);
+  selectedCapturePaths.update((paths) => paths.filter((path) => !removed.has(path)));
   try {
-    await ipcInvoke('trash_item', { path: c.path });
-    if (get(activeItem)?.id === c.id) activeItem.set(null);
     await loadLibrary();
   } catch (e) {
-    console.error('trash failed', e);
+    failures.push(e);
   }
+  if (failures.length > 0) console.error('trash failed', failures);
+}
+
+/** Move one library item to the trash (filmstrip hover-delete). */
+export async function trashItem(c: Capture): Promise<void> {
+  await trashItems([c]);
 }
 
 /** Open the editor on a library item by path (CLI `--edit FILE`). */
