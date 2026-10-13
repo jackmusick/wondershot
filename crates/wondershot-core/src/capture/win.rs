@@ -3,31 +3,32 @@ use std::sync::{Arc, Mutex};
 
 use image::{ImageBuffer, Rgba, RgbaImage};
 use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
-use windows_sys::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED, DWMWA_EXTENDED_FRAME_BOUNDS};
+use windows_sys::Win32::Graphics::Dwm::{
+    DwmGetWindowAttribute, DWMWA_CLOAKED, DWMWA_EXTENDED_FRAME_BOUNDS,
+};
 use windows_sys::Win32::Graphics::Gdi::{
     BeginPaint, BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, CreateSolidBrush, DeleteDC,
     DeleteObject, EndPaint, EnumDisplayMonitors, FillRect, FrameRect, GetDC, GetDIBits,
-    GetMonitorInfoW, InvalidateRect, PAINTSTRUCT, ReleaseDC, SelectObject, SetBkMode,
-    SetTextColor, TextOutW, UpdateWindow,
-    BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HBITMAP, HDC, HGDIOBJ, HMONITOR,
-    MONITORINFO, CAPTUREBLT, SRCCOPY,
+    GetMonitorInfoW, InvalidateRect, ReleaseDC, SelectObject, SetBkMode, SetTextColor, TextOutW,
+    UpdateWindow, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, CAPTUREBLT, DIB_RGB_COLORS, HBITMAP, HDC,
+    HGDIOBJ, HMONITOR, MONITORINFO, PAINTSTRUCT, SRCCOPY,
 };
 use windows_sys::Win32::Storage::Xps::PrintWindow;
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, SetCapture, SetFocus};
+use windows_sys::Win32::UI::WindowsAndMessaging::ICONINFO;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, DrawIconEx, EnumWindows,
     GetAncestor, GetCursorInfo, GetIconInfo, GetMessageW, GetShellWindow, GetSystemMetrics,
     GetWindow, GetWindowLongPtrW, GetWindowLongW, GetWindowRect, GetWindowTextLengthW,
-    GetWindowTextW, IsIconic, IsWindowVisible, LoadCursorW, RegisterClassW,
-    SetCursor, SetLayeredWindowAttributes, SetWindowLongPtrW, ShowWindow, TranslateMessage, CS_HREDRAW,
-    CS_VREDRAW, CURSORINFO, CURSOR_SHOWING, DI_NORMAL, GA_ROOT, GWLP_USERDATA, GW_OWNER,
-    GWL_EXSTYLE, IDC_CROSS, LWA_ALPHA, MSG, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN,
+    GetWindowTextW, IsIconic, IsWindowVisible, LoadCursorW, RegisterClassW, SetCursor,
+    SetLayeredWindowAttributes, SetWindowLongPtrW, ShowWindow, TranslateMessage, CS_HREDRAW,
+    CS_VREDRAW, CURSORINFO, CURSOR_SHOWING, DI_NORMAL, GA_ROOT, GWLP_USERDATA, GWL_EXSTYLE,
+    GW_OWNER, IDC_CROSS, IDC_HAND, LWA_ALPHA, MSG, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN,
     SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SW_SHOW, WM_DESTROY, WM_KEYDOWN, WM_LBUTTONDOWN,
-    WM_LBUTTONUP, WM_MOUSEMOVE, WM_NCDESTROY, WM_PAINT, WNDCLASSW, WS_EX_LAYERED,
-    WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP, WS_VISIBLE, IDC_HAND,
+    WM_LBUTTONUP, WM_MOUSEMOVE, WM_NCDESTROY, WM_PAINT, WNDCLASSW, WS_EX_LAYERED, WS_EX_TOOLWINDOW,
+    WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP, WS_VISIBLE,
 };
-use windows_sys::Win32::UI::WindowsAndMessaging::ICONINFO;
 
 struct ScreenDc {
     hwnd: HWND,
@@ -158,7 +159,12 @@ pub fn virtual_screen() -> Result<VirtualScreen, String> {
         if width <= 0 || height <= 0 {
             return Err("Windows reported an empty virtual screen".into());
         }
-        Ok(VirtualScreen { x, y, width: width as u32, height: height as u32 })
+        Ok(VirtualScreen {
+            x,
+            y,
+            width: width as u32,
+            height: height as u32,
+        })
     }
 }
 
@@ -172,8 +178,18 @@ pub fn list_monitors() -> Vec<MonitorRect> {
         let monitors = &mut *(data as *mut Vec<MonitorRect>);
         let mut info = MONITORINFO {
             cbSize: std::mem::size_of::<MONITORINFO>() as u32,
-            rcMonitor: RECT { left: 0, top: 0, right: 0, bottom: 0 },
-            rcWork: RECT { left: 0, top: 0, right: 0, bottom: 0 },
+            rcMonitor: RECT {
+                left: 0,
+                top: 0,
+                right: 0,
+                bottom: 0,
+            },
+            rcWork: RECT {
+                left: 0,
+                top: 0,
+                right: 0,
+                bottom: 0,
+            },
             dwFlags: 0,
         };
         if GetMonitorInfoW(monitor, &mut info) != 0 {
@@ -181,7 +197,12 @@ pub fn list_monitors() -> Vec<MonitorRect> {
             let width = (r.right - r.left).max(0) as u32;
             let height = (r.bottom - r.top).max(0) as u32;
             if width > 0 && height > 0 {
-                monitors.push(MonitorRect { x: r.left, y: r.top, width, height });
+                monitors.push(MonitorRect {
+                    x: r.left,
+                    y: r.top,
+                    width,
+                    height,
+                });
             }
         }
         1
@@ -231,13 +252,23 @@ pub fn list_windows() -> Vec<WindowRect> {
             return 1;
         }
 
-        windows.push(WindowRect { hwnd: hwnd as isize, title, x: rect.left, y: rect.top, width, height });
+        windows.push(WindowRect {
+            hwnd: hwnd as isize,
+            title,
+            x: rect.left,
+            y: rect.top,
+            width,
+            height,
+        });
         1
     }
 
     let mut windows = Vec::new();
     unsafe {
-        EnumWindows(Some(enum_window), &mut windows as *mut Vec<WindowRect> as LPARAM);
+        EnumWindows(
+            Some(enum_window),
+            &mut windows as *mut Vec<WindowRect> as LPARAM,
+        );
     }
     windows
 }
@@ -270,7 +301,12 @@ unsafe fn is_capture_target_window(hwnd: HWND) -> bool {
 }
 
 unsafe fn window_frame_rect(hwnd: HWND) -> RECT {
-    let mut rect = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+    let mut rect = RECT {
+        left: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+    };
     let hr = DwmGetWindowAttribute(
         hwnd,
         DWMWA_EXTENDED_FRAME_BOUNDS as u32,
@@ -323,7 +359,12 @@ fn pick_action_inner(
             hwnd: Some(w.hwnd),
         })
         .collect();
-    let virtual_rect = PickerRect { x: 0, y: 0, width: vs.width, height: vs.height };
+    let virtual_rect = PickerRect {
+        x: 0,
+        y: 0,
+        width: vs.width,
+        height: vs.height,
+    };
     let mut state = Box::new(PickerState {
         origin: (vs.x, vs.y),
         virtual_rect,
@@ -428,7 +469,12 @@ fn wide_null(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
 }
 
-unsafe extern "system" fn picker_wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+unsafe extern "system" fn picker_wndproc(
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
     let ptr = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *mut PickerState;
     match msg {
         WM_LBUTTONDOWN => {
@@ -553,12 +599,19 @@ fn lparam_point(lparam: LPARAM) -> (i32, i32) {
 }
 
 fn selection_rect(state: &PickerState) -> Option<PickerRect> {
-    let (Some(a), Some(b)) = (state.drag_start, state.drag_now) else { return None };
+    let (Some(a), Some(b)) = (state.drag_start, state.drag_now) else {
+        return None;
+    };
     let x = a.0.min(b.0);
     let y = a.1.min(b.1);
     let width = a.0.abs_diff(b.0);
     let height = a.1.abs_diff(b.1);
-    (width >= 4 && height >= 4).then_some(PickerRect { x, y, width, height })
+    (width >= 4 && height >= 4).then_some(PickerRect {
+        x,
+        y,
+        width,
+        height,
+    })
 }
 
 fn selection_target(state: &PickerState) -> Option<PickerTarget> {
@@ -566,7 +619,10 @@ fn selection_target(state: &PickerState) -> Option<PickerTarget> {
 }
 
 fn active_target(state: &PickerState) -> Option<PickerTarget> {
-    state.selected.or_else(|| selection_target(state)).or(state.hover)
+    state
+        .selected
+        .or_else(|| selection_target(state))
+        .or(state.hover)
 }
 
 fn active_rect(state: &PickerState) -> Option<PickerRect> {
@@ -591,10 +647,7 @@ fn target_at(state: &PickerState, p: (i32, i32)) -> Option<PickerTarget> {
 
 fn monitor_at(state: &PickerState, p: (i32, i32)) -> Option<PickerRect> {
     state.monitors.iter().copied().find(|r| {
-        p.0 >= r.x
-            && p.0 <= r.x + r.width as i32
-            && p.1 >= r.y
-            && p.1 <= r.y + r.height as i32
+        p.0 >= r.x && p.0 <= r.x + r.width as i32 && p.1 >= r.y && p.1 <= r.y + r.height as i32
     })
 }
 
@@ -604,7 +657,10 @@ fn edge_fullscreen_hover(state: &PickerState, p: (i32, i32)) -> Option<PickerTar
     let right = r.x + r.width as i32;
     let bottom = r.y + r.height as i32;
     (p.0 <= r.x + edge || p.1 <= r.y + edge || p.0 >= right - edge || p.1 >= bottom - edge)
-        .then_some(PickerTarget { rect: r, hwnd: None })
+        .then_some(PickerTarget {
+            rect: r,
+            hwnd: None,
+        })
 }
 
 fn paint_picker(dc: HDC, ps: &PAINTSTRUCT, state: &PickerState) {
@@ -655,11 +711,23 @@ fn paint_action_bar(dc: HDC, state: &PickerState, selected: PickerRect) {
             FrameRect(dc, &rect, border);
             DeleteObject(border as HGDIOBJ);
             let text = wide(label);
-            TextOutW(dc, rect.left + 12, rect.top + 9, text.as_ptr(), text.len() as i32);
+            TextOutW(
+                dc,
+                rect.left + 12,
+                rect.top + 9,
+                text.as_ptr(),
+                text.len() as i32,
+            );
         }
         let size = format!("{} x {}", selected.width, selected.height);
         let text = wide(&size);
-        TextOutW(dc, bar.right - 86, bar.top + 20, text.as_ptr(), text.len() as i32);
+        TextOutW(
+            dc,
+            bar.right - 86,
+            bar.top + 20,
+            text.as_ptr(),
+            text.len() as i32,
+        );
     }
 }
 
@@ -675,7 +743,9 @@ fn hit_action_bar(state: &PickerState, p: (i32, i32)) -> Option<PickerButtonActi
 }
 
 fn show_external_action_bar(state: &mut PickerState) {
-    let Some(selected) = state.selected else { return };
+    let Some(selected) = state.selected else {
+        return;
+    };
     if state.action_bar_open {
         return;
     }
@@ -729,17 +799,27 @@ fn action_bar_rect(state: &PickerState, selected: PickerRect) -> RECT {
     let margin = 14;
     let screen = state.virtual_rect;
     let mut left = selected.x + (selected.width as i32 - width) / 2;
-    left = left.max(screen.x + margin).min(screen.x + screen.width as i32 - width - margin);
+    left = left
+        .max(screen.x + margin)
+        .min(screen.x + screen.width as i32 - width - margin);
     let below = selected.y + selected.height as i32 + margin;
     let top = if below + height <= screen.y + screen.height as i32 - margin {
         below
     } else {
         (selected.y - height - margin).max(screen.y + margin)
     };
-    RECT { left, top, right: left + width, bottom: top + height }
+    RECT {
+        left,
+        top,
+        right: left + width,
+        bottom: top + height,
+    }
 }
 
-fn action_buttons(state: &PickerState, selected: PickerRect) -> Vec<(RECT, PickerButtonAction, &'static str)> {
+fn action_buttons(
+    state: &PickerState,
+    selected: PickerRect,
+) -> Vec<(RECT, PickerButtonAction, &'static str)> {
     let bar = action_bar_rect(state, selected);
     let top = bar.top + 8;
     let mut left = bar.left + 8;
@@ -751,7 +831,12 @@ fn action_buttons(state: &PickerState, selected: PickerRect) -> Vec<(RECT, Picke
     specs
         .into_iter()
         .map(|(width, action, label)| {
-            let rect = RECT { left, top, right: left + width, bottom: top + 36 };
+            let rect = RECT {
+                left,
+                top,
+                right: left + width,
+                bottom: top + 36,
+            };
             left += width + 8;
             (rect, action, label)
         })
@@ -827,7 +912,12 @@ pub fn capture_window_rgba(hwnd: isize) -> Result<RgbaImage, String> {
             return Err("empty window handle".into());
         }
         let visible_rect = window_frame_rect(hwnd);
-        let mut print_rect = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+        let mut print_rect = RECT {
+            left: 0,
+            top: 0,
+            right: 0,
+            bottom: 0,
+        };
         if GetWindowRect(hwnd, &mut print_rect) == 0
             || print_rect.right <= print_rect.left
             || print_rect.bottom <= print_rect.top
@@ -844,7 +934,10 @@ pub fn capture_window_rgba(hwnd: isize) -> Result<RgbaImage, String> {
         if screen.is_null() {
             return Err("GetDC failed".into());
         }
-        let screen = ScreenDc { hwnd: std::ptr::null_mut(), dc: screen };
+        let screen = ScreenDc {
+            hwnd: std::ptr::null_mut(),
+            dc: screen,
+        };
 
         let mem = CreateCompatibleDC(screen.dc);
         if mem.is_null() {
@@ -906,7 +999,10 @@ fn capture_fullscreen_image(capture_cursor: bool) -> Result<RgbaImage, String> {
         if screen.is_null() {
             return Err("GetDC failed".into());
         }
-        let screen = ScreenDc { hwnd: std::ptr::null_mut(), dc: screen };
+        let screen = ScreenDc {
+            hwnd: std::ptr::null_mut(),
+            dc: screen,
+        };
 
         let mem = CreateCompatibleDC(screen.dc);
         if mem.is_null() {
@@ -925,7 +1021,18 @@ fn capture_fullscreen_image(capture_cursor: bool) -> Result<RgbaImage, String> {
             return Err("SelectObject failed".into());
         }
 
-        if BitBlt(mem.0, 0, 0, width, height, screen.dc, x, y, SRCCOPY | CAPTUREBLT) == 0 {
+        if BitBlt(
+            mem.0,
+            0,
+            0,
+            width,
+            height,
+            screen.dc,
+            x,
+            y,
+            SRCCOPY | CAPTUREBLT,
+        ) == 0
+        {
             SelectObject(mem.0, old);
             return Err("BitBlt failed".into());
         }
@@ -1010,7 +1117,17 @@ fn draw_cursor(dc: HDC, origin_x: i32, origin_y: i32) {
 
         let draw_x = cursor.ptScreenPos.x - origin_x - hot_x;
         let draw_y = cursor.ptScreenPos.y - origin_y - hot_y;
-        let _ = DrawIconEx(dc, draw_x, draw_y, cursor.hCursor, 0, 0, 0, std::ptr::null_mut(), DI_NORMAL);
+        let _ = DrawIconEx(
+            dc,
+            draw_x,
+            draw_y,
+            cursor.hCursor,
+            0,
+            0,
+            0,
+            std::ptr::null_mut(),
+            DI_NORMAL,
+        );
     }
 }
 

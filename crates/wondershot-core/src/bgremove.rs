@@ -43,7 +43,10 @@ pub fn resolved_model_path() -> Option<PathBuf> {
     }
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
-            for cand in [dir.join("u2net.onnx"), dir.join("resources").join("u2net.onnx")] {
+            for cand in [
+                dir.join("u2net.onnx"),
+                dir.join("resources").join("u2net.onnx"),
+            ] {
                 if cand.exists() {
                     return Some(cand);
                 }
@@ -169,11 +172,9 @@ pub fn remove_background(
     // Resize → normalize → (1,3,320,320) ndarray.
     let resized = resize_to_input(img);
     let chw = normalize_input(&resized);
-    let input: Array4<f32> = Array4::from_shape_vec(
-        (1, 3, INPUT_SIZE as usize, INPUT_SIZE as usize),
-        chw,
-    )
-    .map_err(|e| format!("input tensor shape error: {e}"))?;
+    let input: Array4<f32> =
+        Array4::from_shape_vec((1, 3, INPUT_SIZE as usize, INPUT_SIZE as usize), chw)
+            .map_err(|e| format!("input tensor shape error: {e}"))?;
 
     let mut session = Session::builder()
         .map_err(|e| format!("ort session builder: {e}"))?
@@ -199,12 +200,7 @@ pub fn remove_background(
     // Mask is a 320×320 grayscale image; resize back to original (w,h).
     let mask_img = image::GrayImage::from_raw(INPUT_SIZE, INPUT_SIZE, mask_small)
         .ok_or("could not build mask image")?;
-    let mask_full = image::imageops::resize(
-        &mask_img,
-        w,
-        h,
-        image::imageops::FilterType::Lanczos3,
-    );
+    let mask_full = image::imageops::resize(&mask_img, w, h, image::imageops::FilterType::Lanczos3);
 
     let mut out = img.clone();
     apply_mask(&mut out, mask_full.as_raw(), w, h);

@@ -54,7 +54,9 @@ pub mod recorder {
         pub fn pause(&self) {}
         pub fn resume(&self) {}
         pub fn stop(self) {}
-        pub fn supports_pause() -> bool { false }
+        pub fn supports_pause() -> bool {
+            false
+        }
     }
 
     pub fn resolve_mic_source(_description: &str) -> String {

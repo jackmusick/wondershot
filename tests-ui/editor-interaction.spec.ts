@@ -140,9 +140,16 @@ test('step tool places exactly one badge per click (not drag-existing + add)', a
   await page.mouse.click(cx + 40, cy + 40);
   await expect.poll(() => hook(page, () => (window as any).__wsEditor.itemCount())).toBe(2);
 
-  // In a non-select (draw/step) tool, existing nodes must NOT be draggable —
-  // otherwise clicking one drags it AND places a new step.
-  expect(await hook(page, () => (window as any).__wsEditor.draggableCount())).toBe(0);
+  // Existing annotations remain editable with any tool. Clicking or moving
+  // one while Step is active must manipulate it without stamping a new badge.
+  await page.mouse.click(cx - 40, cy - 40);
+  await expect.poll(() => hook(page, () => (window as any).__wsEditor.itemCount())).toBe(2);
+  await expect.poll(() => hook(page, () => (window as any).__wsEditor.selectionCount())).toBe(1);
+  await page.mouse.move(cx - 40, cy - 40);
+  await page.mouse.down();
+  await page.mouse.move(cx - 80, cy - 80, { steps: 8 });
+  await page.mouse.up();
+  await expect.poll(() => hook(page, () => (window as any).__wsEditor.itemCount())).toBe(2);
   await pickTool(page, 'Select');
   await expect
     .poll(() => hook(page, () => (window as any).__wsEditor.draggableCount()))

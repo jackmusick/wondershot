@@ -35,19 +35,35 @@ pub fn format_elapsed(seconds: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test] fn pts_offset_ns_converts_seconds() { assert_eq!(pts_offset_ns(1.5), 1_500_000_000); }
-    #[test] fn elapsed_excludes_paused_total() {
+    #[test]
+    fn pts_offset_ns_converts_seconds() {
+        assert_eq!(pts_offset_ns(1.5), 1_500_000_000);
+    }
+    #[test]
+    fn elapsed_excludes_paused_total() {
         assert!((elapsed_seconds(Some(100.0), 110.0, 3.0, None) - 7.0).abs() < 1e-9);
     }
-    #[test] fn elapsed_excludes_in_flight_pause() {
+    #[test]
+    fn elapsed_excludes_in_flight_pause() {
         assert!((elapsed_seconds(Some(100.0), 110.0, 0.0, Some(106.0)) - 6.0).abs() < 1e-9);
     }
-    #[test] fn elapsed_none_start_is_zero() { assert_eq!(elapsed_seconds(None, 110.0, 0.0, None), 0.0); }
-    #[test] fn elapsed_never_negative() { assert_eq!(elapsed_seconds(Some(100.0), 100.0, 50.0, None), 0.0); }
-    #[test] fn format_elapsed_mmss() {
+    #[test]
+    fn elapsed_none_start_is_zero() {
+        assert_eq!(elapsed_seconds(None, 110.0, 0.0, None), 0.0);
+    }
+    #[test]
+    fn elapsed_never_negative() {
+        assert_eq!(elapsed_seconds(Some(100.0), 100.0, 50.0, None), 0.0);
+    }
+    #[test]
+    fn format_elapsed_mmss() {
         assert_eq!(format_elapsed(65.0), "1:05");
         assert_eq!(format_elapsed(5.0), "0:05");
         assert_eq!(format_elapsed(600.0), "10:00");
     }
-    #[test] fn escalation_constants() { assert_eq!(GRACE_MS, 5000); assert_eq!(KILL_MS, 10000); }
+    #[test]
+    fn escalation_constants() {
+        assert_eq!(GRACE_MS, 5000);
+        assert_eq!(KILL_MS, 10000);
+    }
 }

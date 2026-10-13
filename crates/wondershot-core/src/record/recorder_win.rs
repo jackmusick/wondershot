@@ -186,46 +186,43 @@ fn spawn_watchdog(
     pause_clock: Arc<Mutex<PauseClock>>,
     started_at: Instant,
 ) -> std::thread::JoinHandle<()> {
-    std::thread::spawn(move || {
-        loop {
-            std::thread::sleep(Duration::from_millis(1000));
-            let exited = child
-                .lock()
-                .ok()
-                .and_then(|mut child| child.try_wait().ok().flatten())
-                .is_some();
-            if exited {
-                if !finished.swap(true, Ordering::SeqCst) {
-                    finalize(&tmp, &out, &on_event);
-                }
-                break;
+    std::thread::spawn(move || loop {
+        std::thread::sleep(Duration::from_millis(1000));
+        let exited = child
+            .lock()
+            .ok()
+            .and_then(|mut child| child.try_wait().ok().flatten())
+            .is_some();
+        if exited {
+            if !finished.swap(true, Ordering::SeqCst) {
+                finalize(&tmp, &out, &on_event);
             }
-            if stopping.load(Ordering::SeqCst) {
-                continue;
-            }
-            if paused.load(Ordering::SeqCst) {
-                continue;
-            }
-            let paused_total = pause_clock
-                .lock()
-                .map(|clock| clock.total)
-                .unwrap_or_default();
-            let elapsed = started_at.elapsed().saturating_sub(paused_total);
-            on_event(RecEvent::Tick(format_elapsed(elapsed.as_secs_f64())));
+            break;
         }
+        if stopping.load(Ordering::SeqCst) {
+            continue;
+        }
+        if paused.load(Ordering::SeqCst) {
+            continue;
+        }
+        let paused_total = pause_clock
+            .lock()
+            .map(|clock| clock.total)
+            .unwrap_or_default();
+        let elapsed = started_at.elapsed().saturating_sub(paused_total);
+        on_event(RecEvent::Tick(format_elapsed(elapsed.as_secs_f64())));
     })
 }
 
-fn finalize(
-    tmp: &Path,
-    out: &Path,
-    on_event: &Arc<dyn Fn(RecEvent) + Send + Sync + 'static>,
-) {
+fn finalize(tmp: &Path, out: &Path, on_event: &Arc<dyn Fn(RecEvent) + Send + Sync + 'static>) {
     let tmp_size = std::fs::metadata(tmp).map(|m| m.len()).unwrap_or(0);
     match salvage_decision(tmp.exists(), tmp_size) {
         Salvage::MoveToOut => {
-            let moved = std::fs::rename(tmp, out)
-                .or_else(|_| std::fs::copy(tmp, out).map(|_| ()).and_then(|_| std::fs::remove_file(tmp)));
+            let moved = std::fs::rename(tmp, out).or_else(|_| {
+                std::fs::copy(tmp, out)
+                    .map(|_| ())
+                    .and_then(|_| std::fs::remove_file(tmp))
+            });
             match moved {
                 Ok(()) => on_event(RecEvent::Finished(out.to_path_buf())),
                 Err(e) => on_event(RecEvent::Failed(format!("could not save recording: {e}"))),
@@ -252,14 +249,26 @@ pub fn mic_probe(_source: &str) -> Result<f64, String> {
 }
 
 pub fn list_capture_devices() -> Vec<(String, String)> {
-    let Ok(ffmpeg) = crate::ffmpeg::find_ffmpeg() else { return Vec::new() };
+    let Ok(ffmpeg) = crate::ffmpeg::find_ffmpeg() else {
+        return Vec::new();
+    };
     let mut command = Command::new(ffmpeg);
     #[cfg(target_os = "windows")]
     command.creation_flags(0x08000000);
     let output = command
-        .args(["-hide_banner", "-list_devices", "true", "-f", "dshow", "-i", "dummy"])
+        .args([
+            "-hide_banner",
+            "-list_devices",
+            "true",
+            "-f",
+            "dshow",
+            "-i",
+            "dummy",
+        ])
         .output();
-    let Ok(output) = output else { return Vec::new() };
+    let Ok(output) = output else {
+        return Vec::new();
+    };
     let mut text = String::from_utf8_lossy(&output.stderr).to_string();
     text.push_str(&String::from_utf8_lossy(&output.stdout));
     parse_dshow_devices(&text)
@@ -269,7 +278,9 @@ pub fn resolve_capture_device(kind: &str, preferred: &str) -> Option<String> {
     let devices = list_capture_devices();
     let preferred = preferred.trim();
     if !preferred.is_empty()
-        && devices.iter().any(|(device_kind, label)| device_kind == kind && label == preferred)
+        && devices
+            .iter()
+            .any(|(device_kind, label)| device_kind == kind && label == preferred)
     {
         return Some(preferred.to_string());
     }
@@ -312,7 +323,12 @@ pub fn build_recording_args(
     let mic = resolve_mic_source(mic_device);
     let include_mic = mic_enabled && !mic.trim().is_empty();
     if include_mic {
-        args.extend(["-f".into(), "dshow".into(), "-i".into(), format!("audio={mic}")]);
+        args.extend([
+            "-f".into(),
+            "dshow".into(),
+            "-i".into(),
+            format!("audio={mic}"),
+        ]);
     }
 
     args.extend(["-map".into(), "0:v".into()]);
@@ -347,8 +363,12 @@ fn parse_dshow_devices(text: &str) -> Vec<(String, String)> {
             section = Some("audioinput");
             continue;
         }
-        let Some(first) = line.find('"') else { continue };
-        let Some(rel_last) = line[first + 1..].find('"') else { continue };
+        let Some(first) = line.find('"') else {
+            continue;
+        };
+        let Some(rel_last) = line[first + 1..].find('"') else {
+            continue;
+        };
         let label = &line[first + 1..first + 1 + rel_last];
         let suffix = &line[first + 1 + rel_last + 1..];
         let kind = if suffix.contains("(video)") {
@@ -400,7 +420,10 @@ Error opening input file dummy.
             parse_dshow_devices(text),
             vec![
                 ("videoinput".to_string(), "Integrated Camera".to_string()),
-                ("audioinput".to_string(), "Microphone Array (Realtek(R) Audio)".to_string())
+                (
+                    "audioinput".to_string(),
+                    "Microphone Array (Realtek(R) Audio)".to_string()
+                )
             ]
         );
     }

@@ -81,8 +81,14 @@ mod tests {
 
     #[test]
     fn parse_geometry_reply_handles_floats_negatives_and_rejects_bad() {
-        assert_eq!(parse_geometry_reply("10,20,300,400"), Some((10, 20, 300, 400)));
-        assert_eq!(parse_geometry_reply("-5,0,800,600"), Some((-5, 0, 800, 600)));
+        assert_eq!(
+            parse_geometry_reply("10,20,300,400"),
+            Some((10, 20, 300, 400))
+        );
+        assert_eq!(
+            parse_geometry_reply("-5,0,800,600"),
+            Some((-5, 0, 800, 600))
+        );
         assert_eq!(parse_geometry_reply("1.0,2.0,3.0,4.0"), Some((1, 2, 3, 4)));
         assert_eq!(parse_geometry_reply(""), None);
         assert_eq!(parse_geometry_reply("1,2,3"), None);
@@ -96,6 +102,9 @@ mod tests {
         assert_eq!(m, Some((200, 200, 400, 400)));
         let m2 = map_global_rect((-100, 0, 50, 50), (-100, 0, 1000, 1000), 1000, 1000);
         assert_eq!(m2, Some((0, 0, 50, 50)));
-        assert_eq!(map_global_rect((5000, 5000, 10, 10), (0, 0, 1000, 1000), 1000, 1000), None);
+        assert_eq!(
+            map_global_rect((5000, 5000, 10, 10), (0, 0, 1000, 1000), 1000, 1000),
+            None
+        );
     }
 }

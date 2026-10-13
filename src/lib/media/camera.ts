@@ -1,6 +1,6 @@
 import { ipcInvoke } from '$lib/ipc';
 import { deviceIdForLabel } from '$lib/media/devices';
-import { usesBrowserMedia } from '$lib/platform';
+import { currentPlatform, usesBrowserMedia } from '$lib/platform';
 
 export type CameraSource =
   | { type: 'url'; src: string }
@@ -8,7 +8,9 @@ export type CameraSource =
   | { type: 'none' };
 
 export async function openCameraSource(label: string): Promise<CameraSource> {
-  if (await usesBrowserMedia()) {
+  const nativeMac = await currentPlatform() === 'macos';
+  if (nativeMac) await ipcInvoke('authorize_media_capture', { kind: 'camera' });
+  if (!nativeMac && await usesBrowserMedia()) {
     if (!navigator.mediaDevices?.getUserMedia) return { type: 'none' };
     const deviceId = await deviceIdForLabel('videoinput', label);
     const stream = await navigator.mediaDevices.getUserMedia({

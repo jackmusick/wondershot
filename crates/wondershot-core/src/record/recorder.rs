@@ -20,8 +20,8 @@ use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use gstreamer as gst;
 use gst::prelude::*;
+use gstreamer as gst;
 
 use super::clock::{elapsed_seconds, format_elapsed, GRACE_MS, KILL_MS};
 use super::files::{salvage_decision, Salvage};
@@ -99,8 +99,8 @@ impl Recorder {
     ) -> Result<Self, String> {
         gst::init().map_err(|e| format!("gst init failed: {e}"))?;
 
-        let element = gst::parse::launch(description)
-            .map_err(|e| format!("parse_launch failed: {e}"))?;
+        let element =
+            gst::parse::launch(description).map_err(|e| format!("parse_launch failed: {e}"))?;
         let pipeline = element
             .downcast::<gst::Pipeline>()
             .map_err(|_| "pipeline description did not yield a gst::Pipeline".to_string())?;
@@ -538,7 +538,9 @@ pub fn resolve_mic_source(description: &str) -> String {
     let real: Vec<gst::Device> = devices.into_iter().filter(|d| !is_monitor(d)).collect();
     let matched = real.iter().find(|d| {
         let name = d.display_name();
-        name == description || name.starts_with(description) || description.starts_with(name.as_str())
+        name == description
+            || name.starts_with(description)
+            || description.starts_with(name.as_str())
     });
     // A selected-but-gone device (unplugged dock, renamed node) falls back to
     // the FIRST real microphone — never the pulse default, which on PipeWire
@@ -642,7 +644,11 @@ pub fn list_capture_devices() -> Vec<(String, String)> {
     let mut seen = std::collections::HashSet::new();
     for d in devices {
         let class = d.device_class().to_string();
-        let kind = if class.contains("Audio") { "audioinput" } else { "videoinput" };
+        let kind = if class.contains("Audio") {
+            "audioinput"
+        } else {
+            "videoinput"
+        };
         if kind == "audioinput" {
             let is_monitor = d
                 .properties()

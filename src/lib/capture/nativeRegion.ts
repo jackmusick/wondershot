@@ -1,8 +1,20 @@
-import { listen } from '@tauri-apps/api/event';
 import { ipcInvoke } from '$lib/ipc';
-import { USE_MOCK } from '$lib/platform';
+import { currentPlatform, USE_MOCK } from '$lib/platform';
 
 export type NativeRect = [number, number, number, number];
+
+type NativeCaptureFrame = {
+  width: number;
+  height: number;
+  monitors?: Array<{ id: number; x: number; y: number; width: number; height: number }>;
+  windows?: Array<{ id: number; title: string; x: number; y: number; width: number; height: number }>;
+  pngB64: string;
+};
+
+type ScreenCapturePermission = {
+  required: boolean;
+  granted: boolean;
+};
 
 type NativeCaptureCapabilities = {
   regionSelector?: boolean;
@@ -66,7 +78,26 @@ export async function selectNativeWindowRect(): Promise<NativeRect | undefined> 
 async function openNativeRegionPicker<T>(
   mode: 'capture' | 'rect' | 'screen-capture' | 'screen-rect' | 'window-capture' | 'window-rect'
 ): Promise<T | undefined> {
+  const permission = await ipcInvoke<ScreenCapturePermission>('screen_capture_permission_status');
+  if (permission.required && !permission.granted) return undefined;
+  const platform = await currentPlatform();
+
+  if (platform === 'macos' && isMacosNativeCaptureMode(mode)) {
+    const result = await ipcInvoke<T | null>('macos_native_capture_picker', { mode });
+    return result ?? undefined;
+  }
+
   const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+  const { emit, listen } = await import('@tauri-apps/api/event');
+
+  await ipcInvoke('prepare_native_capture_picker');
+  let frame: NativeCaptureFrame;
+  try {
+    frame = await ipcInvoke<NativeCaptureFrame>('native_capture_frame_b64');
+  } catch (error) {
+    await ipcInvoke('finish_native_capture_picker').catch(() => undefined);
+    throw error;
+  }
   const existing = await WebviewWindow.getByLabel('region-picker');
   if (existing) {
     try {
@@ -84,24 +115,45 @@ async function openNativeRegionPicker<T>(
       unDone?.();
       unRect?.();
       unCancel?.();
+      unReady?.();
+      unPainted?.();
+      void ipcInvoke('finish_native_capture_picker');
       resolve(payload);
     };
     let unDone: (() => void) | undefined;
     let unRect: (() => void) | undefined;
     let unCancel: (() => void) | undefined;
+    let unReady: (() => void) | undefined;
+    let unPainted: (() => void) | undefined;
     listen<string>('region://done', (e) => finish(e.payload as T)).then((un) => (unDone = un));
     listen<NativeRect>('region://rect', (e) => finish(e.payload as T)).then((un) => (unRect = un));
     listen('region://cancel', () => finish()).then((un) => (unCancel = un));
+    listen('region://ready', () => {
+      void emit('region://frame', frame);
+    }).then((un) => (unReady = un));
+    listen('region://painted', () => {
+      void win.show();
+      void win.setFocus();
+    }).then((un) => (unPainted = un));
 
     const win = new WebviewWindow('region-picker', {
       url: `/region-picker?mode=${mode}`,
-      fullscreen: true,
+      maximized: true,
       decorations: false,
       alwaysOnTop: true,
       skipTaskbar: true,
       shadow: false,
-      visible: true,
+      visible: false,
     });
-    win.once('tauri://error', () => finish());
+    win.once('tauri://error', (e) => {
+      console.error('region picker window error', e);
+      finish();
+    });
   });
+}
+
+function isMacosNativeCaptureMode(
+  mode: 'capture' | 'rect' | 'screen-capture' | 'screen-rect' | 'window-capture' | 'window-rect'
+): boolean {
+  return mode === 'capture' || mode === 'screen-capture' || mode === 'window-capture';
 }

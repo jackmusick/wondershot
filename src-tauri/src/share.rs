@@ -142,7 +142,11 @@ pub fn presign_s3_url(
 
 /// Path-style URL — works on AWS and every S3-compatible store.
 pub fn s3_object_url(endpoint: &str, bucket: &str, key: &str) -> String {
-    format!("{}/{bucket}/{}", endpoint.trim_end_matches('/'), quote(key, "/"))
+    format!(
+        "{}/{bucket}/{}",
+        endpoint.trim_end_matches('/'),
+        quote(key, "/")
+    )
 }
 
 // -- Azure Blob (account-key SAS) ---------------------------------------------
@@ -172,7 +176,11 @@ pub fn azure_sas_url(
         "b",               // resource type: blob
         "",                // snapshot time
         "",                // encryption scope
-        "", "", "", "", "", // rscc, rscd, rsce, rscl, rsct
+        "",
+        "",
+        "",
+        "",
+        "", // rscc, rscd, rsce, rscl, rsct
     ]
     .join("\n");
     let key = base64::engine::general_purpose::STANDARD
@@ -198,7 +206,10 @@ pub fn azure_sas_url(
 // -- upload + share orchestration ----------------------------------------------
 
 fn get(s: &Settings, k: &str) -> String {
-    s.extra.get(k).map(|v| v.trim().to_string()).unwrap_or_default()
+    s.extra
+        .get(k)
+        .map(|v| v.trim().to_string())
+        .unwrap_or_default()
 }
 
 fn s3_configured(s: &Settings) -> bool {
@@ -247,7 +258,12 @@ pub fn default_provider(s: &Settings) -> String {
 }
 
 fn content_type_of(path: &str) -> &'static str {
-    match path.rsplit('.').next().map(|e| e.to_ascii_lowercase()).as_deref() {
+    match path
+        .rsplit('.')
+        .next()
+        .map(|e| e.to_ascii_lowercase())
+        .as_deref()
+    {
         Some("png") => "image/png",
         Some("jpg") | Some("jpeg") => "image/jpeg",
         Some("gif") => "image/gif",
@@ -290,15 +306,34 @@ pub fn share_file(s: &Settings, path: &str, provider: &str) -> Result<String, St
             let url = s3_object_url(&get(s, "s3_endpoint"), &get(s, "s3_bucket"), &key);
             let region = {
                 let r = get(s, "s3_region");
-                if r.is_empty() { "us-east-1".to_string() } else { r }
+                if r.is_empty() {
+                    "us-east-1".to_string()
+                } else {
+                    r
+                }
             };
             let (ak, sk) = (get(s, "s3_access_key"), get(s, "s3_secret_key"));
-            put_file(&presign_s3_url(&url, &region, &ak, &sk, "PUT", 3600, now), path, &[])?;
-            Ok(presign_s3_url(&url, &region, &ak, &sk, "GET", (days * 86_400).min(S3_MAX_EXPIRY), now))
+            put_file(
+                &presign_s3_url(&url, &region, &ak, &sk, "PUT", 3600, now),
+                path,
+                &[],
+            )?;
+            Ok(presign_s3_url(
+                &url,
+                &region,
+                &ak,
+                &sk,
+                "GET",
+                (days * 86_400).min(S3_MAX_EXPIRY),
+                now,
+            ))
         }
         "azure" => {
-            let (acct, cont, akey) =
-                (get(s, "azure_account"), get(s, "azure_container"), get(s, "azure_key"));
+            let (acct, cont, akey) = (
+                get(s, "azure_account"),
+                get(s, "azure_container"),
+                get(s, "azure_key"),
+            );
             let upload = azure_sas_url(&acct, &cont, &key, &akey, "cw", 1, now)?;
             put_file(&upload, path, &[("x-ms-blob-type", "BlockBlob")])?;
             azure_sas_url(&acct, &cont, &key, &akey, "r", days, now)
@@ -327,15 +362,31 @@ mod tests {
     #[test]
     fn object_url_matches_python() {
         assert_eq!(
-            s3_object_url("https://s3.example.com", "shots", "wondershot/test image.png"),
+            s3_object_url(
+                "https://s3.example.com",
+                "shots",
+                "wondershot/test image.png"
+            ),
             "https://s3.example.com/shots/wondershot/test%20image.png"
         );
     }
 
     #[test]
     fn presign_get_matches_python_vector() {
-        let url = s3_object_url("https://s3.example.com", "shots", "wondershot/test image.png");
-        let got = presign_s3_url(&url, "us-east-1", "AKIAEXAMPLE", "secretkey123", "GET", 86_400, NOW);
+        let url = s3_object_url(
+            "https://s3.example.com",
+            "shots",
+            "wondershot/test image.png",
+        );
+        let got = presign_s3_url(
+            &url,
+            "us-east-1",
+            "AKIAEXAMPLE",
+            "secretkey123",
+            "GET",
+            86_400,
+            NOW,
+        );
         assert_eq!(
             got,
             "https://s3.example.com/shots/wondershot/test%20image.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAEXAMPLE%2F20260610%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20260610T153045Z&X-Amz-Expires=86400&X-Amz-SignedHeaders=host&X-Amz-Signature=f971cca1f05d6196d82f268d70b8e6f8dc4f7c2a82ea507f02567218a62096d7"
@@ -344,7 +395,11 @@ mod tests {
 
     #[test]
     fn presign_put_matches_python_vector() {
-        let url = s3_object_url("https://s3.example.com", "shots", "wondershot/test image.png");
+        let url = s3_object_url(
+            "https://s3.example.com",
+            "shots",
+            "wondershot/test image.png",
+        );
         let got = presign_s3_url(&url, "eu-west-1", "AK2", "sk2", "PUT", 3600, NOW);
         assert!(got.ends_with(
             "&X-Amz-Signature=d0cbe8581fe7cc593e9cd7464722dea271d991fdfde0dd7965c00477b2800f71"
@@ -354,9 +409,18 @@ mod tests {
     #[test]
     fn azure_sas_matches_python_vector() {
         use base64::Engine;
-        let key = base64::engine::general_purpose::STANDARD.encode(b"0123456789abcdef0123456789abcdef");
-        let got =
-            azure_sas_url("acct", "shots", "wondershot/test image.png", &key, "r", 7, NOW).unwrap();
+        let key =
+            base64::engine::general_purpose::STANDARD.encode(b"0123456789abcdef0123456789abcdef");
+        let got = azure_sas_url(
+            "acct",
+            "shots",
+            "wondershot/test image.png",
+            &key,
+            "r",
+            7,
+            NOW,
+        )
+        .unwrap();
         assert_eq!(
             got,
             "https://acct.blob.core.windows.net/shots/wondershot/test%20image.png?sv=2021-08-06&spr=https&se=2026-06-17T15%3A30%3A45Z&sr=b&sp=r&sig=EDmBv2RXviOAQIDF%2B1cYlkpmOYBOPl49IGwfkD8z5hQ%3D"

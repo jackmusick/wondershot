@@ -100,7 +100,12 @@ pub fn build_trim_args(
     ];
     if reencode {
         let enc_opts: Vec<String> = if encoder == "libx264" {
-            vec!["-crf".into(), "20".into(), "-preset".into(), "veryfast".into()]
+            vec![
+                "-crf".into(),
+                "20".into(),
+                "-preset".into(),
+                "veryfast".into(),
+            ]
         } else {
             vec!["-q:v".into(), "4".into()]
         };
@@ -133,7 +138,12 @@ pub fn build_gif_args(
 ) -> Vec<String> {
     let mut args: Vec<String> = vec!["-y".into()];
     if let (Some(s), Some(e)) = (start, end) {
-        args.extend(["-ss".into(), format!("{:.3}", s), "-to".into(), format!("{:.3}", e)]);
+        args.extend([
+            "-ss".into(),
+            format!("{:.3}", s),
+            "-to".into(),
+            format!("{:.3}", e),
+        ]);
     }
     let vf = format!(
         "fps={fps},scale='min({max_width},iw)':-1:flags=lanczos,\
@@ -191,10 +201,20 @@ mod tests {
 
     #[test]
     fn single_redaction_graph() {
-        let r = vec![Redaction { x: 100, y: 50, w: 200, h: 120, start: 2.0, end: 6.5 }];
+        let r = vec![Redaction {
+            x: 100,
+            y: 50,
+            w: 200,
+            h: 120,
+            start: 2.0,
+            end: 6.5,
+        }];
         let (g, out) = build_blur_filter(&r, 14, 0, 0);
         assert!(g.contains("split=2[base][c0]"), "graph: {g}");
-        assert!(g.contains("[c0]crop=200:120:100:50,boxblur=14[b0]"), "graph: {g}");
+        assert!(
+            g.contains("[c0]crop=200:120:100:50,boxblur=14[b0]"),
+            "graph: {g}"
+        );
         assert!(
             g.contains("[base][b0]overlay=100:50:enable='between(t,2.000,6.500)'[v0]"),
             "graph: {g}"
@@ -204,15 +224,38 @@ mod tests {
 
     #[test]
     fn odd_dims_rounded_even() {
-        let r = vec![Redaction { x: 11, y: 7, w: 101, h: 51, start: 0.0, end: 1.0 }];
-        assert!(build_blur_filter(&r, 14, 0, 0).0.contains("crop=100:50:10:6"));
+        let r = vec![Redaction {
+            x: 11,
+            y: 7,
+            w: 101,
+            h: 51,
+            start: 0.0,
+            end: 1.0,
+        }];
+        assert!(build_blur_filter(&r, 14, 0, 0)
+            .0
+            .contains("crop=100:50:10:6"));
     }
 
     #[test]
     fn multiple_redactions_chain() {
         let r = vec![
-            Redaction { x: 0, y: 0, w: 10, h: 10, start: 0.0, end: 1.0 },
-            Redaction { x: 20, y: 20, w: 10, h: 10, start: 1.0, end: 2.0 },
+            Redaction {
+                x: 0,
+                y: 0,
+                w: 10,
+                h: 10,
+                start: 0.0,
+                end: 1.0,
+            },
+            Redaction {
+                x: 20,
+                y: 20,
+                w: 10,
+                h: 10,
+                start: 1.0,
+                end: 2.0,
+            },
         ];
         let (g, out) = build_blur_filter(&r, 14, 0, 0);
         assert!(g.contains("split=3[base][c0][c1]"), "graph: {g}");
@@ -226,7 +269,14 @@ mod tests {
     #[test]
     fn rect_clamped_to_frame() {
         // rect beyond frame is clamped (video_w=200,video_h=150)
-        let r = vec![Redaction { x: 198, y: 148, w: 50, h: 50, start: 0.0, end: 1.0 }];
+        let r = vec![Redaction {
+            x: 198,
+            y: 148,
+            w: 50,
+            h: 50,
+            start: 0.0,
+            end: 1.0,
+        }];
         let (g, _) = build_blur_filter(&r, 14, 200, 150);
         assert!(g.contains("crop="));
     }
@@ -234,14 +284,28 @@ mod tests {
     #[test]
     fn rect_clamped_to_frame_python_case() {
         // Exact parity with test_video_filter.py::test_rect_clamped_to_frame
-        let r = vec![Redaction { x: 600, y: 340, w: 200, h: 100, start: 0.0, end: 1.0 }];
+        let r = vec![Redaction {
+            x: 600,
+            y: 340,
+            w: 200,
+            h: 100,
+            start: 0.0,
+            end: 1.0,
+        }];
         let (g, _) = build_blur_filter(&r, 14, 640, 360);
         assert!(g.contains("crop=40:20:600:340"), "graph: {g}");
     }
 
     #[test]
     fn blur_strength_override() {
-        let r = vec![Redaction { x: 0, y: 0, w: 10, h: 10, start: 0.0, end: 1.0 }];
+        let r = vec![Redaction {
+            x: 0,
+            y: 0,
+            w: 10,
+            h: 10,
+            start: 0.0,
+            end: 1.0,
+        }];
         assert!(build_blur_filter(&r, 30, 0, 0).0.contains("boxblur=30"));
     }
 
@@ -284,7 +348,16 @@ mod tests {
     fn frame_grab_args() {
         assert_eq!(
             build_frame_grab_args("/in.mp4", 2.5, "/f.png"),
-            vec!["-y", "-ss", "2.500", "-i", "/in.mp4", "-frames:v", "1", "/f.png"]
+            vec![
+                "-y",
+                "-ss",
+                "2.500",
+                "-i",
+                "/in.mp4",
+                "-frames:v",
+                "1",
+                "/f.png"
+            ]
         );
     }
 
@@ -308,13 +381,27 @@ mod tests {
 
     #[test]
     fn trim_args_copy_to_webm_has_no_movflags() {
-        let a = build_trim_args("/l/in.webm", 0.0, 2.0, "/l/in-trimmed.webm", false, "libx264");
+        let a = build_trim_args(
+            "/l/in.webm",
+            0.0,
+            2.0,
+            "/l/in-trimmed.webm",
+            false,
+            "libx264",
+        );
         assert!(!a.iter().any(|s| s == "-movflags"));
     }
 
     #[test]
     fn trim_args_reencode_x264() {
-        let a = build_trim_args("/l/in.webm", 0.5, 3.25, "/l/in-trimmed.mp4", true, "libx264");
+        let a = build_trim_args(
+            "/l/in.webm",
+            0.5,
+            3.25,
+            "/l/in-trimmed.mp4",
+            true,
+            "libx264",
+        );
         let v = a.iter().position(|s| s == "-c:v").unwrap();
         assert_eq!(a[v + 1], "libx264");
         assert!(a.iter().any(|s| s == "-crf") && a.iter().any(|s| s == "-preset"));

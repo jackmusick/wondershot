@@ -10,7 +10,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, windows-latest]
+        os: [ubuntu-22.04, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -44,6 +44,22 @@ jobs:
         shell: pwsh
         run: ./scripts/Prepare-WindowsFfmpeg.ps1
 
+      - name: Stage macOS FFmpeg
+        if: runner.os == 'macOS'
+        run: |
+          brew install ffmpeg
+          python3 scripts/prepare-macos-ffmpeg.py
+
+      - name: Browser interaction regressions
+        if: runner.os == 'macOS'
+        run: |
+          npx playwright install chromium
+          npm run test:ui
+
+      - name: macOS recording and video processing regressions
+        if: runner.os == 'macOS'
+        run: npm run test:macos:media
+
       - name: Install Windows installer tooling
         if: runner.os == 'Windows'
         shell: pwsh
@@ -62,8 +78,20 @@ jobs:
         run: cargo test -p wondershot-core
 
       - name: Tauri build smoke
-        if: runner.os != 'Windows'
+        if: runner.os == 'Linux'
         run: npx tauri build --no-bundle
+
+      - name: Signed macOS app build
+        if: runner.os == 'macOS'
+        run: npm run build:macos
+
+      - name: Upload macOS app
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: wondershot-macos-app
+          path: target/release/bundle/macos/Wondershot.app/**
+          if-no-files-found: error
 
       - name: Windows setup build
         if: runner.os == 'Windows'

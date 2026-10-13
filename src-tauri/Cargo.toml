@@ -7,7 +7,7 @@ edition = "2021"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["protocol-asset", "tray-icon"] }
+tauri = { version = "2", features = ["protocol-asset", "tray-icon", "macos-private-api"] }
 tauri-plugin-single-instance = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -53,6 +53,31 @@ windows-sys = { version = "0.61", features = [
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_WindowsAndMessaging",
 ] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6.4"
+objc2-app-kit = { version = "0.3.2", features = [
+    "NSApplication",
+    "NSBezierPath",
+    "NSColor",
+    "NSCursor",
+    "NSEvent",
+    "NSGraphics",
+    "NSPanel",
+    "NSResponder",
+    "NSScreen",
+    "NSView",
+    "NSWindow",
+] }
+objc2-foundation = { version = "0.3.2", features = [
+    "NSArray",
+    "NSDate",
+    "NSGeometry",
+    "NSObject",
+    "NSString",
+] }
+dispatch2 = "0.3.1"
+block2 = "0.6.2"
 
 [lib]
 name = "wondershot_lib"

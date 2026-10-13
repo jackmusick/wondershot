@@ -49,11 +49,11 @@ pub async fn open_screencast() -> Result<(OwnedFd, u32, CastSession), String> {
     proxy
         .select_sources(
             &session,
-            CursorMode::Embedded,                       // 2 = baked into frames
-            SourceType::Monitor | SourceType::Window,   // 3 = monitor | window
-            false,                                      // multiple
-            None,                                       // restore_token: never replay
-            PersistMode::DoNot,                         // 0 = do not persist
+            CursorMode::Embedded,                     // 2 = baked into frames
+            SourceType::Monitor | SourceType::Window, // 3 = monitor | window
+            false,                                    // multiple
+            None,                                     // restore_token: never replay
+            PersistMode::DoNot,                       // 0 = do not persist
         )
         .await
         .map_err(|e| e.to_string())?;

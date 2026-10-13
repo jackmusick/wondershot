@@ -20,7 +20,7 @@ export async function assetSrc(path: string): Promise<string> {
  * Konva canvas and silently breaks `stage.toDataURL()`, and with it save.
  */
 export async function imageDataSrc(path: string): Promise<string> {
-  if (USE_MOCK) return path;
+  if (USE_MOCK) return path.startsWith("/mock/") || path.startsWith("/lib/") ? "/fixtures/editor-base.png" : path;
   const b64 = await ipcInvoke<string>('read_image_b64', { path });
   return `data:image/png;base64,${b64}`;
 }
@@ -32,7 +32,7 @@ export async function imageDataSrc(path: string): Promise<string> {
  * loopback HTTP server with Range support and we point the player there.
  */
 export async function mediaSrc(path: string): Promise<string> {
-  if (USE_MOCK) return path;
+  if (USE_MOCK) return /\.(mp4|webm)$/i.test(path) ? "/fixtures/video.mp4" : path;
   const port = await ipcInvoke<number>('media_server_port');
   if (!port) return assetSrc(path); // server failed to start; degrade
   return `http://127.0.0.1:${port}/media?path=${encodeURIComponent(path)}`;

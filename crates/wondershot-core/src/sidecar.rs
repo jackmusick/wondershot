@@ -45,7 +45,9 @@ pub fn save(image_path: &Path, doc: &SidecarDoc) -> bool {
     }
     let target = sidecar_path(image_path);
     let tmp = target.with_extension("json.tmp");
-    let Ok(json) = serde_json::to_string(doc) else { return false };
+    let Ok(json) = serde_json::to_string(doc) else {
+        return false;
+    };
     if std::fs::write(&tmp, json).is_err() {
         return false;
     }
@@ -58,7 +60,11 @@ pub fn related_files(image_path: &Path) -> Vec<PathBuf> {
     if sp.exists() {
         out.push(sp);
     }
-    let name = image_path.file_name().unwrap_or_default().to_string_lossy().to_string();
+    let name = image_path
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
     let dir = sidecar_dir(image_path);
     if let Ok(entries) = std::fs::read_dir(&dir) {
         let mut bases: Vec<PathBuf> = entries

@@ -1,14 +1,25 @@
+use crate::{graph, logging};
 use std::path::Path;
 use std::sync::Mutex;
-use wondershot_core::{bgremove, capture, clipboard, library, paths, settings::Settings, sidecar, video};
 use wondershot_core::record::{files, recorder};
 #[cfg(target_os = "linux")]
 use wondershot_core::record::{pipeline, portal};
-use crate::{graph, logging};
+use wondershot_core::{
+    bgremove, capture, clipboard, library, paths, settings::Settings, sidecar, video,
+};
 
 #[tauri::command]
 pub fn health() -> String {
     "ok".into()
+}
+
+#[tauri::command]
+pub async fn authorize_media_capture(kind: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    return tauri::async_runtime::spawn_blocking(move || crate::macos_permissions::ensure(&kind))
+        .await.map_err(|e| e.to_string())?;
+    #[cfg(not(target_os = "macos"))]
+    { let _ = kind; Ok(()) }
 }
 
 #[tauri::command]
@@ -36,7 +47,9 @@ fn restore_main_after_capture(app: &tauri::AppHandle, settings: &Settings) {
             logging::log(format!("restore main after capture: show failed: {e}"));
         }
         if let Err(e) = w.unminimize() {
-            logging::log(format!("restore main after capture: unminimize failed: {e}"));
+            logging::log(format!(
+                "restore main after capture: unminimize failed: {e}"
+            ));
         }
         if let Err(e) = w.set_focus() {
             logging::log(format!("restore main after capture: focus failed: {e}"));
@@ -44,6 +57,27 @@ fn restore_main_after_capture(app: &tauri::AppHandle, settings: &Settings) {
     } else {
         logging::log("restore main after capture: main window not found");
     }
+}
+
+#[tauri::command]
+pub fn prepare_native_capture_picker(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::Manager;
+
+    for label in ["main", "capture"] {
+        if let Some(w) = app.get_webview_window(label) {
+            if let Err(e) = w.hide() {
+                logging::log(format!("prepare native picker: hide {label} failed: {e}"));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn finish_native_capture_picker(app: tauri::AppHandle) -> Result<(), String> {
+    let settings = Settings::load();
+    restore_main_after_capture(&app, &settings);
+    Ok(())
 }
 
 #[tauri::command]
@@ -112,10 +146,26 @@ pub fn set_settings(
 
     for (k, v) in obj {
         match k.as_str() {
-            "library_dir" => if let Some(x) = get_str(v) { s.library_dir = x },
-            "backend" => if let Some(x) = get_str(v) { s.backend = x },
-            "capture_cursor" => if let Some(x) = get_bool(v) { s.capture_cursor = x },
-            "capture_delay" => if let Some(x) = get_u32(v) { s.capture_delay = x },
+            "library_dir" => {
+                if let Some(x) = get_str(v) {
+                    s.library_dir = x
+                }
+            }
+            "backend" => {
+                if let Some(x) = get_str(v) {
+                    s.backend = x
+                }
+            }
+            "capture_cursor" => {
+                if let Some(x) = get_bool(v) {
+                    s.capture_cursor = x
+                }
+            }
+            "capture_delay" => {
+                if let Some(x) = get_u32(v) {
+                    s.capture_delay = x
+                }
+            }
             "extra_dirs" => {
                 if let Some(arr) = v.as_array() {
                     s.extra_dirs = arr
@@ -131,28 +181,116 @@ pub fn set_settings(
                         .collect();
                 }
             }
-            "mic_enabled" => if let Some(x) = get_bool(v) { s.mic_enabled = x },
-            "mic_device" => if let Some(x) = get_str(v) { s.mic_device = x },
-            "noise_suppression" => if let Some(x) = get_bool(v) { s.noise_suppression = x },
-            "record_cursor_halo" => if let Some(x) = get_bool(v) { s.record_cursor_halo = x },
-            "record_countdown" => if let Some(x) = get_u32(v) { s.record_countdown = x },
-            "camera_device" => if let Some(x) = get_str(v) { s.camera_device = x },
-            "hotkey_capture" => if let Some(x) = get_str(v) { s.hotkey_capture = x },
-            "copy_after_capture" => if let Some(x) = get_bool(v) { s.copy_after_capture = x },
-            "show_gallery_after_capture" => if let Some(x) = get_bool(v) { s.show_gallery_after_capture = x },
-            "pin_on_top" => if let Some(x) = get_bool(v) { s.pin_on_top = x },
-            "quick_bar_enabled" => if let Some(x) = get_bool(v) { s.quick_bar_enabled = x },
-            "quick_bar_timeout" => if let Some(x) = get_u32(v) { s.quick_bar_timeout = x },
-            "stroke_width" => if let Some(x) = get_u32(v) { s.stroke_width = x },
-            "font_size" => if let Some(x) = get_u32(v) { s.font_size = x },
-            "tool_color" => if let Some(x) = get_str(v) { s.tool_color = x },
-            "video_blur_strength" => if let Some(x) = get_u32(v) { s.video_blur_strength = x },
-            "gif_fps" => if let Some(x) = get_u32(v) { s.gif_fps = x },
-            "gif_max_width" => if let Some(x) = get_u32(v) { s.gif_max_width = x },
-            "effect_rounded" => if let Some(x) = get_bool(v) { s.effect_rounded = x },
-            "effect_corner_radius" => if let Some(x) = get_u32(v) { s.effect_corner_radius = x },
-            "effect_fade" => if let Some(x) = get_bool(v) { s.effect_fade = x },
-            "effect_fade_height" => if let Some(x) = get_u32(v) { s.effect_fade_height = x },
+            "mic_enabled" => {
+                if let Some(x) = get_bool(v) {
+                    s.mic_enabled = x
+                }
+            }
+            "mic_device" => {
+                if let Some(x) = get_str(v) {
+                    s.mic_device = x
+                }
+            }
+            "noise_suppression" => {
+                if let Some(x) = get_bool(v) {
+                    s.noise_suppression = x
+                }
+            }
+            "record_cursor_halo" => {
+                if let Some(x) = get_bool(v) {
+                    s.record_cursor_halo = x
+                }
+            }
+            "record_countdown" => {
+                if let Some(x) = get_u32(v) {
+                    s.record_countdown = x
+                }
+            }
+            "camera_device" => {
+                if let Some(x) = get_str(v) {
+                    s.camera_device = x
+                }
+            }
+            "hotkey_capture" => {
+                if let Some(x) = get_str(v) {
+                    s.hotkey_capture = x
+                }
+            }
+            "copy_after_capture" => {
+                if let Some(x) = get_bool(v) {
+                    s.copy_after_capture = x
+                }
+            }
+            "show_gallery_after_capture" => {
+                if let Some(x) = get_bool(v) {
+                    s.show_gallery_after_capture = x
+                }
+            }
+            "pin_on_top" => {
+                if let Some(x) = get_bool(v) {
+                    s.pin_on_top = x
+                }
+            }
+            "quick_bar_enabled" => {
+                if let Some(x) = get_bool(v) {
+                    s.quick_bar_enabled = x
+                }
+            }
+            "quick_bar_timeout" => {
+                if let Some(x) = get_u32(v) {
+                    s.quick_bar_timeout = x
+                }
+            }
+            "stroke_width" => {
+                if let Some(x) = get_u32(v) {
+                    s.stroke_width = x
+                }
+            }
+            "font_size" => {
+                if let Some(x) = get_u32(v) {
+                    s.font_size = x
+                }
+            }
+            "tool_color" => {
+                if let Some(x) = get_str(v) {
+                    s.tool_color = x
+                }
+            }
+            "video_blur_strength" => {
+                if let Some(x) = get_u32(v) {
+                    s.video_blur_strength = x
+                }
+            }
+            "gif_fps" => {
+                if let Some(x) = get_u32(v) {
+                    s.gif_fps = x
+                }
+            }
+            "gif_max_width" => {
+                if let Some(x) = get_u32(v) {
+                    s.gif_max_width = x
+                }
+            }
+            "effect_rounded" => {
+                if let Some(x) = get_bool(v) {
+                    s.effect_rounded = x
+                }
+            }
+            "effect_corner_radius" => {
+                if let Some(x) = get_u32(v) {
+                    s.effect_corner_radius = x
+                }
+            }
+            "effect_fade" => {
+                if let Some(x) = get_bool(v) {
+                    s.effect_fade = x
+                }
+            }
+            "effect_fade_height" => {
+                if let Some(x) = get_u32(v) {
+                    s.effect_fade_height = x
+                }
+            }
             // Unmodeled keys (sharing creds, AI endpoint, …): store as strings in
             // `extra` so they persist back to the shared conf. Numbers/bools are
             // stringified to match QSettings' text format.
@@ -233,7 +371,12 @@ fn spectacle_on_path() -> bool {
     })
 }
 
-async fn run_spectacle(mode: capture::CaptureMode, out: &str, cursor: bool, delay: u32) -> Result<(), String> {
+async fn run_spectacle(
+    mode: capture::CaptureMode,
+    out: &str,
+    cursor: bool,
+    delay: u32,
+) -> Result<(), String> {
     let args = capture::spectacle::spectacle_args(mode, out, cursor, delay);
     // In a Flatpak, run the HOST spectacle (its rectangular drag-selection UI)
     // via flatpak-spawn; the output path is under the user's home, which both the
@@ -264,7 +407,10 @@ async fn do_capture(app: tauri::AppHandle, mode: capture::CaptureMode) -> Result
     use tauri::Emitter;
     let s = Settings::load();
     let _ = std::fs::create_dir_all(&s.library_dir);
-    let out = paths::unique_path(Path::new(&s.library_dir), &paths::timestamp_name("Screenshot"));
+    let out = paths::unique_path(
+        Path::new(&s.library_dir),
+        &paths::timestamp_name("Screenshot"),
+    );
     let out_str = out.to_string_lossy().to_string();
 
     let result: Result<String, String> = if capture::native::handles_capture() {
@@ -282,7 +428,8 @@ async fn do_capture(app: tauri::AppHandle, mode: capture::CaptureMode) -> Result
                 if p.parent() == Some(Path::new(&s.library_dir)) {
                     Ok(p.to_string_lossy().to_string())
                 } else {
-                    match std::fs::rename(&p, &out).or_else(|_| std::fs::copy(&p, &out).map(|_| ())) {
+                    match std::fs::rename(&p, &out).or_else(|_| std::fs::copy(&p, &out).map(|_| ()))
+                    {
                         Ok(()) => Ok(out_str.clone()),
                         Err(e) => Err(format!("could not move screenshot: {e}")),
                     }
@@ -297,7 +444,9 @@ async fn do_capture(app: tauri::AppHandle, mode: capture::CaptureMode) -> Result
             restore_main_after_capture(&app, &s);
             let _ = app.emit("capture://done", path.clone());
         }
-        Err(msg) => { let _ = app.emit("capture://failed", msg.clone()); }
+        Err(msg) => {
+            let _ = app.emit("capture://failed", msg.clone());
+        }
     }
     result
 }
@@ -325,18 +474,33 @@ pub fn native_capture_frame_b64() -> Result<serde_json::Value, String> {
     let img = capture::native::capture_rgba()?;
     let (width, height) = img.dimensions();
     let (origin_x, origin_y) = capture::native::virtual_origin();
+    let (_, _, bounds_w, bounds_h) = capture::native::virtual_bounds();
+    let scale_x = if bounds_w == 0 {
+        1.0
+    } else {
+        width as f64 / bounds_w as f64
+    };
+    let scale_y = if bounds_h == 0 {
+        1.0
+    } else {
+        height as f64 / bounds_h as f64
+    };
     let monitors: Vec<serde_json::Value> = capture::native::monitor_rects()
         .into_iter()
         .enumerate()
         .map(|(i, monitor)| {
+            let x = ((monitor.x - origin_x) as f64 * scale_x).round() as i32;
+            let y = ((monitor.y - origin_y) as f64 * scale_y).round() as i32;
+            let width = (monitor.width as f64 * scale_x).round() as u32;
+            let height = (monitor.height as f64 * scale_y).round() as u32;
             serde_json::json!({
                 "id": i,
-                "x": monitor.x - origin_x,
-                "y": monitor.y - origin_y,
+                "x": x,
+                "y": y,
                 "screenX": monitor.x,
                 "screenY": monitor.y,
-                "width": monitor.width,
-                "height": monitor.height,
+                "width": width,
+                "height": height,
             })
         })
         .collect();
@@ -344,15 +508,20 @@ pub fn native_capture_frame_b64() -> Result<serde_json::Value, String> {
         .into_iter()
         .enumerate()
         .map(|(i, window)| {
+            let x = ((window.x - origin_x) as f64 * scale_x).round() as i32;
+            let y = ((window.y - origin_y) as f64 * scale_y).round() as i32;
+            let width = (window.width as f64 * scale_x).round() as u32;
+            let height = (window.height as f64 * scale_y).round() as u32;
             serde_json::json!({
                 "id": i,
+                "windowId": window.hwnd,
                 "title": window.title,
-                "x": window.x - origin_x,
-                "y": window.y - origin_y,
+                "x": x,
+                "y": y,
                 "screenX": window.x,
                 "screenY": window.y,
-                "width": window.width,
-                "height": window.height,
+                "width": width,
+                "height": height,
             })
         })
         .collect();
@@ -371,6 +540,117 @@ pub fn native_capture_frame_b64() -> Result<serde_json::Value, String> {
 }
 
 #[tauri::command]
+pub fn save_native_capture_window(
+    app: tauri::AppHandle,
+    window_id: isize,
+) -> Result<String, String> {
+    use tauri::Emitter;
+
+    let s = Settings::load();
+    std::fs::create_dir_all(&s.library_dir).map_err(|e| e.to_string())?;
+    let out = paths::unique_path(
+        Path::new(&s.library_dir),
+        &paths::timestamp_name("Screenshot"),
+    );
+
+    #[cfg(target_os = "macos")]
+    {
+        capture::macos::capture_window_to(&out, window_id)?;
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = window_id;
+        return Err("native window capture is not available on this platform".into());
+    }
+
+    let path = out.to_string_lossy().to_string();
+    restore_main_after_capture(&app, &s);
+    let _ = app.emit("capture://done", path.clone());
+    Ok(path)
+}
+
+#[tauri::command]
+pub async fn macos_native_capture_picker(
+    app: tauri::AppHandle,
+    mode: String,
+) -> Result<Option<String>, String> {
+    #[cfg(target_os = "macos")]
+    {
+        if !capture::macos::screen_capture_access_granted() {
+            return Ok(None);
+        }
+        if mode != "capture" && mode != "window-capture" && mode != "screen-capture" {
+            return Err(format!(
+                "unsupported macOS native capture picker mode: {mode}"
+            ));
+        }
+        return tauri::async_runtime::spawn_blocking(move || {
+            macos_native_capture_picker_blocking(app)
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, mode);
+        Err("macOS native capture picker is not available on this platform".into())
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn macos_native_capture_picker_blocking(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    use tauri::Emitter;
+
+    prepare_native_capture_picker(app.clone())?;
+    let choice = match crate::macos_picker::pick_action() {
+        Ok(choice) => choice,
+        Err(error) if error == "capture picker is already open" => return Ok(None),
+        Err(error) => {
+            let _ = finish_native_capture_picker(app);
+            return Err(error);
+        }
+    };
+
+    let Some(choice) = choice else {
+        let _ = finish_native_capture_picker(app);
+        return Ok(None);
+    };
+
+    let s = Settings::load();
+    if choice.action == crate::macos_picker::PickerAction::Record {
+        let _ = finish_native_capture_picker(app.clone());
+        let _ = app.emit("region://record-rect", choice.rect);
+        return Ok(None);
+    }
+
+    let captured = (|| -> Result<_, String> {
+        std::fs::create_dir_all(&s.library_dir).map_err(|e| e.to_string())?;
+        let out = paths::unique_path(Path::new(&s.library_dir), &paths::timestamp_name("Screenshot"));
+        if let Some(window_id) = choice.window_id {
+            if let Err(e) = capture::macos::capture_window_to(&out, window_id) {
+                logging::log(format!("macOS window capture fallback: {e}"));
+                capture::macos::capture_region_to(&out, choice.rect, s.capture_cursor)?;
+            }
+        } else {
+            capture::macos::capture_region_to(&out, choice.rect, s.capture_cursor)?;
+        }
+        Ok(out)
+    })();
+    let out = match captured {
+        Ok(out) => out,
+        Err(error) => {
+            let _ = finish_native_capture_picker(app);
+            return Err(error);
+        }
+    };
+    let path = out.to_string_lossy().to_string();
+    restore_main_after_capture(&app, &s);
+    let _ = app.emit("capture://done", path.clone());
+    Ok(Some(path))
+}
+
+#[tauri::command]
 pub fn native_capture_capabilities() -> serde_json::Value {
     let caps = capture::native::capabilities();
     serde_json::json!({
@@ -383,6 +663,63 @@ pub fn native_capture_capabilities() -> serde_json::Value {
         "monitors": caps.monitors,
         "windows": caps.windows,
     })
+}
+
+#[tauri::command]
+pub fn screen_capture_permission_status() -> serde_json::Value {
+    #[cfg(target_os = "macos")]
+    {
+        return serde_json::json!({
+            "required": true,
+            "granted": capture::macos::screen_capture_access_granted(),
+            "canRequest": true,
+        });
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        serde_json::json!({
+            "required": false,
+            "granted": true,
+            "canRequest": false,
+        })
+    }
+}
+
+#[tauri::command]
+pub fn request_screen_capture_permission() -> serde_json::Value {
+    #[cfg(target_os = "macos")]
+    {
+        let granted = capture::macos::request_screen_capture_access();
+        return serde_json::json!({
+            "required": true,
+            "granted": granted,
+            "canRequest": true,
+        });
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        serde_json::json!({
+            "required": false,
+            "granted": true,
+            "canRequest": false,
+        })
+    }
+}
+
+#[tauri::command]
+pub fn open_screen_capture_settings() -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = capture::macos::request_screen_capture_access();
+        return capture::macos::open_screen_capture_settings();
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(())
+    }
 }
 
 #[tauri::command]
@@ -403,7 +740,39 @@ pub fn save_native_capture_crop(
     let w = w.min(img_w.saturating_sub(x));
     let h = h.min(img_h.saturating_sub(y));
     let out_img = image::imageops::crop_imm(&img, x, y, w, h).to_image();
-    let out = paths::unique_path(Path::new(&s.library_dir), &paths::timestamp_name("Screenshot"));
+    let out = paths::unique_path(
+        Path::new(&s.library_dir),
+        &paths::timestamp_name("Screenshot"),
+    );
+    out_img.save(&out).map_err(|e| e.to_string())?;
+    let path = out.to_string_lossy().to_string();
+    restore_main_after_capture(&app, &s);
+    let _ = app.emit("capture://done", path.clone());
+    Ok(path)
+}
+
+#[tauri::command]
+pub fn save_native_capture_frame_crop(
+    app: tauri::AppHandle,
+    rect: (u32, u32, u32, u32),
+    png_b64: String,
+) -> Result<String, String> {
+    use base64::Engine;
+    use tauri::Emitter;
+
+    let s = Settings::load();
+    std::fs::create_dir_all(&s.library_dir).map_err(|e| e.to_string())?;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(png_b64.as_bytes())
+        .map_err(|e| format!("invalid capture frame payload: {e}"))?;
+    let img = image::load_from_memory(&bytes)
+        .map_err(|e| format!("could not decode capture frame: {e}"))?
+        .to_rgba8();
+    let out_img = crop_capture_image(img, rect)?;
+    let out = paths::unique_path(
+        Path::new(&s.library_dir),
+        &paths::timestamp_name("Screenshot"),
+    );
     out_img.save(&out).map_err(|e| e.to_string())?;
     let path = out.to_string_lossy().to_string();
     restore_main_after_capture(&app, &s);
@@ -445,13 +814,21 @@ fn encode_png_b64(img: &image::RgbaImage) -> Result<String, String> {
 fn open_patch_source(path: &str) -> Result<image::RgbaImage, String> {
     let p = Path::new(path);
     let base0 = sidecar::base_path(p, 0);
-    let src = if base0.exists() { base0 } else { p.to_path_buf() };
+    let src = if base0.exists() {
+        base0
+    } else {
+        p.to_path_buf()
+    };
     Ok(image::open(&src).map_err(|e| e.to_string())?.to_rgba8())
 }
 
 /// Pixelate the rect region of the base PNG; returns the patch as base64 PNG.
 #[tauri::command]
-pub fn pixelate_patch(path: String, rect: (u32, u32, u32, u32), block: u32) -> Result<String, String> {
+pub fn pixelate_patch(
+    path: String,
+    rect: (u32, u32, u32, u32),
+    block: u32,
+) -> Result<String, String> {
     let img = open_patch_source(&path)?;
     let patch = wondershot_core::imageops::pixelated_patch(&img, rect, block);
     encode_png_b64(&patch)
@@ -582,7 +959,11 @@ pub fn read_image_b64(path: String) -> Result<String, String> {
 /// Save a browser-recorded video blob into the library and emit the same
 /// recording completion events as the native Linux recorder.
 #[tauri::command]
-pub fn save_recording_b64(app: tauri::AppHandle, data_b64: String, ext: Option<String>) -> Result<String, String> {
+pub fn save_recording_b64(
+    app: tauri::AppHandle,
+    data_b64: String,
+    ext: Option<String>,
+) -> Result<String, String> {
     use base64::Engine;
     use tauri::Emitter;
 
@@ -625,7 +1006,9 @@ pub fn read_base(path: String, n: u32) -> Result<Option<String>, String> {
         return Ok(None);
     }
     let bytes = std::fs::read(&base).map_err(|e| e.to_string())?;
-    Ok(Some(base64::engine::general_purpose::STANDARD.encode(&bytes)))
+    Ok(Some(
+        base64::engine::general_purpose::STANDARD.encode(&bytes),
+    ))
 }
 
 // --- screen recording (M4 T6) ----------------------------------------------
@@ -634,6 +1017,9 @@ pub fn read_base(path: String, n: u32) -> Result<Option<String>, String> {
 /// and `stop(self)` consumes it, so we store an `Option` and `.take()` on stop.
 pub struct RecState {
     pub recorder: Mutex<Option<recorder::Recorder>>,
+    /// Serializes finalization with app shutdown even after the recorder has
+    /// been taken out of its slot by the Stop command.
+    pub finalization: Mutex<()>,
     /// The live portal session — closed when the recording ends (any way it
     /// ends), or the compositor keeps showing its "screen is being shared"
     /// indicator and every new recording stacks another one.
@@ -645,6 +1031,7 @@ impl Default for RecState {
     fn default() -> Self {
         RecState {
             recorder: Mutex::new(None),
+            finalization: Mutex::new(()),
             #[cfg(target_os = "linux")]
             session: Mutex::new(None),
         }
@@ -655,7 +1042,12 @@ impl Default for RecState {
 #[cfg(target_os = "linux")]
 fn close_cast_session(app: &tauri::AppHandle) {
     use tauri::Manager;
-    let taken = app.state::<RecState>().session.lock().ok().and_then(|mut s| s.take());
+    let taken = app
+        .state::<RecState>()
+        .session
+        .lock()
+        .ok()
+        .and_then(|mut s| s.take());
     if let Some(session) = taken {
         tauri::async_runtime::spawn(async move {
             portal::close_session(&session).await;
@@ -737,7 +1129,9 @@ fn drop_recorder_handle(app: &tauri::AppHandle) {
 #[cfg(target_os = "linux")]
 fn sweep_stale_tmp(rendering: &Path) {
     let _ = std::fs::create_dir_all(rendering);
-    let Ok(entries) = std::fs::read_dir(rendering) else { return };
+    let Ok(entries) = std::fs::read_dir(rendering) else {
+        return;
+    };
     for entry in entries.flatten() {
         let Ok(meta) = entry.metadata() else { continue };
         if !meta.is_file() {
@@ -764,7 +1158,7 @@ pub async fn start_recording(
     state: tauri::State<'_, RecState>,
     rect: Option<(u32, u32, u32, u32)>,
 ) -> Result<(), String> {
-    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+    #[cfg(not(any(target_os = "linux", target_os = "windows", target_os = "macos")))]
     {
         let _ = (app, state, rect);
         return Err("screen recording is not available on this platform yet".into());
@@ -790,65 +1184,96 @@ pub async fn start_recording(
         )
         .join("\n");
         let app_for_cb = app.clone();
-        let rec = recorder::Recorder::launch(&desc, tmp, out, move |ev| {
-            emit_rec_event(&app_for_cb, ev)
-        })?;
+        let rec =
+            recorder::Recorder::launch(&desc, tmp, out, move |ev| emit_rec_event(&app_for_cb, ev))?;
+        *state.recorder.lock().map_err(|e| e.to_string())? = Some(rec);
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        if !capture::macos::screen_capture_access_granted() {
+            return Err("macOS Screen Recording permission is required".into());
+        }
+
+        let s = Settings::load();
+        if s.mic_enabled {
+            authorize_media_capture("microphone".into()).await?;
+        }
+        let library_dir = Path::new(&s.library_dir);
+        std::fs::create_dir_all(library_dir).map_err(|e| e.to_string())?;
+        let rendering = files::rendering_dir(library_dir);
+        std::fs::create_dir_all(&rendering).map_err(|e| e.to_string())?;
+
+        let name = files::recording_name();
+        let tmp = rendering.join(&name);
+        let out = paths::unique_path(library_dir, &name);
+        let desc = recorder::build_recording_args(
+            &tmp,
+            rect,
+            s.capture_cursor,
+            s.mic_enabled,
+            &s.mic_device,
+        )?
+        .join("\n");
+        let app_for_cb = app.clone();
+        let rec =
+            recorder::Recorder::launch(&desc, tmp, out, move |ev| emit_rec_event(&app_for_cb, ev))?;
         *state.recorder.lock().map_err(|e| e.to_string())? = Some(rec);
         Ok(())
     }
 
     #[cfg(target_os = "linux")]
     {
-    let _ = rect;
-    use std::os::fd::AsRawFd;
+        let _ = rect;
+        use std::os::fd::AsRawFd;
 
-    let s = Settings::load();
-    let library_dir = Path::new(&s.library_dir);
+        let s = Settings::load();
+        let library_dir = Path::new(&s.library_dir);
 
-    // Sweep stale tmp renders (>1h old) before starting a fresh one.
-    let rendering = files::rendering_dir(library_dir);
-    sweep_stale_tmp(&rendering);
+        // Sweep stale tmp renders (>1h old) before starting a fresh one.
+        let rendering = files::rendering_dir(library_dir);
+        sweep_stale_tmp(&rendering);
 
-    // Portal: pick a screen/window and obtain the PipeWire fd + node id. KEEP
-    // `fd` (OwnedFd) alive across launch — pipewiresrc dups it during launch.
-    let (fd, node, session) = portal::open_screencast().await?;
+        // Portal: pick a screen/window and obtain the PipeWire fd + node id. KEEP
+        // `fd` (OwnedFd) alive across launch — pipewiresrc dups it during launch.
+        let (fd, node, session) = portal::open_screencast().await?;
 
-    // Same base name for tmp and out; the out path is uniquified.
-    let name = files::recording_name();
-    let tmp = rendering.join(&name);
-    let out = paths::unique_path(library_dir, &name);
+        // Same base name for tmp and out; the out path is uniquified.
+        let name = files::recording_name();
+        let tmp = rendering.join(&name);
+        let out = paths::unique_path(library_dir, &name);
 
-    // mic_device in settings is a human-readable description (shared with the
-    // Python app's conf); resolve it to the pulse source name here. webrtcdsp
-    // is probed for real (record.py parity) — the GNOME runtime ships it, and
-    // without it the noise_suppression setting silently did nothing.
-    let opts = pipeline::PipelineOpts {
-        mic_enabled: s.mic_enabled,
-        mic_device: recorder::resolve_mic_source(&s.mic_device),
-        noise_suppression: s.noise_suppression,
-        have_webrtcdsp: recorder::have_gst_element("webrtcdsp"),
-        crop: None,
-        halo: s.record_cursor_halo,
-    };
+        // mic_device in settings is a human-readable description (shared with the
+        // Python app's conf); resolve it to the pulse source name here. webrtcdsp
+        // is probed for real (record.py parity) — the GNOME runtime ships it, and
+        // without it the noise_suppression setting silently did nothing.
+        let opts = pipeline::PipelineOpts {
+            mic_enabled: s.mic_enabled,
+            mic_device: recorder::resolve_mic_source(&s.mic_device),
+            noise_suppression: s.noise_suppression,
+            have_webrtcdsp: recorder::have_gst_element("webrtcdsp"),
+            crop: None,
+            halo: s.record_cursor_halo,
+        };
 
-    let tmp_str = tmp
-        .to_str()
-        .ok_or("tmp path is not valid UTF-8")?
-        .to_string();
-    let desc = pipeline::build_pipeline_description(fd.as_raw_fd(), node, &tmp_str, &opts);
+        let tmp_str = tmp
+            .to_str()
+            .ok_or("tmp path is not valid UTF-8")?
+            .to_string();
+        let desc = pipeline::build_pipeline_description(fd.as_raw_fd(), node, &tmp_str, &opts);
 
-    let app_for_cb = app.clone();
-    let rec = recorder::Recorder::launch(&desc, tmp, out, move |ev| {
-        emit_rec_event(&app_for_cb, ev)
-    })?;
+        let app_for_cb = app.clone();
+        let rec =
+            recorder::Recorder::launch(&desc, tmp, out, move |ev| emit_rec_event(&app_for_cb, ev))?;
 
-    // `fd` (OwnedFd) was kept alive through launch; pipewiresrc has dup'd it,
-    // so it may drop now.
-    drop(fd);
+        // `fd` (OwnedFd) was kept alive through launch; pipewiresrc has dup'd it,
+        // so it may drop now.
+        drop(fd);
 
-    *state.recorder.lock().map_err(|e| e.to_string())? = Some(rec);
-    *state.session.lock().map_err(|e| e.to_string())? = Some(session);
-    Ok(())
+        *state.recorder.lock().map_err(|e| e.to_string())? = Some(rec);
+        *state.session.lock().map_err(|e| e.to_string())? = Some(session);
+        Ok(())
     }
 }
 
@@ -901,32 +1326,43 @@ fn emit_rec_event(app: &tauri::AppHandle, ev: recorder::RecEvent) {
 /// can take up to KILL_MS, and that wait must never block the main thread —
 /// that was the "stop freezes the whole app" bug.
 #[tauri::command]
-pub async fn stop_recording(state: tauri::State<'_, RecState>) -> Result<(), String> {
-    let rec = state.recorder.lock().map_err(|e| e.to_string())?.take();
-    if let Some(rec) = rec {
-        tauri::async_runtime::spawn_blocking(move || rec.stop())
-            .await
-            .map_err(|e| e.to_string())?;
-    }
-    Ok(())
+pub async fn stop_recording(app: tauri::AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        use tauri::Manager;
+        let state = app.state::<RecState>();
+        let _finalizing = state.finalization.lock().map_err(|e| e.to_string())?;
+        let rec = state.recorder.lock().map_err(|e| e.to_string())?.take();
+        if let Some(rec) = rec {
+            rec.stop();
+        }
+        Ok(())
+    }).await.map_err(|e| e.to_string())?
 }
 
 /// Pause the active recording (drops frames until resumed).
 #[tauri::command]
-pub fn pause_recording(state: tauri::State<'_, RecState>) -> Result<(), String> {
-    if let Some(rec) = state.recorder.lock().map_err(|e| e.to_string())?.as_ref() {
-        rec.pause();
-    }
-    Ok(())
+pub async fn pause_recording(app: tauri::AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        use tauri::Manager;
+        let state = app.state::<RecState>();
+        if let Some(rec) = state.recorder.lock().map_err(|e| e.to_string())?.as_ref() {
+            rec.pause();
+        }
+        Ok(())
+    }).await.map_err(|e| e.to_string())?
 }
 
 /// Resume a paused recording.
 #[tauri::command]
-pub fn resume_recording(state: tauri::State<'_, RecState>) -> Result<(), String> {
-    if let Some(rec) = state.recorder.lock().map_err(|e| e.to_string())?.as_ref() {
-        rec.resume();
-    }
-    Ok(())
+pub async fn resume_recording(app: tauri::AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        use tauri::Manager;
+        let state = app.state::<RecState>();
+        if let Some(rec) = state.recorder.lock().map_err(|e| e.to_string())?.as_ref() {
+            rec.resume();
+        }
+        Ok(())
+    }).await.map_err(|e| e.to_string())?
 }
 
 // --- video: ffmpeg-driven operations (M5 T2) -------------------------------
@@ -938,12 +1374,17 @@ fn find_ffmpeg() -> Result<String, String> {
 }
 
 fn ffmpeg_command(ffmpeg: &str) -> tokio::process::Command {
-    let mut command = tokio::process::Command::new(ffmpeg);
+    #[cfg(not(target_os = "windows"))]
+    {
+        tokio::process::Command::new(ffmpeg)
+    }
+
     #[cfg(target_os = "windows")]
     {
+        let mut command = tokio::process::Command::new(ffmpeg);
         command.creation_flags(0x08000000);
+        command
     }
-    command
 }
 
 /// The library dir and the `.rendering` tmp dir (created), as paths.
@@ -990,7 +1431,15 @@ async fn run_ffmpeg_to_library(
     if !output.status.success() {
         let _ = std::fs::remove_file(tmp);
         let stderr = String::from_utf8_lossy(&output.stderr);
-        let tail: String = stderr.lines().rev().take(4).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("\n");
+        let tail: String = stderr
+            .lines()
+            .rev()
+            .take(4)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect::<Vec<_>>()
+            .join("\n");
         return Err(format!("ffmpeg failed: {tail}"));
     }
     if !tmp.exists() {
@@ -998,7 +1447,11 @@ async fn run_ffmpeg_to_library(
     }
     let out = paths::unique_path(library_dir, out_name);
     std::fs::rename(tmp, &out)
-        .or_else(|_| std::fs::copy(tmp, &out).map(|_| ()).and_then(|_| std::fs::remove_file(tmp)))
+        .or_else(|_| {
+            std::fs::copy(tmp, &out)
+                .map(|_| ())
+                .and_then(|_| std::fs::remove_file(tmp))
+        })
         .map_err(|e| format!("could not move render into library: {e}"))?;
     Ok(out.to_string_lossy().into_owned())
 }
@@ -1344,8 +1797,10 @@ pub async fn pick_folder() -> Result<Option<String>, String> {
 /// errors if neither systemsettings nor kcmshell6 is on PATH.
 #[tauri::command]
 pub fn open_shortcut_settings() -> Result<(), String> {
-    let candidates: [(&str, &[&str]); 2] =
-        [("systemsettings", &["kcm_keys"]), ("kcmshell6", &["kcm_keys"])];
+    let candidates: [(&str, &[&str]); 2] = [
+        ("systemsettings", &["kcm_keys"]),
+        ("kcmshell6", &["kcm_keys"]),
+    ];
     for (bin, args) in candidates {
         let mut cmd = if in_flatpak() {
             // The sandbox has no systemsettings; run the host's.
@@ -1515,7 +1970,10 @@ pub fn graph_connect_start(client_id: String) -> Result<serde_json::Value, Strin
 /// One poll of the device-code flow. `status` is `pending` | `connected`;
 /// errors propagate as a command error.
 #[tauri::command]
-pub fn graph_connect_poll(client_id: String, device_code: String) -> Result<serde_json::Value, String> {
+pub fn graph_connect_poll(
+    client_id: String,
+    device_code: String,
+) -> Result<serde_json::Value, String> {
     match graph::poll_token(&client_id, &device_code)? {
         None => Ok(serde_json::json!({ "status": "pending" })),
         Some(tokens) => {
@@ -1554,7 +2012,11 @@ pub fn graph_site_drives(site_id: String) -> Result<Vec<serde_json::Value>, Stri
 /// Probe the OpenAI-compatible AI endpoint for reachability/auth by GETting its
 /// `/v1/models` (or `/models`) listing. Returns a short status string on success.
 #[tauri::command]
-pub fn test_ai_endpoint(endpoint: String, model: String, api_key: String) -> Result<String, String> {
+pub fn test_ai_endpoint(
+    endpoint: String,
+    model: String,
+    api_key: String,
+) -> Result<String, String> {
     let base = endpoint.trim().trim_end_matches('/');
     if base.is_empty() {
         return Err("No endpoint set".into());
@@ -1571,12 +2033,16 @@ pub fn test_ai_endpoint(endpoint: String, model: String, api_key: String) -> Res
     match req.call() {
         Ok(resp) => {
             let m = model.trim();
-            let suffix = if m.is_empty() { String::new() } else { format!(" · model “{m}” will be used") };
+            let suffix = if m.is_empty() {
+                String::new()
+            } else {
+                format!(" · model “{m}” will be used")
+            };
             Ok(format!("Connected (HTTP {}){suffix}", resp.status()))
         }
-        Err(ureq::Error::Status(code, _)) => {
-            Err(format!("Endpoint reachable but returned HTTP {code} (check API key/model)"))
-        }
+        Err(ureq::Error::Status(code, _)) => Err(format!(
+            "Endpoint reachable but returned HTTP {code} (check API key/model)"
+        )),
         Err(e) => Err(format!("Could not reach endpoint: {e}")),
     }
 }
@@ -1616,14 +2082,18 @@ pub fn show_capture_window(app: tauri::AppHandle) -> Result<(), String> {
             return Ok(());
         }
 
-        tauri::WebviewWindowBuilder::new(&app, "capture", tauri::WebviewUrl::App("/capture".into()))
-            .title("Capture")
-            .inner_size(380.0, 224.0)
-            .resizable(false)
-            .decorations(false)
-            .center()
-            .build()
-            .map_err(|e| e.to_string())?;
+        tauri::WebviewWindowBuilder::new(
+            &app,
+            "capture",
+            tauri::WebviewUrl::App("/capture".into()),
+        )
+        .title("Capture")
+        .inner_size(380.0, 224.0)
+        .resizable(false)
+        .decorations(false)
+        .center()
+        .build()
+        .map_err(|e| e.to_string())?;
         Ok(())
     }
 }
@@ -1687,7 +2157,10 @@ fn run_windows_capture_picker(app: tauri::AppHandle) -> Result<(), String> {
         let img = capture::native::capture_rgba_with_cursor(s.capture_cursor)?;
         crop_capture_image(img, rect)?
     };
-    let out = paths::unique_path(Path::new(&s.library_dir), &paths::timestamp_name("Screenshot"));
+    let out = paths::unique_path(
+        Path::new(&s.library_dir),
+        &paths::timestamp_name("Screenshot"),
+    );
     out_img.save(&out).map_err(|e| e.to_string())?;
     let path = out.to_string_lossy().to_string();
     logging::log(format!("Windows picker: saved capture {path}"));
@@ -1727,8 +2200,7 @@ fn show_capture_action_bar(
 
     let url = format!(
         "/capture-actionbar?w={}&h={}",
-        toolbar.rect.2,
-        toolbar.rect.3
+        toolbar.rect.2, toolbar.rect.3
     );
     let (built_tx, built_rx) = std::sync::mpsc::channel();
     let app_for_ui = app.clone();
@@ -1743,17 +2215,17 @@ fn show_capture_action_bar(
             tauri::WebviewUrl::App(url.into()),
         )
         .background_color(tauri::utils::config::Color(20, 20, 23, 255))
-            .title("")
-            .position(toolbar.toolbar.0 as f64, toolbar.toolbar.1 as f64)
-            .inner_size(toolbar.toolbar.2 as f64, toolbar.toolbar.3 as f64)
-            .resizable(false)
-            .decorations(false)
-            .always_on_top(true)
-            .skip_taskbar(true)
-            .shadow(true)
-            .build()
-            .map(|_| ())
-            .map_err(|e| e.to_string());
+        .title("")
+        .position(toolbar.toolbar.0 as f64, toolbar.toolbar.1 as f64)
+        .inner_size(toolbar.toolbar.2 as f64, toolbar.toolbar.3 as f64)
+        .resizable(false)
+        .decorations(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .shadow(true)
+        .build()
+        .map(|_| ())
+        .map_err(|e| e.to_string());
         let _ = built_tx.send(result);
     }) {
         logging::log(format!("actionbar: could not schedule build: {e}"));
@@ -1835,9 +2307,10 @@ pub async fn share_capture(path: String) -> Result<serde_json::Value, String> {
         );
     }
     let prov = provider.clone();
-    let url = tauri::async_runtime::spawn_blocking(move || crate::share::share_file(&s, &path, &prov))
-        .await
-        .map_err(|e| e.to_string())??;
+    let url =
+        tauri::async_runtime::spawn_blocking(move || crate::share::share_file(&s, &path, &prov))
+            .await
+            .map_err(|e| e.to_string())??;
     // Best-effort clipboard copy (wl-clipboard path first, arboard fallback).
     let copied = clipboard::copy_text(&url).unwrap_or(false)
         || arboard::Clipboard::new()
@@ -1889,7 +2362,9 @@ pub async fn bg_model_download(app: tauri::AppHandle) -> Result<(), String> {
         let mut done: u64 = 0;
         let mut last_pct: u64 = 0;
         loop {
-            let n = reader.read(&mut buf).map_err(|e| format!("model download failed: {e}"))?;
+            let n = reader
+                .read(&mut buf)
+                .map_err(|e| format!("model download failed: {e}"))?;
             if n == 0 {
                 break;
             }
@@ -1957,7 +2432,12 @@ pub fn recorder_capabilities() -> serde_json::Value {
 /// (local servers); endpoint+model are required.
 fn ai_config() -> Result<(String, String, String), String> {
     let s = Settings::load();
-    let g = |k: &str| s.extra.get(k).map(|v| v.trim().to_string()).unwrap_or_default();
+    let g = |k: &str| {
+        s.extra
+            .get(k)
+            .map(|v| v.trim().to_string())
+            .unwrap_or_default()
+    };
     let (endpoint, model, key) = (g("ai_endpoint"), g("ai_model"), g("ai_api_key"));
     if endpoint.is_empty() || model.is_empty() {
         return Err("Configure an AI endpoint and model in Settings → AI first".into());
@@ -2064,10 +2544,16 @@ mod tests {
         let body = png_b64();
         std::fs::write(
             &target,
-            base64::engine::general_purpose::STANDARD.decode(&body).unwrap(),
+            base64::engine::general_purpose::STANDARD
+                .decode(&body)
+                .unwrap(),
         )
         .unwrap();
-        assert_eq!(read_image_b64(target.to_string_lossy().into()).unwrap(), body);
+        assert_eq!(
+            read_image_b64(target.to_string_lossy().into()).unwrap(),
+            body
+        );
     }
+
 
 }

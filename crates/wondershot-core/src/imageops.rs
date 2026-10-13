@@ -92,7 +92,12 @@ pub fn rounded_corners(img: &RgbaImage, radius: u32) -> RgbaImage {
         (0i64, 0i64, r, r),
         ((w as i64) - 1, 0, (w as i64) - 1 - r, r),
         (0, (h as i64) - 1, r, (h as i64) - 1 - r),
-        ((w as i64) - 1, (h as i64) - 1, (w as i64) - 1 - r, (h as i64) - 1 - r),
+        (
+            (w as i64) - 1,
+            (h as i64) - 1,
+            (w as i64) - 1 - r,
+            (h as i64) - 1 - r,
+        ),
     ];
     for (cx, cy, center_x, center_y) in corners {
         let (sx, ex) = (cx.min(center_x), cx.max(center_x));

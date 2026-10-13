@@ -92,8 +92,11 @@ pub fn open(label: &str) -> Result<CameraStream, String> {
     pipeline
         .add_many([&src, &convert, &rate, &enc, appsink.upcast_ref()])
         .map_err(|e| e.to_string())?;
-    src.link(&convert).map_err(|_| "link src→convert failed".to_string())?;
-    convert.link(&rate).map_err(|_| "link convert→rate failed".to_string())?;
+    src.link(&convert)
+        .map_err(|_| "link src→convert failed".to_string())?;
+    convert
+        .link(&rate)
+        .map_err(|_| "link convert→rate failed".to_string())?;
     // Cap the preview at 15 fps — it's a bubble, not a recording.
     let caps = gst::Caps::builder("video/x-raw")
         .field("framerate", gst::Fraction::new(15, 1))
@@ -107,9 +110,18 @@ pub fn open(label: &str) -> Result<CameraStream, String> {
         // The state error is generic — the bus carries the real reason.
         let detail = pipeline
             .bus()
-            .and_then(|b| b.timed_pop_filtered(gst::ClockTime::from_mseconds(200), &[gst::MessageType::Error]))
+            .and_then(|b| {
+                b.timed_pop_filtered(
+                    gst::ClockTime::from_mseconds(200),
+                    &[gst::MessageType::Error],
+                )
+            })
             .and_then(|m| match m.view() {
-                gst::MessageView::Error(err) => Some(format!("{} ({})", err.error(), err.debug().unwrap_or_default())),
+                gst::MessageView::Error(err) => Some(format!(
+                    "{} ({})",
+                    err.error(),
+                    err.debug().unwrap_or_default()
+                )),
                 _ => None,
             })
             .unwrap_or_default();

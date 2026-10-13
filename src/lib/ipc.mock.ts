@@ -72,6 +72,13 @@ export async function mockInvoke(cmd: string, _args?: unknown): Promise<unknown>
       return null;
     case 'log_path':
       return '/mock/wondershot.log';
+    case 'screen_capture_permission_status':
+    case 'request_screen_capture_permission':
+      return { required: false, granted: true, canRequest: false };
+    case 'open_screen_capture_settings':
+    case 'prepare_native_capture_picker':
+    case 'finish_native_capture_picker':
+      return null;
     case 'list_library':
       return mockList;
     case 'get_settings':
@@ -184,7 +191,9 @@ export async function mockInvoke(cmd: string, _args?: unknown): Promise<unknown>
       return GRAY_PNG_B64;
     case 'capture_region':
     case 'capture_fullscreen':
-    case 'capture_window': {
+    case 'capture_window':
+    case 'save_native_capture_window':
+    case 'save_native_capture_frame_crop': {
       counter += 1;
       const cap: Capture = {
         id: `new${counter}`,

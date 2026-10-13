@@ -12,6 +12,8 @@
   /** Enumerate webcam / mic inputs for the device dropdowns. Platform-specific
    * device discovery lives in $lib/media/devices. */
   async function enumerateDevices() {
+    if (devicesLoaded || devicesLoading) return;
+    devicesLoading = true;
     try {
       const devs = await listMediaDevices();
       // Dedupe defensively: duplicate labels would be duplicate keys in the
@@ -32,8 +34,11 @@
       if (s.mic_device && !mics.some((d) => d.label === s.mic_device)) {
         s.mic_device = '';
       }
+      devicesLoaded = true;
     } catch {
       // ignore — selects fall back to the stored value
+    } finally {
+      devicesLoading = false;
     }
   }
 
@@ -51,6 +56,9 @@
   let isLinux = $derived(platform === 'linux');
   let isWindows = $derived(platform === 'windows');
   let isMac = $derived(platform === 'macos');
+  let devicesLoaded = $state(false);
+  let devicesLoading = $state(false);
+  let graphLoaded = $state(false);
   let recordingHotkey = $state(false);
   let hotkeyRecorderMsg = $state('');
 
@@ -59,9 +67,9 @@
     // extra_dirs is an array on the wire; edit it as a semicolon-joined string.
     const dirs = Array.isArray(data.extra_dirs) ? (data.extra_dirs as string[]) : [];
     s = { ...data, extra_dirs_text: dirs.join(';') };
+    devicesLoaded = false;
+    graphLoaded = false;
     loaded = true;
-    void enumerateDevices();
-    void loadGraph();
     void currentPlatform().then((p) => (platform = String(p)));
   }
 
@@ -74,6 +82,11 @@
   $effect(() => {
     if (visible && !wasOpen) loadSettings();
     wasOpen = visible;
+  });
+
+  $effect(() => {
+    if (visible && loaded && tab === 'recording') void enumerateDevices();
+    if (visible && loaded && tab === 'sharing') void loadGraph();
   });
 
   function close() {
@@ -97,6 +110,7 @@
   let spBusy = $state('');
 
   async function loadGraph() {
+    if (graphLoaded) return;
     try {
       const r = (await ipcInvoke<{ account: string; default_client_id: string }>('graph_status')) ?? { account: '', default_client_id: '' };
       graphAccount = r.account ?? '';
@@ -105,6 +119,7 @@
     const cid = String(s.graph_client_id ?? '');
     clientCustom = !!cid && cid !== defaultClientId;
     destMode = s.graph_drive_id ? 'sharepoint' : 'onedrive';
+    graphLoaded = true;
   }
 
   function clientId(): string {
@@ -392,7 +407,7 @@
             <span>Quick bar timeout (s)</span>
             <input type="number" min="2" max="60" value={num('quick_bar_timeout')} oninput={(e) => setNum('quick_bar_timeout', e.currentTarget.valueAsNumber)} />
           </label>
-          {#if isWindows}
+          {#if isWindows || isMac}
             <label class="field">
               <span>Capture hotkey</span>
               <span class="hotkey-row">
@@ -408,13 +423,7 @@
                   {recordingHotkey ? 'Cancel' : 'Record'}
                 </button>
               </span>
-              <small>{recordingHotkey ? hotkeyRecorderMsg || 'Use Ctrl, Alt, Shift, or Win with a letter, number, function key, or Print Screen.' : 'Registered directly by Wondershot while the app is running.'}</small>
-            </label>
-          {:else if isMac}
-            <label class="field">
-              <span>Capture hotkey</span>
-              <input type="text" bind:value={s.hotkey_capture} placeholder="Cmd+Shift+5" disabled />
-              <small>Native macOS hotkey registration is planned.</small>
+              <small>{recordingHotkey ? hotkeyRecorderMsg || (isMac ? 'Use Cmd, Ctrl, Option, or Shift with a letter, number, or function key.' : 'Use Ctrl, Alt, Shift, or Win with a letter, number, function key, or Print Screen.') : 'Registered directly by Wondershot while the app is running.'}</small>
             </label>
           {:else if isLinux}
             <label class="field">

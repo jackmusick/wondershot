@@ -6,7 +6,11 @@ fn default_hotkey_capture() -> String {
     {
         "Ctrl+Shift+S".into()
     }
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
+    {
+        "Cmd+Shift+S".into()
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
         "Ctrl+Shift+Print".into()
     }
@@ -52,10 +56,7 @@ impl Default for Settings {
         let pictures = dirs::picture_dir()
             .unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join("Pictures"));
         Settings {
-            library_dir: pictures
-                .join("Screenshots")
-                .to_string_lossy()
-                .to_string(),
+            library_dir: pictures.join("Screenshots").to_string_lossy().to_string(),
             backend: "auto".into(),
             capture_cursor: false,
             capture_delay: 0,
@@ -180,6 +181,10 @@ impl Settings {
             // default to a Windows-friendly native shortcut.
             s.hotkey_capture = default_hotkey_capture();
         }
+        #[cfg(target_os = "macos")]
+        if s.hotkey_capture == "Ctrl+Shift+Print" {
+            s.hotkey_capture = default_hotkey_capture();
+        }
         s
     }
 
@@ -204,27 +209,45 @@ impl Settings {
         out.push_str(&format!("extra_dirs={}\n", q(&self.extra_dirs.join(";"))));
         out.push_str(&format!("mic_enabled={}\n", b(self.mic_enabled)));
         out.push_str(&format!("mic_device={}\n", self.mic_device));
-        out.push_str(&format!("noise_suppression={}\n", b(self.noise_suppression)));
-        out.push_str(&format!("record_cursor_halo={}\n", b(self.record_cursor_halo)));
+        out.push_str(&format!(
+            "noise_suppression={}\n",
+            b(self.noise_suppression)
+        ));
+        out.push_str(&format!(
+            "record_cursor_halo={}\n",
+            b(self.record_cursor_halo)
+        ));
         out.push_str(&format!("record_countdown={}\n", self.record_countdown));
         out.push_str(&format!("camera_device={}\n", self.camera_device));
         out.push_str(&format!("hotkey_capture={}\n", self.hotkey_capture));
-        out.push_str(&format!("copy_after_capture={}\n", b(self.copy_after_capture)));
+        out.push_str(&format!(
+            "copy_after_capture={}\n",
+            b(self.copy_after_capture)
+        ));
         out.push_str(&format!(
             "show_gallery_after_capture={}\n",
             b(self.show_gallery_after_capture)
         ));
         out.push_str(&format!("pin_on_top={}\n", b(self.pin_on_top)));
-        out.push_str(&format!("quick_bar_enabled={}\n", b(self.quick_bar_enabled)));
+        out.push_str(&format!(
+            "quick_bar_enabled={}\n",
+            b(self.quick_bar_enabled)
+        ));
         out.push_str(&format!("quick_bar_timeout={}\n", self.quick_bar_timeout));
         out.push_str(&format!("stroke_width={}\n", self.stroke_width));
         out.push_str(&format!("font_size={}\n", self.font_size));
         out.push_str(&format!("tool_color={}\n", self.tool_color));
-        out.push_str(&format!("video_blur_strength={}\n", self.video_blur_strength));
+        out.push_str(&format!(
+            "video_blur_strength={}\n",
+            self.video_blur_strength
+        ));
         out.push_str(&format!("gif_fps={}\n", self.gif_fps));
         out.push_str(&format!("gif_max_width={}\n", self.gif_max_width));
         out.push_str(&format!("effect_rounded={}\n", b(self.effect_rounded)));
-        out.push_str(&format!("effect_corner_radius={}\n", self.effect_corner_radius));
+        out.push_str(&format!(
+            "effect_corner_radius={}\n",
+            self.effect_corner_radius
+        ));
         out.push_str(&format!("effect_fade={}\n", b(self.effect_fade)));
         out.push_str(&format!("effect_fade_height={}\n", self.effect_fade_height));
         // Preserved unmodeled keys (sharing creds, AI endpoint, …), sorted.
@@ -273,8 +296,14 @@ mod tests {
             azure_key=\"abc+def==\"\n";
         let s = Settings::from_conf_str(conf);
         assert_eq!(s.library_dir, "/home/jack/Sync/Screenshots");
-        assert_eq!(s.extra_dirs, vec!["/home/jack/Videos", "/home/jack/Videos/Screencasts"]);
-        assert_eq!(s.extra.get("ai_endpoint").unwrap(), "https://openrouter.ai/api");
+        assert_eq!(
+            s.extra_dirs,
+            vec!["/home/jack/Videos", "/home/jack/Videos/Screencasts"]
+        );
+        assert_eq!(
+            s.extra.get("ai_endpoint").unwrap(),
+            "https://openrouter.ai/api"
+        );
         assert_eq!(s.extra.get("azure_key").unwrap(), "abc+def==");
         let out = s.to_conf_str();
         assert!(out.contains("ai_endpoint=https://openrouter.ai/api"));
@@ -319,7 +348,10 @@ mod tests {
         let s = Settings::default();
         #[cfg(target_os = "windows")]
         assert_eq!(s.hotkey_capture, "Ctrl+Shift+S");
+        #[cfg(target_os = "macos")]
+        assert_eq!(s.hotkey_capture, "Cmd+Shift+S");
         #[cfg(not(target_os = "windows"))]
+        #[cfg(not(target_os = "macos"))]
         assert_eq!(s.hotkey_capture, "Ctrl+Shift+Print");
         assert_eq!(s.copy_after_capture, true);
         assert_eq!(s.show_gallery_after_capture, true);

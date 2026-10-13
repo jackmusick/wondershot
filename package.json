@@ -9,7 +9,11 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "test": "vitest run",
     "test:ui": "playwright test",
-    "tauri": "tauri"
+    "icons:macos": "node scripts/generate-macos-icon.mjs",
+    "tauri": "tauri",
+    "build:macos": "node scripts/build-macos.mjs",
+    "test:macos:media": "cargo test -p wondershot-core --test macos_media_smoke -- --ignored",
+    "verify:macos": "node scripts/verify-macos.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",

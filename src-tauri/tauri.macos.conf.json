@@ -1,0 +1,22 @@
+{
+  "app": {
+    "macOSPrivateApi": true
+  },
+  "bundle": {
+    "targets": [
+      "app",
+      "dmg"
+    ],
+    "resources": {
+      "binaries/macos/ffmpeg": "ffmpeg",
+      "binaries/macos/libs/": "libs/",
+      "binaries/macos/FFMPEG-LICENSE.txt": "FFMPEG-LICENSE.txt"
+    },
+    "macOS": {
+      "signingIdentity": "-"
+    }
+  },
+  "build": {
+    "beforeBuildCommand": "python3 scripts/prepare-macos-ffmpeg.py && npm run build"
+  }
+}

@@ -64,7 +64,10 @@ fn graph_get(url: &str, token: &str) -> Result<Value, String> {
         Ok(resp) => resp.into_json::<Value>().map_err(|e| e.to_string()),
         Err(ureq::Error::Status(code, resp)) => {
             let body = resp.into_string().unwrap_or_default();
-            Err(format!("Graph HTTP {code}: {}", body.chars().take(200).collect::<String>()))
+            Err(format!(
+                "Graph HTTP {code}: {}",
+                body.chars().take(200).collect::<String>()
+            ))
         }
         Err(e) => Err(e.to_string()),
     }
@@ -110,7 +113,10 @@ pub fn save_tokens(tokens: &Value, client_id: &str, account: &str) -> Result<(),
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    let expires_in = tokens.get("expires_in").and_then(|v| v.as_f64()).unwrap_or(3600.0);
+    let expires_in = tokens
+        .get("expires_in")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(3600.0);
     let payload = json!({
         "client_id": client_id,
         "account": account,
@@ -154,8 +160,14 @@ pub fn ensure_access_token() -> Result<String, String> {
     if now_secs() < expires_at && !access.is_empty() {
         return Ok(access.to_string());
     }
-    let client_id = t.get("client_id").and_then(|v| v.as_str()).unwrap_or(DEFAULT_CLIENT_ID);
-    let refresh = t.get("refresh_token").and_then(|v| v.as_str()).unwrap_or("");
+    let client_id = t
+        .get("client_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or(DEFAULT_CLIENT_ID);
+    let refresh = t
+        .get("refresh_token")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     let out = post_form(
         &format!("{AUTH_BASE}/token"),
         &[
@@ -170,7 +182,11 @@ pub fn ensure_access_token() -> Result<String, String> {
     }
     let account = t.get("account").and_then(|v| v.as_str()).unwrap_or("");
     save_tokens(&out, client_id, account)?;
-    Ok(out.get("access_token").and_then(|v| v.as_str()).unwrap_or("").to_string())
+    Ok(out
+        .get("access_token")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string())
 }
 
 pub fn whoami(token: &str) -> Result<String, String> {
@@ -229,7 +245,9 @@ fn urlencoding_minimal(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for b in s.bytes() {
         match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => out.push(b as char),
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char)
+            }
             _ => out.push_str(&format!("%{b:02X}")),
         }
     }
@@ -287,10 +305,9 @@ fn percent_decode(s: &str) -> String {
     while i < bytes.len() {
         match bytes[i] {
             b'%' if i + 3 <= bytes.len() => {
-                if let Ok(b) = u8::from_str_radix(
-                    std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or(""),
-                    16,
-                ) {
+                if let Ok(b) =
+                    u8::from_str_radix(std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or(""), 16)
+                {
                     out.push(b);
                     i += 3;
                     continue;
@@ -370,7 +387,8 @@ mod auth_tests {
         assert_eq!(v.len(), 64);
         assert_eq!(
             c,
-            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(sha2::Sha256::digest(v.as_bytes()))
+            base64::engine::general_purpose::URL_SAFE_NO_PAD
+                .encode(sha2::Sha256::digest(v.as_bytes()))
         );
     }
 
@@ -410,7 +428,13 @@ fn drive_base(drive_id: &str) -> String {
 
 /// Authenticated Graph request with a byte body; OAuth/Graph errors surface
 /// with their JSON detail.
-fn graph_send(method: &str, url: &str, token: &str, body: &[u8], ctype: &str) -> Result<Value, String> {
+fn graph_send(
+    method: &str,
+    url: &str,
+    token: &str,
+    body: &[u8],
+    ctype: &str,
+) -> Result<Value, String> {
     let req = ureq::request(method, url)
         .timeout(std::time::Duration::from_secs(300))
         .set("Authorization", &format!("Bearer {token}"))
@@ -419,7 +443,10 @@ fn graph_send(method: &str, url: &str, token: &str, body: &[u8], ctype: &str) ->
         Ok(resp) => resp.into_json::<Value>().map_err(|e| e.to_string()),
         Err(ureq::Error::Status(code, resp)) => {
             let body = resp.into_string().unwrap_or_default();
-            Err(format!("Graph HTTP {code}: {}", body.chars().take(200).collect::<String>()))
+            Err(format!(
+                "Graph HTTP {code}: {}",
+                body.chars().take(200).collect::<String>()
+            ))
         }
         Err(e) => Err(e.to_string()),
     }
@@ -438,7 +465,13 @@ pub fn upload(path: &str, token: &str, drive_id: &str) -> Result<String, String>
 
     if size <= SIMPLE_UPLOAD_LIMIT {
         let data = std::fs::read(path).map_err(|e| e.to_string())?;
-        let item = graph_send("PUT", &format!("{base}/content"), token, &data, "application/octet-stream")?;
+        let item = graph_send(
+            "PUT",
+            &format!("{base}/content"),
+            token,
+            &data,
+            "application/octet-stream",
+        )?;
         return item
             .get("id")
             .and_then(|v| v.as_str())
@@ -501,7 +534,9 @@ pub fn create_link(item_id: &str, token: &str, drive_id: &str) -> Result<String,
             "POST",
             &format!("{}/items/{item_id}/createLink", drive_base(drive_id)),
             token,
-            json!({"type": "view", "scope": scope}).to_string().as_bytes(),
+            json!({"type": "view", "scope": scope})
+                .to_string()
+                .as_bytes(),
             "application/json",
         ) {
             Ok(out) => {

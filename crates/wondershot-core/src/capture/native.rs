@@ -146,7 +146,9 @@ pub fn capture_rgba_with_cursor(capture_cursor: bool) -> Result<RgbaImage, Strin
 pub fn virtual_origin() -> (i32, i32) {
     #[cfg(target_os = "windows")]
     {
-        return super::win::virtual_screen().map(|s| (s.x, s.y)).unwrap_or((0, 0));
+        return super::win::virtual_screen()
+            .map(|s| (s.x, s.y))
+            .unwrap_or((0, 0));
     }
 
     #[cfg(target_os = "macos")]
@@ -170,9 +172,7 @@ pub fn virtual_bounds() -> (i32, i32, u32, u32) {
 
     #[cfg(target_os = "macos")]
     {
-        let (x, y) = super::macos::virtual_origin();
-        let img = super::macos::capture_fullscreen_rgba();
-        return img.map(|i| (x, y, i.width(), i.height())).unwrap_or((0, 0, 1920, 1080));
+        return super::macos::virtual_bounds();
     }
 
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
@@ -186,7 +186,12 @@ pub fn monitor_rects() -> Vec<MonitorRect> {
     {
         return super::win::list_monitors()
             .into_iter()
-            .map(|m| MonitorRect { x: m.x, y: m.y, width: m.width, height: m.height })
+            .map(|m| MonitorRect {
+                x: m.x,
+                y: m.y,
+                width: m.width,
+                height: m.height,
+            })
             .collect();
     }
 

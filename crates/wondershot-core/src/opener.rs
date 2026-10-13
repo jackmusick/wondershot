@@ -26,13 +26,15 @@ pub fn open_command(
     target: &str,
 ) -> Result<(&'static str, Vec<String>), String> {
     match platform {
-        OpenPlatform::Windows => {
-            Ok(("rundll32.exe", vec!["url.dll,FileProtocolHandler".into(), target.into()]))
-        }
+        OpenPlatform::Windows => Ok((
+            "rundll32.exe",
+            vec!["url.dll,FileProtocolHandler".into(), target.into()],
+        )),
         OpenPlatform::Macos => Ok(("open", vec![target.into()])),
-        OpenPlatform::Linux if in_flatpak => {
-            Ok(("flatpak-spawn", vec!["--host".into(), "xdg-open".into(), target.into()]))
-        }
+        OpenPlatform::Linux if in_flatpak => Ok((
+            "flatpak-spawn",
+            vec!["--host".into(), "xdg-open".into(), target.into()],
+        )),
         OpenPlatform::Linux => Ok(("xdg-open", vec![target.into()])),
         OpenPlatform::Other => Err("open is not available on this platform".into()),
     }
@@ -44,9 +46,13 @@ mod tests {
 
     #[test]
     fn windows_uses_shell_file_protocol_handler() {
-        let (program, args) = open_command(OpenPlatform::Windows, false, "https://example.test").unwrap();
+        let (program, args) =
+            open_command(OpenPlatform::Windows, false, "https://example.test").unwrap();
         assert_eq!(program, "rundll32.exe");
-        assert_eq!(args, vec!["url.dll,FileProtocolHandler", "https://example.test"]);
+        assert_eq!(
+            args,
+            vec!["url.dll,FileProtocolHandler", "https://example.test"]
+        );
     }
 
     #[test]

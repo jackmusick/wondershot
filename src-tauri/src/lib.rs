@@ -3,13 +3,36 @@ mod commands;
 mod graph;
 mod hotkeys;
 mod logging;
+#[cfg(target_os = "macos")]
+mod macos_picker;
 mod media_server;
+#[cfg(target_os = "macos")]
+mod macos_check;
+#[cfg(target_os = "macos")]
+mod macos_permissions;
 mod share;
 mod watcher;
 
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::TrayIconBuilder;
 use wondershot_core::cli::{parse_args, CliAction};
+
+fn configure_camera_bubble_window(app: &tauri::AppHandle) {
+    use tauri::Manager;
+
+    let Some(window) = app.get_webview_window("bubble") else {
+        logging::log("camera bubble: window not found during transparency setup");
+        return;
+    };
+    if let Err(e) =
+        window.set_background_color(Some(tauri::utils::config::Color(0, 0, 0, 0)))
+    {
+        logging::log(format!("camera bubble: transparent background failed: {e}"));
+    }
+    if let Err(e) = window.set_shadow(false) {
+        logging::log(format!("camera bubble: disabling shadow failed: {e}"));
+    }
+}
 
 /// Map a parsed CLI action to an app effect. Used both for the launch process
 /// args (deferred until the webview signals `app://ready`) and for the args a
@@ -77,9 +100,15 @@ fn media_check() {
     let devices = recorder::list_capture_devices();
     if devices.is_empty() {
         #[cfg(target_os = "windows")]
-        line!(out, "[FAIL] device enumeration: no DirectShow devices reported by FFmpeg");
+        line!(
+            out,
+            "[FAIL] device enumeration: no DirectShow devices reported by FFmpeg"
+        );
         #[cfg(not(target_os = "windows"))]
-        line!(out, "[FAIL] device enumeration: no devices (gst DeviceMonitor returned nothing)");
+        line!(
+            out,
+            "[FAIL] device enumeration: no devices (gst DeviceMonitor returned nothing)"
+        );
     } else {
         line!(out, "[PASS] device enumeration ({}):", devices.len());
         for (kind, label) in &devices {
@@ -107,9 +136,15 @@ fn media_check() {
                 }
                 let nonblank = samples.iter().any(|p| p[0] != 0 || p[1] != 0 || p[2] != 0);
                 if nonblank {
-                    line!(out, "[PASS] native screenshot: {w}x{h}, sampled nonblank pixels");
+                    line!(
+                        out,
+                        "[PASS] native screenshot: {w}x{h}, sampled nonblank pixels"
+                    );
                 } else {
-                    line!(out, "[FAIL] native screenshot: {w}x{h}, sampled pixels are all black");
+                    line!(
+                        out,
+                        "[FAIL] native screenshot: {w}x{h}, sampled pixels are all black"
+                    );
                 }
             }
             Err(e) => line!(out, "[FAIL] native screenshot: {e}"),
@@ -118,9 +153,16 @@ fn media_check() {
 
         let windows = wondershot_core::capture::native::window_rects();
         if windows.is_empty() {
-            line!(out, "[FAIL] native window picker: no selectable top-level windows found");
+            line!(
+                out,
+                "[FAIL] native window picker: no selectable top-level windows found"
+            );
         } else {
-            line!(out, "[PASS] native window picker ({} selectable):", windows.len());
+            line!(
+                out,
+                "[PASS] native window picker ({} selectable):",
+                windows.len()
+            );
             for window in windows.iter().take(5) {
                 line!(
                     out,
@@ -155,13 +197,24 @@ fn media_check() {
                 rec.stop();
                 match std::fs::metadata(&final_out).map(|m| m.len()) {
                     Ok(size) if size > 4 * 1024 => {
-                        line!(out, "[PASS] recording smoke + pause/resume: wrote {} bytes", size);
+                        line!(
+                            out,
+                            "[PASS] recording smoke + pause/resume: wrote {} bytes",
+                            size
+                        );
                     }
                     Ok(size) => {
-                        line!(out, "[FAIL] recording smoke + pause/resume: output too small ({} bytes)", size);
+                        line!(
+                            out,
+                            "[FAIL] recording smoke + pause/resume: output too small ({} bytes)",
+                            size
+                        );
                     }
                     Err(e) => {
-                        line!(out, "[FAIL] recording smoke + pause/resume: no output file ({e})");
+                        line!(
+                            out,
+                            "[FAIL] recording smoke + pause/resume: no output file ({e})"
+                        );
                     }
                 }
             }
@@ -187,9 +240,15 @@ fn media_check() {
                 }
             }
             if frames > 0 {
-                line!(out, "[PASS] camera: {frames} JPEG frames ({bytes} bytes total)");
+                line!(
+                    out,
+                    "[PASS] camera: {frames} JPEG frames ({bytes} bytes total)"
+                );
             } else {
-                line!(out, "[FAIL] camera: pipeline started but produced no frames in 5s");
+                line!(
+                    out,
+                    "[FAIL] camera: pipeline started but produced no frames in 5s"
+                );
             }
         }
         Err(e) => line!(out, "[FAIL] camera: {e}"),
@@ -206,12 +265,18 @@ fn media_check() {
             if s.mic_enabled {
                 match default_mic {
                     Some(label) => line!(out, "[PASS] mic default resolves: {label}"),
-                    None => line!(out, "[FAIL] mic default: no DirectShow audio device reported"),
+                    None => line!(
+                        out,
+                        "[FAIL] mic default: no DirectShow audio device reported"
+                    ),
                 }
             } else {
                 line!(out, "[INFO] mic: disabled in settings");
             }
-        } else if devices.iter().any(|(kind, label)| kind == "audioinput" && label == &s.mic_device) {
+        } else if devices
+            .iter()
+            .any(|(kind, label)| kind == "audioinput" && label == &s.mic_device)
+        {
             line!(out, "[PASS] mic resolves: {:?}", s.mic_device);
         } else {
             let fallback_mic = devices
@@ -226,29 +291,38 @@ fn media_check() {
                 None => line!(out, "[FAIL] mic: selected device {:?} was not reported and no fallback audio device is available", s.mic_device),
             }
         }
-        line!(out, "[INFO] noise suppression: not available in the Windows FFmpeg backend yet");
+        line!(
+            out,
+            "[INFO] noise suppression: not available in the Windows FFmpeg backend yet"
+        );
     }
     #[cfg(not(target_os = "windows"))]
     {
-    let source = recorder::resolve_mic_source(&s.mic_device);
-    if s.mic_device.is_empty() {
-        line!(out, "[INFO] mic: no device selected (recordings use the default source)");
-    } else if source.is_empty() {
-        line!(
-            out,
-            "[FAIL] mic: could not resolve {:?} to a pulse/pipewire source",
-            s.mic_device
-        );
-    } else {
-        line!(out, "[PASS] mic resolves: {:?} -> {source}", s.mic_device);
-    }
-    if recorder::have_gst_element("webrtcdsp") {
-        line!(out, "[PASS] noise suppression (webrtcdsp) available");
-    } else {
-        line!(out, "[WARN] webrtcdsp missing — recordings get raw mic audio (no noise suppression)");
-    }
-    line!(out, "       (speak into the mic now — sampling ~1s)");
-    match recorder::mic_probe(&source) {
+        let source = recorder::resolve_mic_source(&s.mic_device);
+        if s.mic_device.is_empty() {
+            line!(
+                out,
+                "[INFO] mic: no device selected (recordings use the default source)"
+            );
+        } else if source.is_empty() {
+            line!(
+                out,
+                "[FAIL] mic: could not resolve {:?} to a pulse/pipewire source",
+                s.mic_device
+            );
+        } else {
+            line!(out, "[PASS] mic resolves: {:?} -> {source}", s.mic_device);
+        }
+        if recorder::have_gst_element("webrtcdsp") {
+            line!(out, "[PASS] noise suppression (webrtcdsp) available");
+        } else {
+            line!(
+                out,
+                "[WARN] webrtcdsp missing — recordings get raw mic audio (no noise suppression)"
+            );
+        }
+        line!(out, "       (speak into the mic now — sampling ~1s)");
+        match recorder::mic_probe(&source) {
         Ok(peak) if peak >= 0.01 => {
             line!(out, "[PASS] mic opens; peak level {:.0}% — audio is real", peak * 100.0)
         }
@@ -263,11 +337,21 @@ fn media_check() {
     let _ = std::io::Write::write_all(&mut std::io::stdout(), out.as_bytes());
     #[cfg(target_os = "windows")]
     {
-        let _ = std::fs::write(std::env::temp_dir().join("wondershot-media-check.txt"), &out);
+        let _ = std::fs::write(
+            std::env::temp_dir().join("wondershot-media-check.txt"),
+            &out,
+        );
     }
 }
 
 pub fn run() {
+    #[cfg(target_os = "macos")]
+    if std::env::args().any(|arg| arg == "--desktop-check") {
+        match macos_check::run() {
+            Ok(()) => return,
+            Err(e) => { eprintln!("[FAIL] {e}"); std::process::exit(1); }
+        }
+    }
     logging::init();
     // Headless-friendly actions short-circuit before building the GUI, matching
     // the Python CLI (`--version`, `--install-desktop` work without a window).
@@ -307,6 +391,7 @@ pub fn run() {
         .setup(move |app| {
             use tauri::{Listener, Manager};
 
+            configure_camera_bubble_window(app.handle());
             // Watch the library folders so externally created files (global
             // hotkey captures, drops from other apps) appear live.
             watcher::rewatch(app.handle(), app.state::<watcher::LibWatch>().inner());
@@ -368,9 +453,14 @@ pub fn run() {
                                     let _ = w.set_focus();
                                 }
                             }
-                            // Hard-exit to skip the crash-prone GTK/WebKit
-                            // teardown that SIGABRTs on a normal app.exit().
-                            "quit" => std::process::exit(0),
+                            "quit" => {
+                                // Linux needs to bypass GTK teardown; macOS must
+                                // run the graceful recording finalization below.
+                                #[cfg(target_os = "linux")]
+                                std::process::exit(0);
+                                #[cfg(not(target_os = "linux"))]
+                                app.exit(0);
+                            }
                             _ => {}
                         }
                     })
@@ -418,7 +508,13 @@ pub fn run() {
                             api.prevent_close();
                             let _ = win.hide();
                         } else {
+                            #[cfg(target_os = "linux")]
                             std::process::exit(0);
+                            #[cfg(not(target_os = "linux"))]
+                            {
+                                api.prevent_close();
+                                win.app_handle().exit(0);
+                            }
                         }
                     }
                 });
@@ -451,7 +547,15 @@ pub fn run() {
             commands::capture_window,
             commands::native_capture_capabilities,
             commands::native_capture_frame_b64,
+            commands::macos_native_capture_picker,
+            commands::prepare_native_capture_picker,
+            commands::finish_native_capture_picker,
+            commands::save_native_capture_window,
+            commands::screen_capture_permission_status,
+            commands::request_screen_capture_permission,
+            commands::open_screen_capture_settings,
             commands::save_native_capture_crop,
+            commands::save_native_capture_frame_crop,
             commands::pixelate_patch,
             commands::blur_patch,
             commands::crop_base,
@@ -474,6 +578,7 @@ pub fn run() {
             commands::graph_connect_interactive,
             commands::list_media_devices,
             commands::recorder_capabilities,
+            commands::authorize_media_capture,
             commands::capture_command,
             commands::share_capture,
             media_server::media_server_port,
@@ -502,6 +607,39 @@ pub fn run() {
             commands::graph_sites_search,
             commands::graph_site_drives,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running wondershot");
+        .build(tauri::generate_context!())
+        .expect("error while building wondershot")
+        .run(|app, event| {
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::ExitRequested { api, .. } = event {
+                use tauri::Manager;
+                use std::sync::atomic::{AtomicU8, Ordering};
+                // 0 = running, 1 = finalizing, 2 = ready to exit. Repeated Quit
+                // requests must not terminate FFmpeg while it writes the MP4.
+                static SHUTDOWN: AtomicU8 = AtomicU8::new(0);
+                if SHUTDOWN.load(Ordering::SeqCst) != 2 {
+                    api.prevent_exit();
+                    if SHUTDOWN.compare_exchange(0, 1, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
+                        let handle = app.clone();
+                        tauri::async_runtime::spawn_blocking(move || {
+                            media_server::stop_camera();
+                            wondershot_core::camera::stop_all();
+                            let state = handle.state::<commands::RecState>();
+                            // Stop may already own a recorder outside its slot.
+                            // Wait for that worker before terminating the app.
+                            let _finalizing = state.finalization.lock()
+                                .unwrap_or_else(|poisoned| poisoned.into_inner());
+                            let recorder = state.recorder.lock().ok().and_then(|mut slot| slot.take());
+                            if let Some(recorder) = recorder {
+                                recorder.stop();
+                            }
+                            SHUTDOWN.store(2, Ordering::SeqCst);
+                            handle.exit(0);
+                        });
+                    }
+                }
+            }
+            #[cfg(not(target_os = "macos"))]
+            let _ = (app, event);
+        });
 }

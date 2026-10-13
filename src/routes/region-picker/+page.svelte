@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { emit } from '@tauri-apps/api/event';
   import { getCurrentWindow } from '@tauri-apps/api/window';
-  import { ipcInvoke } from '$lib/ipc';
+  import { ipcEmit, ipcInvoke, ipcListen } from '$lib/ipc';
 
   type Monitor = {
     id: number;
@@ -11,9 +11,10 @@
     width: number;
     height: number;
   };
-  type WindowRect = Monitor & { title: string };
+  type WindowRect = Monitor & { title: string; windowId?: number };
   type Frame = { width: number; height: number; monitors?: Monitor[]; windows?: WindowRect[]; pngB64: string };
   type Point = { x: number; y: number };
+  type ViewRect = { left: number; top: number; width: number; height: number };
 
   let frame = $state<Frame | null>(null);
   let error = $state('');
@@ -23,6 +24,8 @@
   let hoverWindow = $state<WindowRect | null>(null);
   let selectedRect = $state<[number, number, number, number] | null>(null);
   let selectedTitle = $state('');
+  let selectedWindowId = $state<number | null>(null);
+  let viewRect = $state<ViewRect | null>(null);
   let mode = $state<'capture' | 'rect' | 'screen-capture' | 'screen-rect' | 'window-capture' | 'window-rect'>('capture');
 
   let box = $derived.by(() => {
@@ -35,11 +38,22 @@
   });
 
   function imagePoint(e: PointerEvent): Point | null {
-    if (!imgEl || !frame) return null;
-    const r = imgEl.getBoundingClientRect();
+    if (!imgEl || !frame || !viewRect) return null;
+    const r = viewRect;
     const x = Math.max(0, Math.min(frame.width, ((e.clientX - r.left) / r.width) * frame.width));
     const y = Math.max(0, Math.min(frame.height, ((e.clientY - r.top) / r.height) * frame.height));
     return { x, y };
+  }
+
+  function updateViewRect() {
+    if (!imgEl) return;
+    const r = imgEl.getBoundingClientRect();
+    viewRect = { left: r.left, top: r.top, width: r.width, height: r.height };
+  }
+
+  async function markPainted() {
+    updateViewRect();
+    await ipcEmit('region://painted');
   }
 
   function selectionMode() {
@@ -64,6 +78,22 @@
     await getCurrentWindow().close();
   }
 
+  async function loadFrame() {
+    error = '';
+    frame = null;
+    const permission = await ipcInvoke<{ required: boolean; granted: boolean }>('screen_capture_permission_status');
+    if (permission.required && !permission.granted) {
+      await cancel();
+      return;
+    }
+    try {
+      frame = await ipcInvoke<Frame>('native_capture_frame_b64');
+      requestAnimationFrame(updateViewRect);
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+    }
+  }
+
   function rectForWindow(window: WindowRect): [number, number, number, number] {
     return [
       Math.round(window.x),
@@ -82,16 +112,21 @@
     ];
   }
 
-  function selectRect(rect: [number, number, number, number], title = '') {
+  function selectRect(rect: [number, number, number, number], title = '', windowId: number | null = null) {
     selectedRect = rect;
     selectedTitle = title;
+    selectedWindowId = windowId;
     hoverWindow = null;
   }
 
   async function captureRect(rect: [number, number, number, number] | null = selectedRect) {
     if (!rect) return;
     try {
-      const path = await ipcInvoke<string>('save_native_capture_crop', { rect });
+      const path = selectedWindowId
+        ? await ipcInvoke<string>('save_native_capture_window', { windowId: selectedWindowId })
+        : frame
+        ? await ipcInvoke<string>('save_native_capture_frame_crop', { rect, pngB64: frame.pngB64 })
+        : await ipcInvoke<string>('save_native_capture_crop', { rect });
       await emit('region://done', path);
       await getCurrentWindow().close();
     } catch (err) {
@@ -124,7 +159,17 @@
         if (mode === 'rect') {
           await chooseWindow(targetWindow);
         } else {
-          selectRect(rectForWindow(targetWindow), targetWindow.title);
+          selectRect(rectForWindow(targetWindow), targetWindow.title, targetWindow.windowId ?? null);
+        }
+        return;
+      }
+      if (frame && selectionMode()) {
+        const rect: [number, number, number, number] = [0, 0, frame.width, frame.height];
+        if (mode === 'rect') {
+          await emit('region://rect', rect);
+          await getCurrentWindow().close();
+        } else {
+          selectRect(rect, 'Full screen');
         }
         return;
       }
@@ -170,23 +215,35 @@
         await getCurrentWindow().close();
         return;
       }
-      selectRect(rect, window.title);
+      selectRect(rect, window.title, window.windowId ?? null);
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
     }
   }
 
-  onMount(async () => {
-    try {
+  onMount(() => {
+    let unFrame: (() => void) | undefined;
+    void (async () => {
+      try {
+        unFrame = await ipcListen<Frame>('region://frame', (payload) => {
+          error = '';
+          frame = payload;
+          requestAnimationFrame(updateViewRect);
+        });
       const rawMode = new URL(globalThis.location.href).searchParams.get('mode');
       mode =
         rawMode === 'rect' || rawMode === 'screen-capture' || rawMode === 'screen-rect' || rawMode === 'window-capture' || rawMode === 'window-rect'
           ? rawMode
           : 'capture';
-      frame = await ipcInvoke<Frame>('native_capture_frame_b64');
-    } catch (err) {
-      error = err instanceof Error ? err.message : String(err);
-    }
+      await ipcEmit('region://ready');
+      setTimeout(() => {
+        if (!frame) void loadFrame();
+      }, 750);
+      } catch (err) {
+        error = err instanceof Error ? err.message : String(err);
+      }
+    })();
+    return () => unFrame?.();
   });
 </script>
 
@@ -194,6 +251,7 @@
   on:keydown={(e) => {
     if (e.key === 'Escape') void cancel();
   }}
+  on:resize={updateViewRect}
 />
 
 <div
@@ -219,10 +277,10 @@
   onpointerup={finish}
 >
   {#if frame}
-    <img bind:this={imgEl} src={`data:image/png;base64,${frame.pngB64}`} alt="" draggable="false" />
+    <img bind:this={imgEl} src={`data:image/png;base64,${frame.pngB64}`} alt="" draggable="false" onload={markPainted} />
     <div class="dim"></div>
-    {#if (mode === 'screen-capture' || mode === 'screen-rect') && imgEl}
-      {@const r = imgEl.getBoundingClientRect()}
+    {#if (mode === 'screen-capture' || mode === 'screen-rect') && viewRect}
+      {@const r = viewRect}
       {#each frame.monitors ?? [] as monitor (monitor.id)}
         <button
           class="monitor"
@@ -237,8 +295,8 @@
         </button>
       {/each}
     {/if}
-    {#if (mode === 'window-capture' || mode === 'window-rect') && imgEl}
-      {@const r = imgEl.getBoundingClientRect()}
+    {#if (mode === 'window-capture' || mode === 'window-rect') && viewRect}
+      {@const r = viewRect}
       {#each frame.windows ?? [] as window (window.id)}
         <button
           class="target window"
@@ -257,8 +315,8 @@
         <div class="message">No selectable windows found</div>
       {/if}
     {/if}
-    {#if selectionMode() && hoverWindow && imgEl && !box && !selectedRect}
-      {@const r = imgEl.getBoundingClientRect()}
+    {#if selectionMode() && hoverWindow && viewRect && !box && !selectedRect}
+      {@const r = viewRect}
       <div
         class="target hover-window"
         style="
@@ -270,8 +328,8 @@
         <span>{hoverWindow.title}</span>
       </div>
     {/if}
-    {#if selectedRect && imgEl}
-      {@const r = imgEl.getBoundingClientRect()}
+    {#if selectedRect && viewRect}
+      {@const r = viewRect}
       {@const sr = { x: selectedRect[0], y: selectedRect[1], w: selectedRect[2], h: selectedRect[3] }}
       <div
         class="sel final"
@@ -293,14 +351,22 @@
           top:{Math.max(16, Math.min(globalThis.innerHeight - 56, r.top + ((sr.y + sr.h) / frame.height) * r.height + 12))}px"
       >
         {#if selectedTitle}<span class="chosen" title={selectedTitle}>{selectedTitle}</span>{/if}
-        <button onclick={() => captureRect()}>Capture</button>
-        <button onclick={() => recordRect()}>Record</button>
-        <button onclick={captureFullScreen}>Full screen</button>
-        <button class="ghost" onclick={cancel}>Cancel</button>
+        <button class="tool primary" title="Capture" aria-label="Capture" onclick={() => captureRect()}>
+          <svg viewBox="0 0 24 24"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h1.8l1.2-1.7h5L15.7 6h1.8A2.5 2.5 0 0 1 20 8.5v8A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5z"/><circle cx="12" cy="12.5" r="3.3"/></svg>
+        </button>
+        <button class="tool record" title="Record" aria-label="Record" onclick={() => recordRect()}>
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6"/></svg>
+        </button>
+        <button class="tool screen" title="Full screen" aria-label="Full screen" onclick={captureFullScreen}>
+          <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+        </button>
+        <button class="tool quiet" title="Cancel" aria-label="Cancel" onclick={cancel}>
+          <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
       </div>
     {/if}
-    {#if box && imgEl}
-      {@const r = imgEl.getBoundingClientRect()}
+    {#if box && viewRect}
+      {@const r = viewRect}
       <div
         class="sel"
         style="
@@ -400,29 +466,60 @@
     align-items: center;
     gap: 8px;
     max-width: calc(100vw - 32px);
-    padding: 8px;
+    padding: 7px;
     border-radius: 8px;
-    background: rgba(18, 20, 24, 0.92);
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+    background: #141417;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 16px 38px rgba(0, 0, 0, 0.38), 0 2px 8px rgba(0, 0, 0, 0.35);
     backdrop-filter: blur(10px);
   }
-  .actions button {
-    height: 32px;
-    border: none;
+  .tool {
+    width: 44px;
+    height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 6px;
-    padding: 0 12px;
-    background: #e8eef5;
-    color: #111318;
-    font: 700 13px system-ui, sans-serif;
+    color: #f7f7f8;
+    background: rgba(255, 255, 255, 0.07);
     cursor: pointer;
   }
-  .actions button:hover {
-    background: #ffffff;
+  .tool:hover {
+    background: rgba(255, 255, 255, 0.14);
+    border-color: rgba(255, 255, 255, 0.2);
   }
-  .actions button.ghost {
-    background: rgba(255, 255, 255, 0.08);
-    color: #f5f5f7;
+  .tool:active {
+    transform: translateY(1px);
+  }
+  .tool.primary {
+    background: #2f7df6;
+    border-color: rgba(255, 255, 255, 0.16);
+  }
+  .tool.primary:hover {
+    background: #438bff;
+  }
+  .tool.record {
+    color: #ff4d5d;
+  }
+  .tool.quiet {
+    color: rgba(255, 255, 255, 0.74);
+  }
+  .tool svg {
+    width: 23px;
+    height: 23px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .record svg {
+    fill: currentColor;
+    stroke: none;
+    width: 18px;
+    height: 18px;
   }
   .chosen {
     max-width: 150px;

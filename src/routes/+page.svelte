@@ -3,6 +3,7 @@
   import { get } from 'svelte/store';
   import { loadLibrary, takeCapture, openEditorByPath, importPaths } from '$lib/stores';
   import { ipcListen, ipcEmit, ipcInvoke } from '$lib/ipc';
+  import { openCapturePicker } from '$lib/capture/openCapture';
   import { initRecordingEvents, startRecording, startRecordingRect } from '$lib/recorder/control';
   import { activeItem, captures } from '$lib/stores';
   import CaptureHeader from '$lib/components/CaptureHeader.svelte';
@@ -36,7 +37,7 @@
       // lands in / leaves a watched dir (global hotkey, external drop).
       uns.push(await ipcListen('library://changed', () => void loadLibrary()));
       // CLI / global-hotkey forwarding (parity with the Python --capture model).
-      uns.push(await ipcListen('cli://capture', () => void ipcInvoke('show_capture_window')));
+      uns.push(await ipcListen('cli://capture', () => void openCapturePicker()));
       uns.push(await ipcListen('cli://fullscreen', () => takeCapture('fullscreen')));
       uns.push(await ipcListen<string>('cli://edit', (p) => openEditorByPath(p)));
       uns.push(await ipcListen<string[]>('cli://import', (fs) => importPaths(fs)));

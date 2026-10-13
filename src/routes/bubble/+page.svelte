@@ -11,10 +11,9 @@
 
   let size = $state(220);
   let hasCamera = $state(false);
-  /** MJPEG stream URL (backend gst → loopback server) — '' = stopped. The
-   *  webview never touches getUserMedia: WebKitGTK's capture portal is
-   *  unreliable in the Flatpak (launch crashes, silent black feeds); the
-   *  backend reads the camera with GStreamer and serves multipart JPEG. */
+  let cameraError = $state('');
+  /** MJPEG stream URL for native backends. macOS requests app-owned permission
+   * before starting its bundled camera helper. */
   let camSrc = $state('');
   let videoEl: HTMLVideoElement | undefined;
   let webStream: MediaStream | undefined;
@@ -29,6 +28,7 @@
   }
 
   async function startCamera() {
+    cameraError = '';
     try {
       const s = (await ipcInvoke<Record<string, unknown>>('get_settings')) ?? {};
       const label = String(s.camera_device ?? '');
@@ -51,8 +51,10 @@
         hasCamera = false;
         return;
       }
-    } catch {
+    } catch (error) {
       hasCamera = false;
+      cameraError = error instanceof Error ? error.message : String(error);
+      void ipcInvoke('debug_log', { message: `camera unavailable: ${cameraError}` }).catch(() => {});
     }
   }
 
@@ -145,7 +147,10 @@
       alt=""
       draggable="false"
       onload={() => (hasCamera = true)}
-      onerror={() => (hasCamera = false)}
+      onerror={() => {
+        hasCamera = false;
+        cameraError = 'The selected camera is not sending video. Choose another camera in Settings.';
+      }}
     />
   {/if}
   <video
@@ -157,7 +162,7 @@
     playsinline
   ></video>
   {#if !hasCamera}
-    <div class="placeholder" aria-label="no camera">
+    <div class="placeholder" aria-label="no camera" title={cameraError || 'No camera'}>
       <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.6">
         <path d="M2 7.5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-9Z" />
         <path d="M15 10.5 21 7v10l-6-3.5" />
@@ -167,9 +172,11 @@
 </div>
 
 <style>
-  :global(html, body) {
+  :global(html),
+  :global(body),
+  :global(body > div) {
     margin: 0;
-    background: transparent;
+    background: transparent !important;
     overflow: hidden;
   }
   .bubble {
@@ -180,7 +187,7 @@
     overflow: hidden;
     box-sizing: border-box;
     border: 3px solid rgba(255, 255, 255, 0.86);
-    background: var(--bg-elevated, #1e1e22);
+    background: transparent;
     cursor: grab;
     user-select: none;
   }
@@ -204,5 +211,6 @@
     justify-content: center;
     color: var(--fg-secondary, #c8c8cd);
     background: var(--bg-elevated, #1e1e22);
+    border-radius: 50%;
   }
 </style>

@@ -111,7 +111,10 @@ pub struct Effects {
 
 /// Convert typed items to opaque JSON values for `sidecar::SidecarDoc.items`.
 pub fn items_to_values(items: &[Item]) -> Vec<serde_json::Value> {
-    items.iter().map(|i| serde_json::to_value(i).unwrap()).collect()
+    items
+        .iter()
+        .map(|i| serde_json::to_value(i).unwrap())
+        .collect()
 }
 
 /// Parse opaque JSON values back into typed items, skipping any that don't match.
@@ -131,16 +134,76 @@ mod tests {
         let back = serde_json::to_value(&item).expect("serialize");
         assert_eq!(v, back, "roundtrip mismatch for {json}");
     }
-    #[test] fn arrow() { roundtrip(r##"{"type":"arrow","p1":[1.0,2.0],"p2":[3.0,4.0],"color":"#ff0000ff","width":4,"pos":[0.0,0.0],"rotation":0.0,"origin":[0.0,0.0]}"##); }
-    #[test] fn line() { roundtrip(r##"{"type":"line","p1":[1.0,2.0],"p2":[3.0,4.0],"color":"#00ff00ff","width":2,"pos":[0.0,0.0],"rotation":0.0,"origin":[0.0,0.0]}"##); }
-    #[test] fn rect_no_fill() { roundtrip(r##"{"type":"rect","rect":[0.0,0.0,10.0,20.0],"color":"#112233ff","width":3,"pos":[0.0,0.0],"rotation":0.0,"origin":[0.0,0.0]}"##); }
-    #[test] fn rect_with_fill() { roundtrip(r##"{"type":"rect","rect":[0.0,0.0,10.0,20.0],"color":"#112233ff","width":3,"fill":"#445566ff","pos":[0.0,0.0],"rotation":0.0,"origin":[0.0,0.0]}"##); }
-    #[test] fn ellipse() { roundtrip(r##"{"type":"ellipse","rect":[0.0,0.0,10.0,20.0],"color":"#112233ff","width":3,"pos":[0.0,0.0],"rotation":0.0,"origin":[0.0,0.0]}"##); }
-    #[test] fn highlight() { roundtrip(r##"{"type":"highlight","rect":[0.0,0.0,60.0,20.0],"color":"#ffe000","pos":[0.0,0.0],"rotation":0.0,"origin":[0.0,0.0]}"##); }
-    #[test] fn freehand() { roundtrip(r##"{"type":"freehand","points":[[1.0,2.0],[3.0,4.0],[5.0,6.0]],"color":"#000000ff","width":2,"pos":[0.0,0.0],"rotation":0.0,"origin":[0.0,0.0]}"##); }
-    #[test] fn text() { roundtrip(r##"{"type":"text","text":"hi","color":"#ffffffff","family":"Sans","point_size":24,"bold":true,"text_width":-1.0,"align":"left","pos":[0.0,0.0],"rotation":0.0,"origin":[0.0,0.0]}"##); }
-    #[test] fn step() { roundtrip(r##"{"type":"step","number":3,"color":"#3b82f6ff","radius":16.0,"pos":[5.0,5.0],"rotation":0.0,"origin":[0.0,0.0]}"##); }
-    #[test] fn pixelate() { roundtrip(r##"{"type":"pixelate","rect":[20.0,20.0,60.0,40.0],"block":14,"pos":[0.0,0.0],"rotation":0.0,"origin":[0.0,0.0]}"##); }
-    #[test] fn blur() { roundtrip(r##"{"type":"blur","rect":[20.0,20.0,60.0,40.0],"radius":12,"pos":[0.0,0.0],"rotation":0.0,"origin":[0.0,0.0]}"##); }
-    #[test] fn rotation_geometry_preserved() { roundtrip(r##"{"type":"rect","rect":[0.0,0.0,10.0,20.0],"color":"#112233ff","width":3,"pos":[-12.625,7.0625],"rotation":33.7,"origin":[53.05,21.35]}"##); }
+    #[test]
+    fn arrow() {
+        roundtrip(
+            r##"{"type":"arrow","p1":[1.0,2.0],"p2":[3.0,4.0],"color":"#ff0000ff","width":4,"pos":[0.0,0.0],"rotation":0.0,"origin":[0.0,0.0]}"##,
+        );
+    }
+    #[test]
+    fn line() {
+        roundtrip(
+            r##"{"type":"line","p1":[1.0,2.0],"p2":[3.0,4.0],"color":"#00ff00ff","width":2,"pos":[0.0,0.0],"rotation":0.0,"origin":[0.0,0.0]}"##,
+        );
+    }
+    #[test]
+    fn rect_no_fill() {
+        roundtrip(
+            r##"{"type":"rect","rect":[0.0,0.0,10.0,20.0],"color":"#112233ff","width":3,"pos":[0.0,0.0],"rotation":0.0,"origin":[0.0,0.0]}"##,
+        );
+    }
+    #[test]
+    fn rect_with_fill() {
+        roundtrip(
+            r##"{"type":"rect","rect":[0.0,0.0,10.0,20.0],"color":"#112233ff","width":3,"fill":"#445566ff","pos":[0.0,0.0],"rotation":0.0,"origin":[0.0,0.0]}"##,
+        );
+    }
+    #[test]
+    fn ellipse() {
+        roundtrip(
+            r##"{"type":"ellipse","rect":[0.0,0.0,10.0,20.0],"color":"#112233ff","width":3,"pos":[0.0,0.0],"rotation":0.0,"origin":[0.0,0.0]}"##,
+        );
+    }
+    #[test]
+    fn highlight() {
+        roundtrip(
+            r##"{"type":"highlight","rect":[0.0,0.0,60.0,20.0],"color":"#ffe000","pos":[0.0,0.0],"rotation":0.0,"origin":[0.0,0.0]}"##,
+        );
+    }
+    #[test]
+    fn freehand() {
+        roundtrip(
+            r##"{"type":"freehand","points":[[1.0,2.0],[3.0,4.0],[5.0,6.0]],"color":"#000000ff","width":2,"pos":[0.0,0.0],"rotation":0.0,"origin":[0.0,0.0]}"##,
+        );
+    }
+    #[test]
+    fn text() {
+        roundtrip(
+            r##"{"type":"text","text":"hi","color":"#ffffffff","family":"Sans","point_size":24,"bold":true,"text_width":-1.0,"align":"left","pos":[0.0,0.0],"rotation":0.0,"origin":[0.0,0.0]}"##,
+        );
+    }
+    #[test]
+    fn step() {
+        roundtrip(
+            r##"{"type":"step","number":3,"color":"#3b82f6ff","radius":16.0,"pos":[5.0,5.0],"rotation":0.0,"origin":[0.0,0.0]}"##,
+        );
+    }
+    #[test]
+    fn pixelate() {
+        roundtrip(
+            r##"{"type":"pixelate","rect":[20.0,20.0,60.0,40.0],"block":14,"pos":[0.0,0.0],"rotation":0.0,"origin":[0.0,0.0]}"##,
+        );
+    }
+    #[test]
+    fn blur() {
+        roundtrip(
+            r##"{"type":"blur","rect":[20.0,20.0,60.0,40.0],"radius":12,"pos":[0.0,0.0],"rotation":0.0,"origin":[0.0,0.0]}"##,
+        );
+    }
+    #[test]
+    fn rotation_geometry_preserved() {
+        roundtrip(
+            r##"{"type":"rect","rect":[0.0,0.0,10.0,20.0],"color":"#112233ff","width":3,"pos":[-12.625,7.0625],"rotation":33.7,"origin":[53.05,21.35]}"##,
+        );
+    }
 }

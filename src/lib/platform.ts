@@ -33,10 +33,10 @@ export async function usesNativeRecorder(): Promise<boolean> {
   return isNativeRecorderPlatform(platform);
 }
 
-export function shouldUseBrowserMedia(_platform: PlatformName): boolean {
-  return false;
+export function shouldUseBrowserMedia(platform: PlatformName): boolean {
+  return platform === 'macos';
 }
 
 export function isNativeRecorderPlatform(platform: PlatformName): boolean {
-  return platform === 'linux' || platform === 'windows';
+  return platform === 'linux' || platform === 'windows' || platform === 'macos';
 }

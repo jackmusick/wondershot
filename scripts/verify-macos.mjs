@@ -1,0 +1,10 @@
+import { execFileSync } from 'node:child_process';
+if (process.platform !== 'darwin') throw new Error('Run macOS verification on a Mac');
+const run = (command, args) => execFileSync(command, args, { stdio: 'inherit' });
+run('python3', ['scripts/prepare-macos-ffmpeg.py']);
+run('npm', ['run', 'check']);
+run('npm', ['test']);
+run('npm', ['run', 'test:ui']);
+run('cargo', ['test', '--workspace']);
+run('npm', ['run', 'test:macos:media']);
+run('npm', ['run', 'build:macos', '--', '--debug']);

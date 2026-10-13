@@ -75,7 +75,10 @@ mod tests {
     }
     #[test]
     fn edit_takes_path() {
-        assert_eq!(p(&["--edit", "/a/b.png"]), CliAction::Edit("/a/b.png".into()));
+        assert_eq!(
+            p(&["--edit", "/a/b.png"]),
+            CliAction::Edit("/a/b.png".into())
+        );
     }
     #[test]
     fn import_takes_many() {

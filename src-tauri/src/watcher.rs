@@ -52,24 +52,25 @@ pub fn rewatch(app: &tauri::AppHandle, state: &LibWatch) {
     let dirs = Settings::load().library_dirs();
 
     let (tx, rx) = mpsc::channel::<()>();
-    let mut watcher = match notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
-        if let Ok(event) = res {
-            use notify::EventKind;
-            let relevant_kind = matches!(
-                event.kind,
-                EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
-            );
-            if relevant_kind && event.paths.iter().any(|p| is_relevant(p)) {
-                let _ = tx.send(());
+    let mut watcher =
+        match notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+            if let Ok(event) = res {
+                use notify::EventKind;
+                let relevant_kind = matches!(
+                    event.kind,
+                    EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
+                );
+                if relevant_kind && event.paths.iter().any(|p| is_relevant(p)) {
+                    let _ = tx.send(());
+                }
             }
-        }
-    }) {
-        Ok(w) => w,
-        Err(e) => {
-            eprintln!("library watcher unavailable: {e}");
-            return;
-        }
-    };
+        }) {
+            Ok(w) => w,
+            Err(e) => {
+                eprintln!("library watcher unavailable: {e}");
+                return;
+            }
+        };
 
     let mut watching = 0usize;
     for dir in &dirs {

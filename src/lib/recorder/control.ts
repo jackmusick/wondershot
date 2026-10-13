@@ -7,10 +7,10 @@
  * directly so the header is fully interactive without a backend.
  */
 import { get } from 'svelte/store';
-import { recording, loadLibrary } from '$lib/stores';
+import { recording, recordingError, loadLibrary } from '$lib/stores';
 import { ipcInvoke } from '$lib/ipc';
 import { pushMockRecording } from '$lib/ipc.mock';
-import { USE_MOCK, usesBrowserMedia } from '$lib/platform';
+import { USE_MOCK, usesBrowserMedia, usesNativeRecorder } from '$lib/platform';
 import { startBrowserRecording, type BrowserRecordingSession } from '$lib/media/browserRecorder';
 import {
   selectNativeRegionRect,
@@ -81,25 +81,13 @@ async function hideBubble() {
 }
 
 /**
- * Show the fullscreen countdown window with `secs`. The pre-created window has a
- * static `/countdown` URL (no secs), so we recreate it at runtime to inject the
- * query param the countdown page reads at mount. Resolves once the countdown
+ * Show the fullscreen countdown window with `secs`. Resolves once the countdown
  * settles: `done` → begin recording, `cancel` → abort.
  */
 async function runCountdown(secs: number): Promise<'done' | 'cancel'> {
   if (USE_MOCK) return 'done';
   const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
   const { listen } = await import('@tauri-apps/api/event');
-
-  // Drop any pre-created/static countdown window so the fresh one carries ?secs.
-  const existing = await WebviewWindow.getByLabel('countdown');
-  if (existing) {
-    try {
-      await existing.close();
-    } catch {
-      /* ignore */
-    }
-  }
 
   return new Promise<'done' | 'cancel'>((resolve) => {
     let settled = false;
@@ -136,18 +124,21 @@ async function runCountdown(secs: number): Promise<'done' | 'cancel'> {
 
 /** Issue the actual start (bubble + backend command, or mock timer). */
 async function doStart(cameraEnabled: boolean, rect?: NativeRect) {
+  recordingError.set('');
   if (USE_MOCK) {
     startMockTimer();
     return;
   }
   const settings = await readSettings();
-  if (await usesBrowserMedia()) {
+  if (!(await usesNativeRecorder()) && await usesBrowserMedia()) {
+    if (cameraEnabled) await showBubble();
     browserSession = await startBrowserRecording(
       settings,
       startMockTimer,
       () => {
         browserSession = undefined;
         stopMockTimer();
+        void hideBubble();
       },
       loadLibrary,
       (e) => {
@@ -185,6 +176,8 @@ export async function startRecording(mode: 'screen' | 'region' | 'display' = 'sc
     await doStart(cameraEnabled, rect);
   } catch (e) {
     console.error('startRecording failed', e);
+    recordingError.set(String(e));
+    await hideBubble();
   } finally {
     starting = false;
   }
@@ -205,6 +198,8 @@ export async function startRecordingRect(rect: NativeRect): Promise<void> {
     await doStart(cameraEnabled, rect);
   } catch (e) {
     console.error('startRecordingRect failed', e);
+    recordingError.set(String(e));
+    await hideBubble();
   } finally {
     starting = false;
   }
@@ -219,7 +214,7 @@ export async function stopRecording(): Promise<void> {
     await loadLibrary();
     return;
   }
-  if (await usesBrowserMedia()) {
+  if (browserSession) {
     if (browserSession) {
       recording.set({ status: 'idle' });
       browserSession.stop();
@@ -241,7 +236,7 @@ export async function pauseRecording(): Promise<void> {
     recording.set({ ...cur, paused: true });
     return;
   }
-  if (await usesBrowserMedia()) {
+  if (browserSession) {
     browserSession?.pause();
     recording.set({ ...cur, paused: true });
     return;
@@ -260,7 +255,7 @@ export async function resumeRecording(): Promise<void> {
     recording.set({ ...cur, paused: false });
     return;
   }
-  if (await usesBrowserMedia()) {
+  if (browserSession) {
     browserSession?.resume();
     recording.set({ ...cur, paused: false });
     return;
@@ -312,6 +307,7 @@ export async function initRecordingEvents(): Promise<() => void> {
     }),
     ipcListen<string>('recording://failed', async (msg) => {
       console.error('recording failed:', msg);
+      recordingError.set(msg);
       recording.set({ status: 'idle' });
       await hideBubble();
     }),

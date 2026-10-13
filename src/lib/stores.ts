@@ -16,6 +16,7 @@ export const captures = writable<Capture[]>([]);
 export const activeItem = writable<Capture | null>(null);
 export const view = writable<View>('gallery');
 export const recording = writable<RecordingState>({ status: 'idle' });
+export const recordingError = writable('');
 export const settingsOpen = writable<boolean>(false);
 export const capturePanelOpen = writable<boolean>(false);
 /** Pinned capture paths (filmstrip pin affordance). */

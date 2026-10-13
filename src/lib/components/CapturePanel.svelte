@@ -3,6 +3,13 @@
   // selection button, plus full screen and recording actions.
   import { capturePanelOpen, takeCapture } from '$lib/stores';
   import { ipcInvoke } from '$lib/ipc';
+  import {
+    openScreenCaptureSettings,
+    requestScreenCapturePermission,
+    screenCaptureBlocked,
+    screenCapturePermissionStatus,
+    type ScreenCapturePermission
+  } from '$lib/capture/permissions';
   import { startRecording } from '$lib/recorder/control';
 
   let copyAfter = $state(true);
@@ -10,6 +17,10 @@
   let cursor = $state(false);
   let delay = $state(0);
   let loaded = $state(false);
+  let permission = $state<ScreenCapturePermission | null>(null);
+  let permissionBusy = $state(false);
+  let permissionMsg = $state('');
+  let permissionErr = $state('');
 
   async function load() {
     const s = (await ipcInvoke<Record<string, unknown>>('get_settings')) ?? {};
@@ -17,6 +28,7 @@
     preview = s.show_gallery_after_capture !== false;
     cursor = s.capture_cursor === true;
     delay = Number(s.capture_delay ?? 0);
+    await refreshPermission();
     loaded = true;
   }
 
@@ -39,8 +51,50 @@
     capturePanelOpen.set(false);
   }
 
-  function capture(mode: 'region' | 'fullscreen') {
+  async function refreshPermission() {
+    permissionErr = '';
+    permissionMsg = '';
+    try {
+      permission = await screenCapturePermissionStatus();
+    } catch (err) {
+      permissionErr = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  async function requestPermission() {
+    permissionBusy = true;
+    permissionErr = '';
+    permissionMsg = '';
+    try {
+      permission = await requestScreenCapturePermission();
+      permissionMsg = permission.granted
+        ? 'Screen Recording permission is enabled.'
+        : 'If macOS has already denied access, enable Wondershot in System Settings and try again.';
+    } catch (err) {
+      permissionErr = err instanceof Error ? err.message : String(err);
+    } finally {
+      permissionBusy = false;
+    }
+  }
+
+  async function openPermissionSettings() {
+    permissionBusy = true;
+    permissionErr = '';
+    permissionMsg = '';
+    try {
+      await openScreenCaptureSettings();
+      permissionMsg = 'Wondershot should now appear in Screen Recording. Enable it, then click Try Again.';
+    } catch (err) {
+      permissionErr = err instanceof Error ? err.message : String(err);
+    } finally {
+      permissionBusy = false;
+    }
+  }
+
+  async function capture(mode: 'region' | 'fullscreen') {
     persist();
+    await refreshPermission();
+    if (screenCaptureBlocked(permission)) return;
     close();
     takeCapture(mode);
   }
@@ -57,19 +111,33 @@
     <button class="backdrop" aria-label="Close capture panel" onclick={close}></button>
     <div class="panel" role="dialog" aria-label="Capture">
       <div class="opts">
-        <label class="check"><input type="checkbox" bind:checked={preview} /> Preview in editor</label>
-        <label class="check"><input type="checkbox" bind:checked={copyAfter} /> Copy to clipboard</label>
-        <label class="check"><input type="checkbox" bind:checked={cursor} /> Capture cursor</label>
-        <label class="delay">
-          Delay
-          <input type="number" min="0" max="10" bind:value={delay} /> s
-        </label>
+        {#if screenCaptureBlocked(permission)}
+          <div class="permission">
+            <strong>Screen Recording permission required</strong>
+            <span>Wondershot needs macOS Screen Recording permission before the capture overlay opens.</span>
+            {#if permissionMsg}<span class="perm-msg">{permissionMsg}</span>{/if}
+            {#if permissionErr}<span class="perm-err">{permissionErr}</span>{/if}
+            <div class="perm-actions">
+              <button disabled={permissionBusy} onclick={requestPermission}>Request Permission</button>
+              <button disabled={permissionBusy} onclick={openPermissionSettings}>Open Settings</button>
+              <button disabled={permissionBusy} onclick={refreshPermission}>Try Again</button>
+            </div>
+          </div>
+        {:else}
+          <label class="check"><input type="checkbox" bind:checked={preview} /> Preview in editor</label>
+          <label class="check"><input type="checkbox" bind:checked={copyAfter} /> Copy to clipboard</label>
+          <label class="check"><input type="checkbox" bind:checked={cursor} /> Capture cursor</label>
+          <label class="delay">
+            Delay
+            <input type="number" min="0" max="10" bind:value={delay} /> s
+          </label>
+        {/if}
       </div>
-      <button class="capture" onclick={() => capture('region')} title="Select a region or hover a window">
+      <button class="capture" disabled={screenCaptureBlocked(permission)} onclick={() => capture('region')} title="Select a region or hover a window">
         Capture
       </button>
       <div class="links">
-        <button class="link" onclick={() => capture('fullscreen')}>Full screen</button>
+        <button class="link" disabled={screenCaptureBlocked(permission)} onclick={() => capture('fullscreen')}>Full screen</button>
         <button class="link" onclick={() => record()}>Record</button>
         <button class="link" onclick={() => record('region')}>Record Region</button>
       </div>
@@ -88,6 +156,18 @@
     color: var(--fg-primary); font-size: var(--text-base);
   }
   .opts { display: flex; flex-direction: column; gap: 7px; }
+  .permission { display: grid; gap: 7px; max-width: 360px; }
+  .permission strong { font-size: var(--text-base); }
+  .permission span { color: var(--fg-secondary); font-size: var(--text-small); line-height: 1.35; }
+  .permission .perm-msg { color: var(--accent-strong); }
+  .permission .perm-err { color: var(--danger); }
+  .perm-actions { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 3px; }
+  .perm-actions button {
+    height: 28px; border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--bg-field); color: var(--fg-primary); padding: 0 10px; cursor: pointer;
+    font-size: var(--text-small);
+  }
+  .perm-actions button:hover:not(:disabled) { background: var(--bg-hover); }
   .check { display: flex; align-items: center; gap: 8px; }
   .check input { accent-color: var(--accent); }
   .delay { display: flex; align-items: center; gap: 6px; color: var(--fg-secondary); font-size: var(--text-small); }
@@ -98,7 +178,9 @@
     cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,0.35);
   }
   .capture:hover { filter: brightness(1.06); }
+  .capture:disabled { opacity: 0.45; cursor: default; filter: none; }
   .links { grid-column: 1 / -1; display: flex; gap: 14px; justify-content: flex-start; }
   .link { border: none; background: transparent; color: var(--accent-strong); cursor: pointer; font-size: var(--text-base); padding: 0; }
   .link:hover { text-decoration: underline; }
+  .link:disabled { opacity: 0.45; cursor: default; text-decoration: none; }
 </style>

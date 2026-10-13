@@ -1,7 +1,7 @@
 # Wondershot
 
 **Capture → mark up → drag it into your doc.** A Snagit-inspired
-screenshot and screen-recording tool for Linux and Windows.
+screenshot and screen-recording tool for macOS, Linux, and Windows.
 
 ## Why this exists
 
@@ -151,3 +151,21 @@ they're cheap to bind to keys.
 
 [AGPL-3.0-or-later](LICENSE) — free to use, modify, and redistribute;
 derivatives must stay open source.
+
+## macOS development and regression checks
+
+Install Node, Rust, and FFmpeg (`brew install ffmpeg`), then `npm ci` and
+`npx playwright install chromium`. Run `npm run verify:macos` for background
+regression tests and a packaged debug build.
+
+Use `npm run build:macos -- --debug` and launch the packaged app from the same
+installed path (`/Applications/Wondershot.app`) during native development.
+This binds the complete app bundle to a stable local signing requirement,
+which preserved Screen Recording permission across the tested rebuild.
+Launching the raw `target/debug/wondershot` executable or `tauri dev` uses a
+different app identity and may prompt again. The build packages FFmpeg, so an
+installed app does not depend on the developer's Homebrew installation.
+
+See [platform support](docs/platform-support.md) for capabilities and the
+installed-app background screen capture check. macOS CI runs the headless
+canvas/video regressions and real FFmpeg processing tests on every PR.

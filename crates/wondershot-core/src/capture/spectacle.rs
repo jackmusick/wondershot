@@ -8,7 +8,13 @@ pub fn spectacle_args(mode: CaptureMode, out: &str, cursor: bool, delay_secs: u3
         CaptureMode::Fullscreen => "-f",
         CaptureMode::Window => "-a",
     };
-    let mut args: Vec<String> = vec!["-b".into(), "-n".into(), flag.into(), "-o".into(), out.into()];
+    let mut args: Vec<String> = vec![
+        "-b".into(),
+        "-n".into(),
+        flag.into(),
+        "-o".into(),
+        out.into(),
+    ];
     if cursor {
         args.insert(2, "-p".into());
     }

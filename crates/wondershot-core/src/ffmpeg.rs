@@ -20,8 +20,12 @@ pub fn find_ffmpeg() -> Result<PathBuf, String> {
                 if let Some(parent) = dir.parent() {
                     candidates.extend([
                         parent.join("resources").join("ffmpeg.exe"),
-                        parent.join("resources").join("ffmpeg-x86_64-pc-windows-gnu.exe"),
-                        parent.join("resources").join("ffmpeg-x86_64-pc-windows-msvc.exe"),
+                        parent
+                            .join("resources")
+                            .join("ffmpeg-x86_64-pc-windows-gnu.exe"),
+                        parent
+                            .join("resources")
+                            .join("ffmpeg-x86_64-pc-windows-msvc.exe"),
                     ]);
                 }
             }
@@ -60,11 +64,16 @@ pub fn find_ffmpeg() -> Result<PathBuf, String> {
                 .find_map(|p| names.iter().map(|name| p.join(name)).find(|p| p.is_file()))
         })
         .or_else(|| {
-            ["/usr/bin/ffmpeg", "/usr/local/bin/ffmpeg", "/app/bin/ffmpeg"]
-                .into_iter()
-                .map(Path::new)
-                .find(|p| p.is_file())
-                .map(Path::to_path_buf)
+            [
+                "/usr/bin/ffmpeg",
+                "/opt/homebrew/bin/ffmpeg",
+                "/usr/local/bin/ffmpeg",
+                "/app/bin/ffmpeg",
+            ]
+            .into_iter()
+            .map(Path::new)
+            .find(|p| p.is_file())
+            .map(Path::to_path_buf)
         })
         .ok_or_else(|| "ffmpeg not found on PATH".to_string())
 }

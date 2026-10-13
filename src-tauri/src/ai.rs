@@ -100,7 +100,9 @@ pub fn chat(
             Err(e) => return Err(format!("could not reach AI endpoint: {e}")),
         }
     }
-    Err(format!("{last_err} — gave up after {ATTEMPTS} attempts; try again in a minute"))
+    Err(format!(
+        "{last_err} — gave up after {ATTEMPTS} attempts; try again in a minute"
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -232,11 +234,18 @@ pub struct Word {
 /// Word boxes out of `tesseract … tsv` output (conf ≥ 0 rows with text).
 pub fn parse_tsv(tsv: &str) -> Vec<Word> {
     let mut lines = tsv.lines();
-    let Some(header) = lines.next() else { return Vec::new() };
+    let Some(header) = lines.next() else {
+        return Vec::new();
+    };
     let cols: Vec<&str> = header.split('\t').collect();
     let idx = |name: &str| cols.iter().position(|c| *c == name);
     let (Some(left), Some(top), Some(width), Some(height), Some(conf), Some(text)) = (
-        idx("left"), idx("top"), idx("width"), idx("height"), idx("conf"), idx("text"),
+        idx("left"),
+        idx("top"),
+        idx("width"),
+        idx("height"),
+        idx("conf"),
+        idx("text"),
     ) else {
         return Vec::new();
     };
@@ -250,16 +259,27 @@ pub fn parse_tsv(tsv: &str) -> Vec<Word> {
         if t.is_empty() {
             continue;
         }
-        let Ok(c) = f[conf].parse::<f64>() else { continue };
+        let Ok(c) = f[conf].parse::<f64>() else {
+            continue;
+        };
         if c < 0.0 {
             continue; // structural (non-word) rows
         }
         let (Ok(x), Ok(y), Ok(w), Ok(h)) = (
-            f[left].parse(), f[top].parse(), f[width].parse(), f[height].parse(),
+            f[left].parse(),
+            f[top].parse(),
+            f[width].parse(),
+            f[height].parse(),
         ) else {
             continue;
         };
-        words.push(Word { text: t.to_string(), x, y, w, h });
+        words.push(Word {
+            text: t.to_string(),
+            x,
+            y,
+            w,
+            h,
+        });
     }
     words
 }
@@ -273,7 +293,14 @@ fn ocr_words(png: &[u8]) -> Vec<Word> {
     let attempts: Vec<Vec<&str>> = if crate::commands::in_flatpak() {
         vec![
             vec!["tesseract", "stdin", "stdout", "tsv"],
-            vec!["flatpak-spawn", "--host", "tesseract", "stdin", "stdout", "tsv"],
+            vec![
+                "flatpak-spawn",
+                "--host",
+                "tesseract",
+                "stdin",
+                "stdout",
+                "tsv",
+            ],
         ]
     } else {
         vec![vec!["tesseract", "stdin", "stdout", "tsv"]]
@@ -353,7 +380,12 @@ impl RectPx {
         let y = self.y.min(o.y);
         let r = (self.x + self.w).max(o.x + o.w);
         let b = (self.y + self.h).max(o.y + o.h);
-        RectPx { x, y, w: r - x, h: b - y }
+        RectPx {
+            x,
+            y,
+            w: r - x,
+            h: b - y,
+        }
     }
 
     fn clamp(self, width: i32, height: i32) -> Option<RectPx> {
@@ -361,7 +393,12 @@ impl RectPx {
         let y0 = self.y.max(0);
         let x1 = (self.x + self.w).min(width);
         let y1 = (self.y + self.h).min(height);
-        (x1 - x0 >= 4 && y1 - y0 >= 4).then_some(RectPx { x: x0, y: y0, w: x1 - x0, h: y1 - y0 })
+        (x1 - x0 >= 4 && y1 - y0 >= 4).then_some(RectPx {
+            x: x0,
+            y: y0,
+            w: x1 - x0,
+            h: y1 - y0,
+        })
     }
 }
 
@@ -370,7 +407,11 @@ pub fn match_spans(spans: &[String], words: &[Word]) -> Vec<RectPx> {
     let norm_words: Vec<String> = words.iter().map(|w| norm(&w.text)).collect();
     let mut rects: Vec<RectPx> = Vec::new();
     for span in spans {
-        let tokens: Vec<String> = span.split_whitespace().map(norm).filter(|t| !t.is_empty()).collect();
+        let tokens: Vec<String> = span
+            .split_whitespace()
+            .map(norm)
+            .filter(|t| !t.is_empty())
+            .collect();
         if tokens.is_empty() {
             continue;
         }
@@ -380,10 +421,24 @@ pub fn match_spans(spans: &[String], words: &[Word]) -> Vec<RectPx> {
         }
         for i in 0..=(words.len() - n) {
             let window = &norm_words[i..i + n];
-            if tokens.iter().zip(window).all(|(t, w)| t == w || w.contains(t.as_str())) {
-                let mut r = RectPx { x: words[i].x, y: words[i].y, w: words[i].w, h: words[i].h };
+            if tokens
+                .iter()
+                .zip(window)
+                .all(|(t, w)| t == w || w.contains(t.as_str()))
+            {
+                let mut r = RectPx {
+                    x: words[i].x,
+                    y: words[i].y,
+                    w: words[i].w,
+                    h: words[i].h,
+                };
                 for w in &words[i + 1..i + n] {
-                    r = r.union(RectPx { x: w.x, y: w.y, w: w.w, h: w.h });
+                    r = r.union(RectPx {
+                        x: w.x,
+                        y: w.y,
+                        w: w.w,
+                        h: w.h,
+                    });
                 }
                 if !rects.contains(&r) {
                     rects.push(r);
@@ -395,8 +450,12 @@ pub fn match_spans(spans: &[String], words: &[Word]) -> Vec<RectPx> {
 }
 
 fn parse_spans(reply: &str) -> Result<Vec<String>, String> {
-    let data: Value = serde_json::from_str(&extract_json(reply))
-        .map_err(|_| format!("AI reply was not JSON: {}", reply.chars().take(120).collect::<String>()))?;
+    let data: Value = serde_json::from_str(&extract_json(reply)).map_err(|_| {
+        format!(
+            "AI reply was not JSON: {}",
+            reply.chars().take(120).collect::<String>()
+        )
+    })?;
     let arr = data.as_array().ok_or("AI reply was not a JSON array")?;
     Ok(arr
         .iter()
@@ -421,10 +480,17 @@ fn bbox_to_rect(box_: &Value, width: i32, height: i32) -> Option<RectPx> {
 }
 
 fn parse_bboxes(reply: &str, width: i32, height: i32) -> Result<Vec<RectPx>, String> {
-    let data: Value = serde_json::from_str(&extract_json(reply))
-        .map_err(|_| format!("AI reply was not JSON: {}", reply.chars().take(120).collect::<String>()))?;
+    let data: Value = serde_json::from_str(&extract_json(reply)).map_err(|_| {
+        format!(
+            "AI reply was not JSON: {}",
+            reply.chars().take(120).collect::<String>()
+        )
+    })?;
     let arr = data.as_array().ok_or("AI reply was not a JSON array")?;
-    Ok(arr.iter().filter_map(|b| bbox_to_rect(b, width, height)).collect())
+    Ok(arr
+        .iter()
+        .filter_map(|b| bbox_to_rect(b, width, height))
+        .collect())
 }
 
 /// Full redact pipeline over PNG bytes (blocking; call off the main thread).
@@ -440,11 +506,18 @@ pub fn redact_regions(
     let b64 = base64::engine::general_purpose::STANDARD.encode(png);
     let words = ocr_words(png);
     if !words.is_empty() {
-        let joined = words.iter().map(|w| w.text.as_str()).collect::<Vec<_>>().join(" ");
+        let joined = words
+            .iter()
+            .map(|w| w.text.as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
         let prompt = SPAN_PROMPT.replace("{words}", &joined);
         let reply = chat(endpoint, api_key, model, &prompt, Some(&b64))?;
         let rects = match_spans(&parse_spans(&reply)?, &words);
-        return Ok(rects.into_iter().filter_map(|r| r.clamp(width, height)).collect());
+        return Ok(rects
+            .into_iter()
+            .filter_map(|r| r.clamp(width, height))
+            .collect());
     }
     let reply = chat(endpoint, api_key, model, BBOX_PROMPT, Some(&b64))?;
     parse_bboxes(&reply, width, height)
@@ -537,19 +610,31 @@ fn region_dicts(reply: &str) -> Option<Vec<Value>> {
     if let Some(Value::Array(arr)) = data {
         return Some(arr);
     }
-    let objs: Vec<Value> = iter_json_values(reply).into_iter().filter(|v| v.is_object()).collect();
+    let objs: Vec<Value> = iter_json_values(reply)
+        .into_iter()
+        .filter(|v| v.is_object())
+        .collect();
     (!objs.is_empty()).then_some(objs)
 }
 
-pub fn parse_regions(reply: &str, width: i32, height: i32) -> Result<Vec<(RectPx, String)>, String> {
+pub fn parse_regions(
+    reply: &str,
+    width: i32,
+    height: i32,
+) -> Result<Vec<(RectPx, String)>, String> {
     let Some(data) = region_dicts(reply) else {
         if looks_truncated(reply) {
-            return Err("the model's reply was cut off (it hit its output token limit \
+            return Err(
+                "the model's reply was cut off (it hit its output token limit \
                         before finishing). Try a model with a larger output limit, or \
                         simplify a smaller crop."
-                .into());
+                    .into(),
+            );
         }
-        return Err(format!("AI reply was not JSON: {}", reply.chars().take(120).collect::<String>()));
+        return Err(format!(
+            "AI reply was not JSON: {}",
+            reply.chars().take(120).collect::<String>()
+        ));
     };
     let mut out = Vec::new();
     for box_ in data {
@@ -592,7 +677,12 @@ pub fn simplify_regions(
             };
             let stroke = if kind == "image" { darker(fill) } else { fill };
             let _ = TEXT_FILL; // keep the named constant for greppability
-            SimplifyRegion { rect, kind, fill: hex(fill), stroke: hex(stroke) }
+            SimplifyRegion {
+                rect,
+                kind,
+                fill: hex(fill),
+                stroke: hex(stroke),
+            }
         })
         .collect())
 }
@@ -604,7 +694,10 @@ mod tests {
     #[test]
     fn chat_url_normalizes() {
         assert_eq!(chat_url("https://x.ai"), "https://x.ai/v1/chat/completions");
-        assert_eq!(chat_url("https://x.ai/v1/"), "https://x.ai/v1/chat/completions");
+        assert_eq!(
+            chat_url("https://x.ai/v1/"),
+            "https://x.ai/v1/chat/completions"
+        );
         assert_eq!(
             chat_url("https://x.ai/v1/chat/completions"),
             "https://x.ai/v1/chat/completions"
@@ -614,7 +707,10 @@ mod tests {
     #[test]
     fn extract_json_unwraps_fences_and_prose() {
         assert_eq!(extract_json("```json\n[1,2]\n```"), "[1,2]");
-        assert_eq!(extract_json("Sure! here: [\"a\"] hope that helps"), "[\"a\"]");
+        assert_eq!(
+            extract_json("Sure! here: [\"a\"] hope that helps"),
+            "[\"a\"]"
+        );
         assert_eq!(extract_json("see [below] for {\"k\": 1}"), "{\"k\": 1}");
     }
 
@@ -633,20 +729,56 @@ mod tests {
     #[test]
     fn match_spans_unions_multiword() {
         let words = vec![
-            Word { text: "email:".into(), x: 0, y: 0, w: 50, h: 10 },
-            Word { text: "jack@example.com".into(), x: 60, y: 0, w: 120, h: 10 },
+            Word {
+                text: "email:".into(),
+                x: 0,
+                y: 0,
+                w: 50,
+                h: 10,
+            },
+            Word {
+                text: "jack@example.com".into(),
+                x: 60,
+                y: 0,
+                w: 120,
+                h: 10,
+            },
         ];
         let rects = match_spans(&["jack@example.com".to_string()], &words);
-        assert_eq!(rects, vec![RectPx { x: 60, y: 0, w: 120, h: 10 }]);
+        assert_eq!(
+            rects,
+            vec![RectPx {
+                x: 60,
+                y: 0,
+                w: 120,
+                h: 10
+            }]
+        );
         let rects = match_spans(&["email: jack@example.com".to_string()], &words);
-        assert_eq!(rects, vec![RectPx { x: 0, y: 0, w: 180, h: 10 }]);
+        assert_eq!(
+            rects,
+            vec![RectPx {
+                x: 0,
+                y: 0,
+                w: 180,
+                h: 10
+            }]
+        );
     }
 
     #[test]
     fn parse_bboxes_clamps_and_scales() {
         let reply = r#"[{"x0": 0.1, "y0": 0.2, "x1": 0.5, "y1": 0.4}, {"x0": 2, "y0": 2, "x1": 3, "y1": 3}]"#;
         let rects = parse_bboxes(reply, 1000, 500).unwrap();
-        assert_eq!(rects, vec![RectPx { x: 100, y: 100, w: 400, h: 100 }]);
+        assert_eq!(
+            rects,
+            vec![RectPx {
+                x: 100,
+                y: 100,
+                w: 400,
+                h: 100
+            }]
+        );
     }
 
     #[test]
@@ -672,7 +804,15 @@ mod tests {
                 img.put_pixel(x, y, image::Rgba([255, 0, 0, 255]));
             }
         }
-        let c = dominant_color(&img, RectPx { x: 0, y: 0, w: 64, h: 64 });
+        let c = dominant_color(
+            &img,
+            RectPx {
+                x: 0,
+                y: 0,
+                w: 64,
+                h: 64,
+            },
+        );
         assert_eq!(c, (10, 200, 30));
     }
 }

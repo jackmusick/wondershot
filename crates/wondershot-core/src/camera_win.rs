@@ -44,7 +44,11 @@ pub fn open(label: &str) -> Result<CameraStream, String> {
         .stdout
         .take()
         .ok_or_else(|| "ffmpeg camera stream did not expose stdout".to_string())?;
-    Ok(CameraStream { child: Mutex::new(child), stdout: Mutex::new(stdout), buf: Mutex::new(Vec::new()) })
+    Ok(CameraStream {
+        child: Mutex::new(child),
+        stdout: Mutex::new(stdout),
+        buf: Mutex::new(Vec::new()),
+    })
 }
 
 pub fn open_with_retry(label: &str, attempts: u32, delay_ms: u64) -> Result<CameraStream, String> {

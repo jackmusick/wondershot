@@ -123,7 +123,9 @@
     baseSrc: string;
     items: Item[];
   }
-  let items: Item[] = $state([]);
+  // Konva stores the same item references used for transform/delete lookup.
+  // Deep Svelte proxies break that identity; all edits replace this array.
+  let items: Item[] = $state.raw([]);
   let currentBaseSrc = '';
   const history = new History<EditorSnapshot>({ baseSrc: '', items: [] });
 
@@ -164,11 +166,48 @@
 
   /** Current draw style (color/width), kept in sync from the store. */
   let currentStyle: DrawStyle = { color: '#ff3b30ff', width: 4 };
-  const unsubStyle = drawStyle.subscribe((s) => (currentStyle = s));
+  let styleInitialized = false;
+  const unsubStyle = drawStyle.subscribe((s) => {
+    const previous = currentStyle;
+    currentStyle = s;
+    if (styleInitialized) applySelectedProperties({
+      ...(s.color !== previous.color ? { color: s.color } : {}),
+      ...(s.width !== previous.width ? { width: s.width } : {}),
+    });
+    styleInitialized = true;
+  });
 
   /** Current text defaults (font size / align), kept in sync from the store. */
   let currentTextStyle: TextStyle = { point_size: 24, align: 'left' };
-  const unsubTextStyle = textStyle.subscribe((s) => (currentTextStyle = s));
+  let textStyleInitialized = false;
+  const unsubTextStyle = textStyle.subscribe((s) => {
+    const previous = currentTextStyle;
+    currentTextStyle = s;
+    if (textStyleInitialized) applySelectedProperties({
+      ...(s.point_size !== previous.point_size ? { point_size: s.point_size } : {}),
+      ...(s.align !== previous.align ? { align: s.align } : {}),
+    });
+    textStyleInitialized = true;
+  });
+
+  function applySelectedProperties(changes: Record<string, unknown>) {
+    if (!KonvaMod || !selectedNode || !ready) return;
+    const previous = nodeToItemRef(selectedNode);
+    if (!previous) return;
+    const index = items.indexOf(previous);
+    const allowed = Object.fromEntries(Object.entries(changes).filter(([key]) => key in previous));
+    if (index < 0 || Object.keys(allowed).length === 0) return;
+    const updated = { ...previous, ...allowed } as Item;
+    const zIndex = selectedNode.zIndex();
+    const node = drawTools[updated.type]?.render(drawCtx(KonvaMod), updated);
+    if (!node) return;
+    selectedNode.destroy();
+    node.zIndex(zIndex);
+    items = items.map((item, i) => i === index ? updated : item);
+    select(node);
+    pushHistory();
+    annotationsLayer.batchDraw();
+  }
 
   // --- Image effects (rounded corners + bottom fade), applied live to the
   // Konva scene so they BOTH preview and bake into the flattened output. ---
@@ -1097,9 +1136,8 @@
     syncDraggable();
   });
 
-  /** Annotations are draggable ONLY in select mode. Otherwise clicking an
-   *  existing node with a draw/step tool would grab it (dragging the existing
-   *  AND placing a new one). Re-run on tool change and after each new node. */
+  /** Keep existing annotations editable with any tool. Re-run on tool change
+   *  and after each new node; mousedown handles selection before drawing. */
   function syncDraggable() {
     if (!annotationsLayer) return;
     // Snagit behavior (Qt parity): an existing object is always movable, no

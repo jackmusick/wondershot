@@ -24,7 +24,12 @@ pub fn media_server_port(state: tauri::State<MediaServer>) -> u16 {
 }
 
 fn content_type(path: &str) -> &'static str {
-    match path.rsplit('.').next().map(|e| e.to_ascii_lowercase()).as_deref() {
+    match path
+        .rsplit('.')
+        .next()
+        .map(|e| e.to_ascii_lowercase())
+        .as_deref()
+    {
         Some("mp4") | Some("m4v") => "video/mp4",
         Some("webm") => "video/webm",
         Some("mkv") => "video/x-matroska",
@@ -37,7 +42,9 @@ fn content_type(path: &str) -> &'static str {
 
 /// Is `path` inside one of the (canonicalized) library dirs?
 fn allowed(path: &PathBuf) -> bool {
-    let Ok(real) = path.canonicalize() else { return false };
+    let Ok(real) = path.canonicalize() else {
+        return false;
+    };
     Settings::load()
         .library_dirs()
         .iter()
@@ -150,13 +157,7 @@ impl std::io::Read for MjpegReader {
             let Some(jpeg) = jpeg else {
                 return Ok(0); // superseded or ~4s of silence → end the stream
             };
-            self.buf = format!(
-                "--wsframe\r\nContent-Type: image/jpeg\r\nContent-Length: {}\r\n\r\n",
-                jpeg.len()
-            )
-            .into_bytes();
-            self.buf.extend_from_slice(&jpeg);
-            self.buf.extend_from_slice(b"\r\n");
+            self.buf = mjpeg_part(&jpeg);
             self.pos = 0;
         }
         let n = (self.buf.len() - self.pos).min(out.len());
@@ -164,6 +165,17 @@ impl std::io::Read for MjpegReader {
         self.pos += n;
         Ok(n)
     }
+}
+
+fn mjpeg_part(jpeg: &[u8]) -> Vec<u8> {
+    let mut out = format!(
+        "--wsframe\r\nContent-Type: image/jpeg\r\nContent-Length: {}\r\n\r\n",
+        jpeg.len()
+    )
+    .into_bytes();
+    out.extend_from_slice(jpeg);
+    out.extend_from_slice(b"\r\n");
+    out
 }
 
 /// `/camera?label=<urlencoded gst display name>` → live MJPEG of that camera
@@ -180,12 +192,22 @@ fn camera_handle(request: tiny_http::Request) {
     // Retry across the previous stream's release window (≤ ~4s worst case).
     match wondershot_core::camera::open_with_retry(&label, 15, 350) {
         Ok(stream) => {
+            let Some(first_frame) = stream.next_jpeg_timeout(4000) else {
+                crate::logging::log("camera stream unavailable: started but produced no JPEG frames");
+                let _ = request.respond(tiny_http::Response::empty(503));
+                return;
+            };
             let ctype = tiny_http::Header::from_bytes(
                 &b"Content-Type"[..],
                 &b"multipart/x-mixed-replace; boundary=wsframe"[..],
             )
             .unwrap();
-            let reader = MjpegReader { stream, buf: Vec::new(), pos: 0, generation };
+            let reader = MjpegReader {
+                stream,
+                buf: mjpeg_part(&first_frame),
+                pos: 0,
+                generation,
+            };
             let _ = request.respond(tiny_http::Response::new(
                 tiny_http::StatusCode(200),
                 vec![ctype],
@@ -195,7 +217,7 @@ fn camera_handle(request: tiny_http::Request) {
             ));
         }
         Err(e) => {
-            eprintln!("camera stream unavailable: {e}");
+            crate::logging::log(format!("camera stream unavailable: {e}"));
             let _ = request.respond(tiny_http::Response::empty(503));
         }
     }
@@ -226,8 +248,8 @@ fn handle(request: tiny_http::Request) {
         return;
     };
     let len = f.metadata().map(|m| m.len()).unwrap_or(0);
-    let ctype =
-        tiny_http::Header::from_bytes(&b"Content-Type"[..], content_type(&path).as_bytes()).unwrap();
+    let ctype = tiny_http::Header::from_bytes(&b"Content-Type"[..], content_type(&path).as_bytes())
+        .unwrap();
     let accept = tiny_http::Header::from_bytes(&b"Accept-Ranges"[..], &b"bytes"[..]).unwrap();
 
     let range = request
@@ -306,7 +328,10 @@ mod tests {
 
     #[test]
     fn urldecode() {
-        assert_eq!(urlencoding_decode("%2Fhome%2Fjack%2Fa%20b.mp4"), "/home/jack/a b.mp4");
+        assert_eq!(
+            urlencoding_decode("%2Fhome%2Fjack%2Fa%20b.mp4"),
+            "/home/jack/a b.mp4"
+        );
         assert_eq!(urlencoding_decode("plain"), "plain");
     }
 }
