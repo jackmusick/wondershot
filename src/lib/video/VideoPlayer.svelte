@@ -14,6 +14,7 @@
   let src = $state('');
   let playing = $state(false);
   let rangeMode = $state(false);
+  let blurSettingsOpen = $state(false);
   let rangeStart = $state(0);
   let rangeEnd = $state(0);
   let rangeBar = $state<HTMLDivElement | null>(null);
@@ -89,7 +90,7 @@
   $effect(() => {
     const key = `wondershot-video-blurs:${path}`;
     videoEl?.pause(); playing = false; current = 0; duration = 0; videoWidth = 0; videoHeight = 0;
-    rangeMode = false; gifOpen = false; drag = null; transformDrag = null;
+    rangeMode = false; gifOpen = false; blurSettingsOpen = false; drag = null; transformDrag = null;
     undoStack = []; redoStack = []; selected = 0;
     try {
       const saved = JSON.parse(localStorage.getItem(key) ?? '[]');
@@ -459,9 +460,12 @@
   }
   function rangeDown(e: PointerEvent) {
     if (e.button !== 0 || busy || !duration || !rangeBar) return;
+    e.preventDefault();
+    (e.target as HTMLElement).closest<HTMLButtonElement>('[data-range-handle]')?.focus();
     rangeBar.setPointerCapture(e.pointerId); const t = rangeTime(e);
     const tolerance = duration * 10 / rangeBar.getBoundingClientRect().width;
-    const mode = Math.abs(t-rangeStart) < tolerance ? 'start' : Math.abs(t-rangeEnd) < tolerance ? 'end' : 'define';
+    const handle = (e.target as HTMLElement).closest('[data-range-handle]')?.getAttribute('data-range-handle');
+    const mode = handle === 'start' || handle === 'end' ? handle : Math.abs(t-rangeStart) < tolerance ? 'start' : Math.abs(t-rangeEnd) < tolerance ? 'end' : 'define';
     rangeDrag = { mode, anchor: t };
     if (mode === 'define') { rangeStart = Math.min(t,duration-MIN_SPAN); rangeEnd = Math.min(duration,t+MIN_SPAN); }
     scrub(t);
@@ -472,6 +476,17 @@
     else if (rangeDrag.mode === 'end') rangeEnd = Math.max(t,rangeStart+MIN_SPAN);
     else { rangeStart = Math.min(rangeDrag.anchor,t,duration-MIN_SPAN); rangeEnd = Math.min(duration,Math.max(rangeDrag.anchor,t,rangeStart+MIN_SPAN)); }
     scrub(t);
+  }
+  function rangeKey(e: KeyboardEvent, edge: 'start' | 'end') {
+    const value = edge === 'start' ? rangeStart : rangeEnd;
+    const delta = e.shiftKey ? 1 : .1;
+    const next = e.key === 'ArrowLeft' ? value - delta : e.key === 'ArrowRight' ? value + delta : e.key === 'Home' ? 0 : e.key === 'End' ? duration : null;
+    if (next === null || busy) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (edge === 'start') rangeStart = round3(Math.max(0,Math.min(next,rangeEnd-MIN_SPAN)));
+    else rangeEnd = round3(Math.min(duration,Math.max(next,rangeStart+MIN_SPAN)));
+    scrub(edge === 'start' ? rangeStart : rangeEnd);
   }
   const rangeValid = $derived(Number.isFinite(rangeStart) && Number.isFinite(rangeEnd) && rangeStart >= 0 && rangeEnd <= duration && rangeEnd-rangeStart >= MIN_SPAN);
   async function saveRange(cut: boolean) {
@@ -600,11 +615,11 @@
     </button>
       <div class="tstack">
         <div class="timeline-track">
-          <input class="timeline" type="range" min="0" max={duration || 0} step="0.01" value={current} oninput={onSeek} aria-label="Seek" />
+          <input class="timeline" class:trimming={rangeMode} type="range" min="0" max={duration || 0} step="0.01" value={current} oninput={onSeek} aria-label="Seek" />
           {#if rangeMode}
             <!-- svelte-ignore a11y_no_static_element_interactions -->
             <div class="rangebar" role="presentation" bind:this={rangeBar} onpointerdown={rangeDown} onpointermove={rangeMove} onpointerup={() => rangeDrag = null} onpointercancel={() => rangeDrag = null} title="Drag to select a section; drag its edges to adjust">
-              <div class="range-selection" style={`left:${rangeStart/duration*100}%;width:${(rangeEnd-rangeStart)/duration*100}%`}><span class="grip l"></span><span class="grip r"></span></div>
+              <div class="range-selection" style={`left:${rangeStart/duration*100}%;width:${(rangeEnd-rangeStart)/duration*100}%`}><button class="grip l trim-handle" data-range-handle="start" aria-label="Trim start handle" title="Drag selection start" onclick={(e) => e.currentTarget.focus()} onkeydown={(e) => rangeKey(e,'start')}></button><button class="grip r trim-handle" data-range-handle="end" aria-label="Trim end handle" title="Drag selection end" onclick={(e) => e.currentTarget.focus()} onkeydown={(e) => rangeKey(e,'end')}></button></div>
             </div>
           {:else if redactions.length > 0}
             <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -621,13 +636,24 @@
       <span class="time">{fmt(current)} / {fmt(duration)}</span>
       <div class="toolbar-actions">
         <button class="ghost" class:chosen={rangeMode} onclick={openRange} disabled={busy || !duration} aria-pressed={rangeMode}>Trim / Cut</button>
-        <button class="ghost" onclick={grabFrame} disabled={busy || !duration}>Grab frame</button>
-        <button class="ghost" onclick={undo} disabled={busy || !undoStack.length} title="Undo (⌘Z)">Undo</button>
-        <button class="ghost" onclick={redo} disabled={busy || !redoStack.length} title="Redo (⇧⌘Z)">Redo</button>
-        <button class="ghost" onclick={openGif} disabled={busy}>Export GIF…</button>
+        {#if rangeMode}
+          <input class="trim-time" aria-label="Selection start" title="Selection start (seconds)" type="number" min="0" max={duration} step="0.01" bind:value={rangeStart} />
+          <span class="time">–</span>
+          <input class="trim-time" aria-label="Selection end" title="Selection end (seconds)" type="number" min="0" max={duration} step="0.01" bind:value={rangeEnd} />
+          <button class="primary" onclick={() => saveRange(false)} disabled={busy || !rangeValid} title="Keep the selected section in a new video">Save trim</button>
+          <button class="ghost" onclick={() => saveRange(true)} disabled={busy || !rangeValid || (rangeStart === 0 && rangeEnd === duration)} title="Remove the selected section and join the rest in a new video">Remove selection</button>
+          <button class="iconbtn" aria-label="Cancel" onclick={() => rangeMode = false} disabled={busy} title="Cancel trim">✕</button>
+        {:else}
+          <button class="ghost" class:chosen={blurSettingsOpen || redactions.length > 0} onclick={() => blurSettingsOpen = !blurSettingsOpen} disabled={busy}>Blur</button>
+          <button class="ghost" onclick={grabFrame} disabled={busy || !duration}>Grab frame</button>
+          <button class="ghost" onclick={undo} disabled={busy || !undoStack.length} title="Undo (⌘Z)">Undo</button>
+          <button class="ghost" onclick={redo} disabled={busy || !redoStack.length} title="Redo (⇧⌘Z)">Redo</button>
+          <button class="ghost" onclick={openGif} disabled={busy}>Export GIF…</button>
+        {/if}
       </div>
     </div>
   </div>
+  {#if !rangeMode && (gifOpen || redactions.length || blurSettingsOpen)}
   <aside class="properties" aria-label="Video properties">
     {#if gifOpen}
     <div class="gif-dialog">
@@ -660,16 +686,6 @@
         <button class="primary" onclick={exportGif} disabled={busy}>{busy ? 'Working…' : 'Export GIF'}</button>
       </div>
     </div>
-    {:else if rangeMode}
-      <div class="section">Trim / Cut</div>
-      <div class="fields">
-        <label>Start <input aria-label="Selection start" type="number" min="0" max={duration} step="0.01" bind:value={rangeStart} /></label>
-        <label>End <input aria-label="Selection end" type="number" min="0" max={duration} step="0.01" bind:value={rangeEnd} /></label>
-      </div>
-      <button class="primary" onclick={() => saveRange(false)} disabled={busy || !rangeValid} title="Keep the selected section in a new video">Save trim</button>
-      <button class="ghost" onclick={() => saveRange(true)} disabled={busy || !rangeValid || (rangeStart === 0 && rangeEnd === duration)} title="Remove the selected section and join the rest in a new video">Remove selection</button>
-      <button class="ghost" onclick={() => rangeMode = false} disabled={busy}>Cancel</button>
-      <p class="help">Drag the playback timeline to select a section. Saves a new video.</p>
     {:else}
       <div class="section">{redactions.length ? 'Blur layers' : 'Video'}</div>
       {#if redactions.length}
@@ -705,6 +721,7 @@
       {#if !redactions.length}<p class="help">Pause and drag on the video to add a blur.</p>{/if}
     {/if}
   </aside>
+  {/if}
   {#if toast}<div class="toast" class:err={errored}>{toast}</div>{/if}
 </div>
 
@@ -727,13 +744,19 @@
   .tstack { flex:1; min-width:60px; }
   .timeline-track { height:28px; position:relative; }
   .timeline { width:100%; height:28px; accent-color:var(--accent); margin:0; }
-  .rangebar { position:absolute; inset:4px 0; cursor:crosshair; touch-action:none; user-select:none; }
+  .rangebar { z-index:2; position:absolute; inset:4px 0; cursor:crosshair; touch-action:none; user-select:none; }
+  .timeline.trimming { opacity:0; }
+  .timeline-track:has(.rangebar) { background:linear-gradient(var(--border-strong),var(--border-strong)) center / 100% 4px no-repeat; }
+  .trim-time { max-width:64px; height:28px; font-size:11px; font-variant-numeric:tabular-nums; }
   .range-selection { position:absolute; inset:0 auto; border:1px solid var(--accent); background:color-mix(in srgb,var(--accent) 35%,transparent); pointer-events:none; border-radius:3px; }
   .spanbar { position:absolute; top:0; left:0; right:0; height:9px; touch-action:none; user-select:none; }
   .span { position:absolute; inset:0 auto; background:color-mix(in srgb,var(--c) 28%,transparent); border:1px solid var(--c); border-radius:2px; pointer-events:none; }
   .span.sel { background:color-mix(in srgb,var(--c) 60%,transparent); z-index:1; }
   .grip { position:absolute; top:1px; bottom:1px; width:3px; background:rgba(255,255,255,.92); border-radius:2px; }
   .grip.l { left:-1px; } .grip.r { right:-1px; }
+  .grip.trim-handle { width:10px; padding:0; border:1px solid var(--accent); pointer-events:auto; cursor:ew-resize; touch-action:none; }
+  .trim-handle.l { left:-5px; } .trim-handle.r { right:-5px; }
+  .trim-handle:focus-visible { outline:2px solid white; outline-offset:2px; }
   .time { font-size:10px; color:var(--fg-secondary); font-variant-numeric:tabular-nums; white-space:nowrap; }
   .toolbar-actions { display:flex; align-items:center; gap:4px; flex-shrink:0; }
   .properties { width:220px; flex-shrink:0; display:flex; flex-direction:column; gap:12px; padding:14px; background:var(--bg-content); border-left:1px solid var(--border); overflow-y:auto; }

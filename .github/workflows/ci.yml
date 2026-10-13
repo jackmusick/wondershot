@@ -53,7 +53,7 @@ jobs:
       - name: Browser interaction regressions
         if: runner.os == 'macOS'
         run: |
-          npx playwright install chromium
+          npx playwright install chromium webkit
           npm run test:ui
 
       - name: macOS recording and video processing regressions

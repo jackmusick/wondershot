@@ -100,15 +100,16 @@ test('drag a timeline range, adjust handles, save a trim and remove a section', 
   const bar = await page.locator('.rangebar').boundingBox(); if (!bar) throw new Error('missing range');
   await page.mouse.move(bar.x+bar.width*.25,bar.y+12); await page.mouse.down();
   await page.mouse.move(bar.x+bar.width*.75,bar.y+12,{steps:8}); await page.mouse.up();
-  await expect(page.getByLabel('Selection start')).toHaveValue('1');
-  await expect(page.getByLabel('Selection end')).toHaveValue('3');
+  expect(Number(await page.getByLabel('Selection start').inputValue())).toBeCloseTo(1,1);
+  expect(Number(await page.getByLabel('Selection end').inputValue())).toBeCloseTo(3,1);
   await page.mouse.move(bar.x+bar.width*.25,bar.y+12); await page.mouse.down();
   await page.mouse.move(bar.x+bar.width*.125,bar.y+12,{steps:8}); await page.mouse.up();
-  await expect(page.getByLabel('Selection start')).toHaveValue('0.5');
+  expect(Number(await page.getByLabel('Selection start').inputValue())).toBeCloseTo(.5,1);
   await page.screenshot({ path: 'artifacts/ui/video-range.png' });
   await page.getByRole('button',{name:'Save trim',exact:true}).click();
   await expect(page.getByText('Trim saved as a new video', {exact:true})).toBeVisible();
-  expect((await lastCall(page,'trim_video')).args).toMatchObject({start:.5,end:3,reencode:true});
+  const trimmed = (await lastCall(page,'trim_video')).args;
+  expect(trimmed.start).toBeCloseTo(.5,1); expect(trimmed.end).toBeCloseTo(3,1); expect(trimmed.reencode).toBe(true);
   await page.getByRole('button',{name:'Trim / Cut',exact:true}).click();
   await page.getByLabel('Selection start').fill('1'); await page.getByLabel('Selection end').fill('2');
   await page.getByRole('button',{name:'Remove selection',exact:true}).click();
@@ -166,15 +167,14 @@ for (const width of [1280, 860]) {
     const duringTrim = await stage.boundingBox();
     expect(duringTrim!.height).toBeCloseTo(initial.height,0);
     expect(duringTrim!.width).toBeCloseTo(initial.width,0);
-    const properties = await page.getByRole('complementary',{name:'Video properties'}).boundingBox();
-    expect(properties!.width).toBe(220);
-    expect(properties!.x).toBeCloseTo(initial.x+initial.width,0);
-    await expect(page.getByRole('complementary',{name:'Video properties'}).getByRole('button',{name:'Save trim',exact:true})).toBeVisible();
+    await expect(page.getByRole('complementary',{name:'Video properties'})).toHaveCount(0);
+    await expect(controls.getByRole('button',{name:'Save trim',exact:true})).toBeVisible();
+    expect(await controls.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
     await page.getByRole('button',{name:'Cancel',exact:true}).click();
     await drawBlur(page,.3); await drawBlur(page,.6);
     const duringBlur = await stage.boundingBox();
     expect(duringBlur!.height).toBeCloseTo(initial.height,0);
-    expect(duringBlur!.width).toBeCloseTo(initial.width,0);
+    expect(duringBlur!.width).toBeCloseTo(initial.width-220,0);
     await expect(page.getByRole('complementary',{name:'Video properties'}).getByRole('button',{name:'Blur 2',exact:true})).toBeVisible();
     expect(await controls.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
     await page.screenshot({path:`artifacts/ui/video-compact-${width}.png`});
@@ -195,8 +195,50 @@ test('GIF mode prevents new blur drawing and undo returns restored layers to the
   expect(await lastCall(page,'export_gif')).toBeUndefined();
   await page.getByRole('button',{name:'Delete blur 1',exact:true}).click();
   await page.getByRole('button',{name:'Trim / Cut',exact:true}).click();
-  await page.getByRole('button',{name:'Undo',exact:true}).click();
+  await page.keyboard.press('Meta+z');
   await expect(page.getByRole('button',{name:'Save trim',exact:true})).toHaveCount(0);
   await expect(page.getByRole('button',{name:'Blur 1',exact:true})).toBeVisible();
   expect(await lastCall(page,'trim_video')).toBeUndefined();
+});
+
+for (const width of [860,1280]) {
+  test(`trim handles drag from both full-duration endpoints and work with keyboard at ${width}px`, async ({page}) => {
+    await page.setViewportSize({width,height:800});
+    await page.getByRole('button',{name:'Trim / Cut',exact:true}).click();
+    const bar = await page.locator('.rangebar').boundingBox(); if (!bar) throw new Error('missing range');
+    const start = page.getByRole('button',{name:'Trim start handle',exact:true});
+    const end = page.getByRole('button',{name:'Trim end handle',exact:true});
+    const dragHandle = async (handle: typeof start, fraction: number) => {
+      const h = await handle.boundingBox(); if (!h) throw new Error('missing handle');
+      await page.mouse.move(h.x+h.width/2,h.y+h.height/2); await page.mouse.down();
+      await page.mouse.move(bar.x+bar.width*fraction,bar.y+bar.height/2,{steps:10}); await page.mouse.up();
+    };
+    await dragHandle(start,.2);
+    expect(Number(await page.getByLabel('Selection start').inputValue())).toBeCloseTo(.8,1);
+    await expect(page.getByLabel('Selection end')).toHaveValue('4');
+    await dragHandle(end,.8);
+    expect(Number(await page.getByLabel('Selection start').inputValue())).toBeCloseTo(.8,1);
+    expect(Number(await page.getByLabel('Selection end').inputValue())).toBeCloseTo(3.2,1);
+    const before = Number(await page.getByLabel('Selection start').inputValue());
+    await start.focus(); await start.press('ArrowRight');
+    expect(Number(await page.getByLabel('Selection start').inputValue())).toBeCloseTo(before+.1,2);
+    await start.press('Home'); await end.focus(); await end.press('End');
+    await expect(page.getByLabel('Selection start')).toHaveValue('0');
+    await expect(page.getByLabel('Selection end')).toHaveValue('4');
+  });
+}
+
+test('trim-handle arrow keys stay in the video editor inside the full library app', async ({page}) => {
+  await page.goto('/');
+  await page.getByRole('button',{name:/Recording 11:20/}).click();
+  await page.waitForFunction(() => (document.querySelector('video')?.duration ?? 0) > 0);
+  await page.getByRole('button',{name:'Trim / Cut',exact:true}).click();
+  const start = page.getByRole('button',{name:'Trim start handle',exact:true});
+  await start.click(); await expect(start).toBeFocused(); await page.keyboard.press('ArrowRight');
+  await expect(page.getByLabel('Selection start')).toHaveValue('0.1');
+  await page.getByRole('button',{name:'Trim end handle',exact:true}).focus();
+  await page.keyboard.press('ArrowLeft');
+  await expect(page.getByLabel('Selection end')).toHaveValue('3.9');
+  await expect(page.locator('video')).toHaveCount(1);
+  await expect(page.getByRole('button',{name:'Save trim',exact:true})).toBeVisible();
 });

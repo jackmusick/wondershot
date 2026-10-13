@@ -42,8 +42,10 @@ point.
 
 - **Trim / Cut**: drag the range timeline, then **Save trim** to keep it or
   **Remove selection** to cut it out. Both create a new video with audio.
-  Range selection shares the playback timeline; tool settings and blur layers
-  use the right-hand properties panel, matching the picture editor.
+  Range selection, exact time fields, and save/cut actions share the playback
+  row. Drag either handle or focus it and use arrow keys (Shift for one-second
+  steps). Playback and trimming use the full preview width; the right-hand
+  properties panel opens for blur or GIF settings, matching the picture editor.
 - **Grab frame** saves the current frame as an editable picture.
 - Blur layers can be selected from the video or their list, moved, resized,
   given independent timing/strength, and deleted with undo/redo. Drafts are
@@ -165,7 +167,7 @@ derivatives must stay open source.
 ## macOS development and regression checks
 
 Install Node, Rust, and FFmpeg (`brew install ffmpeg`), then `npm ci` and
-`npx playwright install chromium`. Run `npm run verify:macos` for background
+`npx playwright install chromium webkit`. Run `npm run verify:macos` for background
 regression tests and a packaged debug build.
 
 Use `npm run build:macos -- --debug` and launch the packaged app from the same
@@ -179,3 +181,6 @@ installed app does not depend on the developer's Homebrew installation.
 See [platform support](docs/platform-support.md) for capabilities and the
 installed-app background screen capture check. macOS CI runs the headless
 canvas/video regressions and real FFmpeg processing tests on every PR.
+
+Video interaction regressions run in both Chromium and WebKit via `npm run test:ui`.
+Install the browser engines with `npx playwright install chromium webkit` first.

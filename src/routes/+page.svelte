@@ -88,7 +88,7 @@
   }
 
   async function onKeyDown(e: KeyboardEvent) {
-    if (isTyping()) return;
+    if (e.defaultPrevented || isTyping()) return;
     // Ctrl/Cmd+C → copy the current image to the clipboard.
     if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) {
       const cur = get(activeItem);
