@@ -35,7 +35,7 @@
   </div>
 {:else if screen === 'video'}
   <div style="height:100vh;display:flex;flex-direction:column;background:var(--bg-content)">
-    <VideoPlayer path="/lib/Recording_20260608_112000.mp4" />
+    <VideoPlayer standalone path="/lib/Recording_20260608_112000.mp4" />
   </div>
 {:else if screen === 'settings'}
   <div style="height:100vh;background:var(--bg-content)">

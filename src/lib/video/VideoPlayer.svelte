@@ -2,13 +2,20 @@
   import { mediaSrc, ipcInvoke } from '$lib/ipc';
   import { loadLibrary, captures, activeItem } from '$lib/stores';
   import { get } from 'svelte/store';
+  import OverflowToolbar from '$lib/components/OverflowToolbar.svelte';
+  import { videoToolbar } from '$lib/components/toolbarState';
   import VideoToolIcon from './VideoToolIcon.svelte';
 
   // A blur region in VIDEO pixel coords, active for [start,end] seconds.
   // Field names match wondershot-core::video::Redaction (serde).
   type Redaction = { x: number; y: number; w: number; h: number; start: number; end: number; blur?: number };
 
-  let { path }: { path: string } = $props();
+  let { path, standalone = false }: { path: string; standalone?: boolean } = $props();
+
+  $effect(() => {
+    if (!standalone) videoToolbar.set(actions);
+    return () => { if (!standalone) videoToolbar.set(null); };
+  });
 
   // --- media element + playback state ---------------------------------------
   let videoEl = $state<HTMLVideoElement | null>(null);
@@ -548,8 +555,7 @@
 
 <svelte:window onkeydown={onKeyDown} />
 
-<div class="player">
-  <header class="toolbar" aria-label="Video Editing Tools">
+{#snippet actions()}
     <button class="tool" class:active={rangeMode} onclick={openRange} disabled={busy || !duration} aria-pressed={rangeMode}><VideoToolIcon name="trim" /><span>Trim / Cut</span></button>
     {#if rangeMode}
       <button class="tool" onclick={() => saveRange(false)} disabled={busy || !rangeValid} title="Keep the selected section in a new video"><VideoToolIcon name="save" /><span>Save Trim</span></button>
@@ -571,7 +577,10 @@
         <button class="tool" onclick={() => gifOpen = false} disabled={busy}><VideoToolIcon name="close" /><span>Cancel</span></button>
       {/if}
     {/if}
-  </header>
+{/snippet}
+
+<div class="player">
+  {#if standalone}<OverflowToolbar label="Video Editing Tools">{@render actions()}</OverflowToolbar>{/if}
   <div class="video-body">
   <div class="video-main">
   <div class="stage">
@@ -741,7 +750,6 @@
 <style>
   .player { flex:1; display:flex; flex-direction:column; min-width:0; min-height:0; background:var(--bg-content); position:relative; }
   .video-body { flex:1; display:flex; min-width:0; min-height:0; }
-  .toolbar { height:60px; display:flex; align-items:center; gap:2px; padding:0 8px; border-bottom:1px solid var(--border); flex-shrink:0; overflow-x:auto; }
   .tool { min-width:46px; height:50px; display:inline-flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; border:0; border-bottom:2px solid transparent; background:transparent; color:var(--fg-secondary); border-radius:var(--radius); cursor:pointer; padding:0 6px; flex-shrink:0; }
   .tool span { font-size:10px; line-height:1; white-space:nowrap; }
   .tool:hover:not(:disabled) { background:var(--bg-hover); color:var(--fg-primary); }

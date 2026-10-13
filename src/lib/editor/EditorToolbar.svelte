@@ -1,7 +1,10 @@
 <script lang="ts">
   import { activeTool, SHORTCUTS, type ToolId } from './tools';
   import { bgApi, aiApi, historyApi } from './zoom';
+  import OverflowToolbar from '$lib/components/OverflowToolbar.svelte';
   import { autosaveState } from '$lib/stores';
+
+  let { embedded = false }: { embedded?: boolean } = $props();
 
   // AI Redact / Simplify: enabled when EditorCanvas registered runners AND an
   // endpoint+model are configured. Busy-guarded; the runner's status line (or
@@ -113,7 +116,7 @@
   }
 </script>
 
-<header class="toolbar">
+<OverflowToolbar {embedded} label="Image Editing Tools">
   <!-- Tool buttons -->
   <div class="tools">
     {#each GROUPS as group, gi}
@@ -210,7 +213,7 @@
     </button>
   </div>
 
-  <div class="spacer"></div>
+</OverflowToolbar>
   {#if aiMsg}
     <span class="aimsg" class:err={aiErr} title={aiMsg}>{aiMsg}</span>
   {/if}
@@ -218,29 +221,15 @@
     <span class="autosave error" title="The last save failed — edits are NOT on disk. Check the log.">Save failed</span>
   {:else if $autosaveState === 'saving'}
     <span class="autosave" title="Saving…">Saving…</span>
-  {:else}
-    <span class="autosave" title="Edits save automatically">Auto-saved</span>
   {/if}
-</header>
+
 
 <style>
-  .toolbar {
-    height: 60px;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 0 8px;
-    background: var(--bg-content);
-    border-bottom: 1px solid var(--border);
-    flex-shrink: 0;
-    overflow-x: auto;
-  }
   .tools {
     display: flex;
     align-items: center;
     gap: 2px;
   }
-  .spacer { flex: 1; }
 
   .sep {
     width: 1px;

@@ -26,6 +26,12 @@ point.
 
 ## Features
 
+Capture, Camera, editing tools, and Share occupy one compact toolbar. Tools
+move into a chevron menu when the window narrows, preserving the selected tool
+and keyboard focus. On macOS, Settings lives in the Wondershot menu (⌘,).
+Edits save automatically; the toolbar shows saving progress or failures without
+a persistent success badge.
+
 **Stills**
 - Region / full-screen / active-window capture; scrolling capture
   (Linux); capture hotkey configurable in Settings

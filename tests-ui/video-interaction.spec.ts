@@ -159,7 +159,7 @@ for (const width of [1280, 860]) {
     await page.setViewportSize({width,height:800});
     const stage = page.locator('.stage');
     const initial = await stage.boundingBox(); if (!initial) throw new Error('missing video stage');
-    const toolbar = page.getByRole('banner',{name:'Video Editing Tools'});
+    const toolbar = page.getByRole('toolbar',{name:'Video Editing Tools'});
     await expect(toolbar).toHaveCSS('height','60px');
     expect(await toolbar.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
     const screenshot = toolbar.getByRole('button',{name:'Screenshot',exact:true});
@@ -178,7 +178,7 @@ for (const width of [1280, 860]) {
     expect(duringTrim!.height).toBeCloseTo(initial.height,0);
     expect(duringTrim!.width).toBeCloseTo(initial.width,0);
     await expect(page.getByRole('complementary',{name:'Video properties'})).toHaveCount(0);
-    await expect(page.getByRole('banner',{name:'Video Editing Tools'}).getByRole('button',{name:'Save Trim',exact:true})).toBeVisible();
+    await expect(page.getByRole('toolbar',{name:'Video Editing Tools'}).getByRole('button',{name:'Save Trim',exact:true})).toBeVisible();
     expect(await controls.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
     await page.getByRole('button',{name:'Cancel',exact:true}).click();
     await drawBlur(page,.3); await drawBlur(page,.6);

@@ -5,7 +5,7 @@
   import { ipcListen, ipcEmit, ipcInvoke } from '$lib/ipc';
   import { openCapturePicker } from '$lib/capture/openCapture';
   import { initRecordingEvents, startRecording, startRecordingRect } from '$lib/recorder/control';
-  import { activeItem, captures } from '$lib/stores';
+  import { activeItem, captures, settingsOpen } from '$lib/stores';
   import CaptureHeader from '$lib/components/CaptureHeader.svelte';
   import ContentView from '$lib/components/ContentView.svelte';
   import PropertiesPanel from '$lib/components/PropertiesPanel.svelte';
@@ -35,6 +35,7 @@
       }));
       // Live folder watching: the backend debounce-emits this when a media file
       // lands in / leaves a watched dir (global hotkey, external drop).
+      uns.push(await ipcListen('settings://open', () => settingsOpen.set(true)));
       uns.push(await ipcListen('library://changed', () => void loadLibrary()));
       // CLI / global-hotkey forwarding (parity with the Python --capture model).
       uns.push(await ipcListen('cli://capture', () => void openCapturePicker()));
@@ -88,7 +89,9 @@
   }
 
   async function onKeyDown(e: KeyboardEvent) {
-    if (e.defaultPrevented || isTyping()) return;
+    if (e.defaultPrevented) return;
+    if ((e.metaKey || e.ctrlKey) && e.key === ',') { e.preventDefault(); settingsOpen.set(true); return; }
+    if (isTyping()) return;
     // Ctrl/Cmd+C → copy the current image to the clipboard.
     if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) {
       const cur = get(activeItem);

@@ -378,6 +378,17 @@ pub fn run() {
     }
 
     tauri::Builder::default()
+        .on_menu_event(|app, event| {
+            if event.id().as_ref() == "open-settings" {
+                use tauri::{Emitter, Manager};
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.unminimize();
+                    let _ = window.set_focus();
+                }
+                let _ = app.emit("settings://open", ());
+            }
+        })
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             // argv includes argv0 here; parse_args expects it stripped.
             dispatch_cli(app, parse_args(argv.into_iter().skip(1)));
@@ -391,6 +402,18 @@ pub fn run() {
         .setup(move |app| {
             use tauri::{Listener, Manager};
 
+            #[cfg(target_os = "macos")]
+            {
+                use tauri::menu::{Menu, PredefinedMenuItem};
+                let menu = Menu::default(app.handle())?;
+                let settings = MenuItemBuilder::with_id("open-settings", "Settings…")
+                    .accelerator("CmdOrCtrl+,").build(app)?;
+                if let Some(submenu) = menu.items()?.first().and_then(|item| item.as_submenu()) {
+                    submenu.insert(&settings, 2)?;
+                    submenu.insert(&PredefinedMenuItem::separator(app)?, 3)?;
+                }
+                app.set_menu(menu)?;
+            }
             configure_camera_bubble_window(app.handle());
             // Watch the library folders so externally created files (global
             // hotkey captures, drops from other apps) appear live.

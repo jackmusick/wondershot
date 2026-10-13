@@ -28,7 +28,7 @@ async function canvasBox(page: import('@playwright/test').Page) {
 }
 
 async function pickTool(page: import('@playwright/test').Page, label: string) {
-  await page.locator(`button[aria-label="${label}"]`).click();
+  await page.getByRole('button',{name:label,exact:true}).click();
 }
 
 function hook<T>(page: import('@playwright/test').Page, fn: (h: Hook) => T) {
