@@ -2,6 +2,7 @@
   import { mediaSrc, ipcInvoke } from '$lib/ipc';
   import { loadLibrary, captures, activeItem } from '$lib/stores';
   import { get } from 'svelte/store';
+  import VideoToolIcon from './VideoToolIcon.svelte';
 
   // A blur region in VIDEO pixel coords, active for [start,end] seconds.
   // Field names match wondershot-core::video::Redaction (serde).
@@ -499,7 +500,7 @@
     } catch (e) { flash(`Video edit failed: ${e}`,true); } finally { busy = false; }
   }
   async function grabFrame() {
-    if (redactions.length) { flash('Apply blur layers before grabbing a frame',true); return; }
+    if (redactions.length) { flash('Apply blur layers before taking a screenshot',true); return; }
     if (busy) return; busy = true;
     try { const out = await ipcInvoke<string>('grab_frame', { path, position: Math.min(current, Math.max(0,duration-0.05)) }); await selectByPath(out); flash('Frame saved'); }
     catch(e) { flash(`Frame capture failed: ${e}`,true); } finally { busy = false; }
@@ -548,6 +549,30 @@
 <svelte:window onkeydown={onKeyDown} />
 
 <div class="player">
+  <header class="toolbar" aria-label="Video Editing Tools">
+    <button class="tool" class:active={rangeMode} onclick={openRange} disabled={busy || !duration} aria-pressed={rangeMode}><VideoToolIcon name="trim" /><span>Trim / Cut</span></button>
+    {#if rangeMode}
+      <button class="tool" onclick={() => saveRange(false)} disabled={busy || !rangeValid} title="Keep the selected section in a new video"><VideoToolIcon name="save" /><span>Save Trim</span></button>
+      <button class="tool" onclick={() => saveRange(true)} disabled={busy || !rangeValid || (rangeStart === 0 && rangeEnd === duration)} title="Remove the selected section and join the rest in a new video"><VideoToolIcon name="cut" /><span>Remove Selection</span></button>
+      <button class="tool" onclick={() => rangeMode = false} disabled={busy} title="Cancel Trim"><VideoToolIcon name="close" /><span>Cancel</span></button>
+    {:else}
+      <button class="tool" class:active={blurSettingsOpen || redactions.length > 0} onclick={() => blurSettingsOpen = !blurSettingsOpen} disabled={busy}><VideoToolIcon name="blur" /><span>Blur</span></button>
+      {#if redactions.length}
+        <button class="tool" onclick={applyBlur} disabled={busy}><VideoToolIcon name="apply" /><span>{busy ? 'Working…' : 'Apply Blur'}</span></button>
+      {/if}
+      <span class="sep"></span>
+      <button class="tool" onclick={undo} disabled={busy || !undoStack.length} title="Undo (⌘Z)"><VideoToolIcon name="undo" /><span>Undo</span></button>
+      <button class="tool" onclick={redo} disabled={busy || !redoStack.length} title="Redo (⇧⌘Z)"><VideoToolIcon name="redo" /><span>Redo</span></button>
+      <span class="sep"></span>
+      <button class="tool" onclick={grabFrame} disabled={busy || !duration}><VideoToolIcon name="screenshot" /><span>Screenshot</span></button>
+      <button class="tool" class:active={gifOpen} aria-expanded={gifOpen} onclick={openGif} disabled={busy}><VideoToolIcon name="gif" /><span>Export GIF…</span></button>
+      {#if gifOpen}
+        <button class="tool" onclick={exportGif} disabled={busy}><VideoToolIcon name="save" /><span>{busy ? 'Working…' : 'Export GIF'}</span></button>
+        <button class="tool" onclick={() => gifOpen = false} disabled={busy}><VideoToolIcon name="close" /><span>Cancel</span></button>
+      {/if}
+    {/if}
+  </header>
+  <div class="video-body">
   <div class="video-main">
   <div class="stage">
     <!-- svelte-ignore a11y_media_has_caption -->
@@ -584,7 +609,7 @@
           <!-- svelte-ignore a11y_no_static_element_interactions -->
           <div
             class="redbox"
-            role="button" tabindex={0} aria-label={`Blur region ${i + 1}`}
+            role="button" tabindex={0} aria-label={`Blur Region ${i + 1}`}
             onpointerdown={(e) => beginTransform(e,i,'move')}
             onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectRegion(i); } }}
             class:sel={i === selected}
@@ -593,7 +618,7 @@
           >
             {#if i === selected}
               <span class="rednum">{i + 1}</span>
-              <button class="resize-handle" aria-label={`Resize blur region ${i + 1}`} onpointerdown={(e) => beginTransform(e,i,'resize')}></button>
+              <button class="resize-handle" aria-label={`Resize Blur Region ${i + 1}`} onpointerdown={(e) => beginTransform(e,i,'resize')}></button>
             {/if}
           </div>
         {/if}
@@ -605,7 +630,7 @@
 
   </div>
 
-    <div class="controls" aria-label="Video editing tools">
+    <div class="controls" aria-label="Video Playback Controls">
     <button class="iconbtn" onclick={togglePlay} aria-label={playing ? 'Pause' : 'Play'} title={playing ? 'Pause' : 'Play'}>
       {#if playing}
         <svg viewBox="0 0 16 16"><rect x="3.5" y="2.5" width="3" height="11" /><rect x="9.5" y="2.5" width="3" height="11" /></svg>
@@ -619,7 +644,7 @@
           {#if rangeMode}
             <!-- svelte-ignore a11y_no_static_element_interactions -->
             <div class="rangebar" role="presentation" bind:this={rangeBar} onpointerdown={rangeDown} onpointermove={rangeMove} onpointerup={() => rangeDrag = null} onpointercancel={() => rangeDrag = null} title="Drag to select a section; drag its edges to adjust">
-              <div class="range-selection" style={`left:${rangeStart/duration*100}%;width:${(rangeEnd-rangeStart)/duration*100}%`}><button class="grip l trim-handle" data-range-handle="start" aria-label="Trim start handle" title="Drag selection start" onclick={(e) => e.currentTarget.focus()} onkeydown={(e) => rangeKey(e,'start')}></button><button class="grip r trim-handle" data-range-handle="end" aria-label="Trim end handle" title="Drag selection end" onclick={(e) => e.currentTarget.focus()} onkeydown={(e) => rangeKey(e,'end')}></button></div>
+              <div class="range-selection" style={`left:${rangeStart/duration*100}%;width:${(rangeEnd-rangeStart)/duration*100}%`}><button class="grip l trim-handle" data-range-handle="start" aria-label="Trim Start Handle" title="Drag selection start" onclick={(e) => e.currentTarget.focus()} onkeydown={(e) => rangeKey(e,'start')}></button><button class="grip r trim-handle" data-range-handle="end" aria-label="Trim End Handle" title="Drag selection end" onclick={(e) => e.currentTarget.focus()} onkeydown={(e) => rangeKey(e,'end')}></button></div>
             </div>
           {:else if redactions.length > 0}
             <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -634,23 +659,13 @@
         </div>
       </div>
       <span class="time">{fmt(current)} / {fmt(duration)}</span>
-      <div class="toolbar-actions">
-        <button class="ghost" class:chosen={rangeMode} onclick={openRange} disabled={busy || !duration} aria-pressed={rangeMode}>Trim / Cut</button>
-        {#if rangeMode}
-          <input class="trim-time" aria-label="Selection start" title="Selection start (seconds)" type="number" min="0" max={duration} step="0.01" bind:value={rangeStart} />
+      {#if rangeMode}
+        <div class="trim-fields">
+          <input class="trim-time" aria-label="Selection Start" title="Selection Start (Seconds)" type="number" min="0" max={duration} step="0.01" bind:value={rangeStart} />
           <span class="time">–</span>
-          <input class="trim-time" aria-label="Selection end" title="Selection end (seconds)" type="number" min="0" max={duration} step="0.01" bind:value={rangeEnd} />
-          <button class="primary" onclick={() => saveRange(false)} disabled={busy || !rangeValid} title="Keep the selected section in a new video">Save trim</button>
-          <button class="ghost" onclick={() => saveRange(true)} disabled={busy || !rangeValid || (rangeStart === 0 && rangeEnd === duration)} title="Remove the selected section and join the rest in a new video">Remove selection</button>
-          <button class="iconbtn" aria-label="Cancel" onclick={() => rangeMode = false} disabled={busy} title="Cancel trim">✕</button>
-        {:else}
-          <button class="ghost" class:chosen={blurSettingsOpen || redactions.length > 0} onclick={() => blurSettingsOpen = !blurSettingsOpen} disabled={busy}>Blur</button>
-          <button class="ghost" onclick={grabFrame} disabled={busy || !duration}>Grab frame</button>
-          <button class="ghost" onclick={undo} disabled={busy || !undoStack.length} title="Undo (⌘Z)">Undo</button>
-          <button class="ghost" onclick={redo} disabled={busy || !redoStack.length} title="Redo (⇧⌘Z)">Redo</button>
-          <button class="ghost" onclick={openGif} disabled={busy}>Export GIF…</button>
-        {/if}
-      </div>
+          <input class="trim-time" aria-label="Selection End" title="Selection End (Seconds)" type="number" min="0" max={duration} step="0.01" bind:value={rangeEnd} />
+        </div>
+      {/if}
     </div>
   </div>
   {#if !rangeMode && (gifOpen || redactions.length || blurSettingsOpen)}
@@ -659,7 +674,7 @@
     <div class="gif-dialog">
       <div class="gif-head">
         <span class="title">Export GIF</span>
-        <button class="del" aria-label="Close" onclick={() => (gifOpen = false)}>✕</button>
+        <button class="del" aria-label="Close" onclick={() => (gifOpen = false)}><VideoToolIcon name="close" /></button>
       </div>
       <label class="grow">
         FPS
@@ -673,60 +688,67 @@
       </label>
       <label class="toggle">
         <input type="checkbox" bind:checked={gifUseRange} />
-        Limit to range
+        Limit to Range
       </label>
       {#if gifUseRange}
         <div class="range-row">
-          <label class="t">start <input type="number" min="0" step="0.1" bind:value={gifStart} /></label>
-          <label class="t">end <input type="number" min="0" step="0.1" bind:value={gifEnd} /></label>
+          <label class="t">Start <input type="number" min="0" step="0.1" bind:value={gifStart} /></label>
+          <label class="t">End <input type="number" min="0" step="0.1" bind:value={gifEnd} /></label>
         </div>
       {/if}
-      <div class="gif-actions">
-        <button class="ghost" onclick={() => (gifOpen = false)}>Cancel</button>
-        <button class="primary" onclick={exportGif} disabled={busy}>{busy ? 'Working…' : 'Export GIF'}</button>
-      </div>
+
     </div>
     {:else}
-      <div class="section">{redactions.length ? 'Blur layers' : 'Video'}</div>
+      <div class="section">{redactions.length ? 'Blur Layers' : 'Video'}</div>
       {#if redactions.length}
-        <div class="blur-layers" aria-label="Blur layers">
+        <div class="blur-layers" aria-label="Blur Layers">
           {#each redactions as r,i}
             <div class="blur-layer" class:chosen={i === selected}>
               <button class="layer-select" aria-label={`Blur ${i+1}`} aria-pressed={i === selected} onclick={() => selectRegion(i)}>Blur {i+1}<span>{r.start.toFixed(1)}–{r.end.toFixed(1)}s</span></button>
-              <button class="del" aria-label={`Delete blur ${i+1}`} onclick={() => removeRedaction(i)} disabled={busy}>×</button>
+              <button class="del" aria-label={`Delete Blur ${i+1}`} onclick={() => removeRedaction(i)} disabled={busy}><VideoToolIcon name="delete" /></button>
             </div>
           {/each}
         </div>
         {#if redactions[selected]}
           <div class="fields">
-            <label>Start <input aria-label={`Blur ${selected+1} start`} type="number" step="0.01" value={redactions[selected].start} onchange={(e) => updateRegion(selected,'start',e.currentTarget.valueAsNumber)} disabled={busy} /></label>
-            <label>End <input aria-label={`Blur ${selected+1} end`} type="number" step="0.01" value={redactions[selected].end} onchange={(e) => updateRegion(selected,'end',e.currentTarget.valueAsNumber)} disabled={busy} /></label>
+            <label>Start <input aria-label={`Blur ${selected+1} Start`} type="number" step="0.01" value={redactions[selected].start} onchange={(e) => updateRegion(selected,'start',e.currentTarget.valueAsNumber)} disabled={busy} /></label>
+            <label>End <input aria-label={`Blur ${selected+1} End`} type="number" step="0.01" value={redactions[selected].end} onchange={(e) => updateRegion(selected,'end',e.currentTarget.valueAsNumber)} disabled={busy} /></label>
           </div>
         {/if}
       {/if}
-      <label class="strength">Strength <span>{blur}</span><input aria-label="Blur strength" type="range" min="1" max="60" value={blur} oninput={(e) => changeStrength(Number(e.currentTarget.value))} disabled={busy} /></label>
+      <label class="strength">Strength <span>{blur}</span><input aria-label="Blur Strength" type="range" min="1" max="60" value={blur} oninput={(e) => changeStrength(Number(e.currentTarget.value))} disabled={busy} /></label>
       {#if redactions[selected]}
         <details>
-          <summary>Position and size</summary>
+          <summary>Position and Size</summary>
           <div class="fields geometry-fields">
             {#each ['x','y','w','h'] as field}
               <label>{({x:'X',y:'Y',w:'Width',h:'Height'} as Record<string,string>)[field]}
-                <input aria-label={`Selected blur ${({x:'X',y:'Y',w:'Width',h:'Height'} as Record<string,string>)[field]}`} type="number" step="1" value={redactions[selected][field as keyof Redaction]} onchange={(e) => updateRegion(selected,field as 'x' | 'y' | 'w' | 'h',e.currentTarget.valueAsNumber)} disabled={busy} />
+                <input aria-label={`Selected Blur ${({x:'X',y:'Y',w:'Width',h:'Height'} as Record<string,string>)[field]}`} type="number" step="1" value={redactions[selected][field as keyof Redaction]} onchange={(e) => updateRegion(selected,field as 'x' | 'y' | 'w' | 'h',e.currentTarget.valueAsNumber)} disabled={busy} />
               </label>
             {/each}
           </div>
         </details>
       {/if}
-      <button class="primary" onclick={applyBlur} disabled={busy || !redactions.length}>{busy ? 'Working…' : 'Apply blur'}</button>
+
       {#if !redactions.length}<p class="help">Pause and drag on the video to add a blur.</p>{/if}
     {/if}
   </aside>
   {/if}
+  </div>
   {#if toast}<div class="toast" class:err={errored}>{toast}</div>{/if}
 </div>
 
 <style>
-  .player { flex:1; display:flex; min-width:0; min-height:0; background:var(--bg-content); position:relative; }
+  .player { flex:1; display:flex; flex-direction:column; min-width:0; min-height:0; background:var(--bg-content); position:relative; }
+  .video-body { flex:1; display:flex; min-width:0; min-height:0; }
+  .toolbar { height:60px; display:flex; align-items:center; gap:2px; padding:0 8px; border-bottom:1px solid var(--border); flex-shrink:0; overflow-x:auto; }
+  .tool { min-width:46px; height:50px; display:inline-flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; border:0; border-bottom:2px solid transparent; background:transparent; color:var(--fg-secondary); border-radius:var(--radius); cursor:pointer; padding:0 6px; flex-shrink:0; }
+  .tool span { font-size:10px; line-height:1; white-space:nowrap; }
+  .tool:hover:not(:disabled) { background:var(--bg-hover); color:var(--fg-primary); }
+  .tool:disabled { opacity:.4; cursor:not-allowed; }
+  .tool.active { background:var(--bg-selected); color:var(--fg-primary); border-bottom-color:var(--accent); border-bottom-left-radius:0; border-bottom-right-radius:0; }
+  .sep { width:1px; height:22px; background:var(--border-strong); margin:0 4px; flex-shrink:0; }
+  .trim-fields { display:flex; align-items:center; gap:4px; }
   .video-main { flex:1; display:flex; flex-direction:column; min-width:0; min-height:0; }
   .stage { position:relative; flex:1; min-height:0; background:#000; display:flex; align-items:center; justify-content:center; overflow:hidden; }
   video { width:100%; height:100%; object-fit:contain; display:block; }
@@ -758,7 +780,6 @@
   .trim-handle.l { left:-5px; } .trim-handle.r { right:-5px; }
   .trim-handle:focus-visible { outline:2px solid white; outline-offset:2px; }
   .time { font-size:10px; color:var(--fg-secondary); font-variant-numeric:tabular-nums; white-space:nowrap; }
-  .toolbar-actions { display:flex; align-items:center; gap:4px; flex-shrink:0; }
   .properties { width:220px; flex-shrink:0; display:flex; flex-direction:column; gap:12px; padding:14px; background:var(--bg-content); border-left:1px solid var(--border); overflow-y:auto; }
   .section { font-weight:700; color:var(--fg-primary); font-size:var(--text-base); }
   .fields { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
@@ -773,18 +794,12 @@
   .layer-select { flex:1; min-width:0; display:flex; justify-content:space-between; gap:6px; padding:7px 6px; border:0; background:transparent; color:var(--fg-primary); font-size:var(--text-small); text-align:left; cursor:pointer; }
   .layer-select span { color:var(--fg-secondary); font-size:10px; }
   .blur-layer.chosen .layer-select { color:var(--accent); }
-  .del { width:24px; height:24px; border:0; background:transparent; color:var(--fg-secondary); cursor:pointer; border-radius:var(--radius); }
+  .del { display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; border:0; background:transparent; color:var(--fg-secondary); cursor:pointer; border-radius:var(--radius); }
   .del:hover { color:var(--danger); background:var(--bg-hover); }
   details { font-size:var(--text-small); color:var(--fg-secondary); }
   summary { cursor:pointer; }
   .geometry-fields { padding-top:8px; }
   .help { margin:0; font-size:var(--text-small); color:var(--fg-secondary); line-height:1.5; }
-  .ghost, .primary { height:28px; padding:0 8px; border-radius:var(--radius); cursor:pointer; font-size:var(--text-small); font-weight:600; }
-  .ghost { border:1px solid var(--border-strong); background:var(--bg-field); color:var(--fg-primary); }
-  .ghost:hover { background:var(--bg-hover); }
-  .primary { border:1px solid var(--accent); background:var(--accent); color:white; }
-  .ghost.chosen { border-color:var(--accent); }
-  .ghost:disabled, .primary:disabled { opacity:.45; cursor:default; }
   .gif-dialog { display:flex; flex-direction:column; gap:12px; }
   .gif-head { display:flex; justify-content:space-between; align-items:center; font-weight:700; color:var(--fg-primary); }
   .grow { display:flex; align-items:center; flex-wrap:wrap; gap:6px; font-size:var(--text-small); color:var(--fg-secondary); }
@@ -792,8 +807,7 @@
   .toggle { font-size:var(--text-small); color:var(--fg-secondary); display:flex; align-items:center; gap:6px; }
   .range-row { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
   .t { display:flex; flex-direction:column; gap:4px; font-size:var(--text-small); color:var(--fg-secondary); }
-  .gif-actions { display:flex; flex-direction:column; gap:8px; }
   .toast { position:absolute; bottom:52px; left:50%; transform:translateX(-50%); padding:8px 12px; background:var(--bg-content); border:1px solid var(--border); color:var(--fg-primary); border-radius:var(--radius); font-size:var(--text-small); z-index:5; }
   .toast.err { color:var(--danger); }
-  @media (max-width:950px) { .toolbar-actions { gap:2px; } .toolbar-actions .ghost { padding:0 5px; font-size:10px; } }
+
 </style>

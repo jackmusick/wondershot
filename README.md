@@ -40,13 +40,13 @@ point.
 
 **Video**
 
-- **Trim / Cut**: drag the range timeline, then **Save trim** to keep it or
-  **Remove selection** to cut it out. Both create a new video with audio.
-  Range selection, exact time fields, and save/cut actions share the playback
-  row. Drag either handle or focus it and use arrow keys (Shift for one-second
+- **Trim / Cut**: drag the range timeline, then **Save Trim** to keep it or
+  **Remove Selection** to cut it out. Both create a new video with audio.
+  Range selection and exact time fields share the playback row; editing actions
+  sit above the preview with the same icon-over-label format as the image editor. Drag either handle or focus it and use arrow keys (Shift for one-second
   steps). Playback and trimming use the full preview width; the right-hand
   properties panel opens for blur or GIF settings, matching the picture editor.
-- **Grab frame** saves the current frame as an editable picture.
+- **Screenshot** saves the current frame as an editable picture.
 - Blur layers can be selected from the video or their list, moved, resized,
   given independent timing/strength, and deleted with undo/redo. Drafts are
   saved per original video. Apply blur before trimming or exporting frames/GIFs;
