@@ -81,7 +81,7 @@ fn video_trim_frame_gif_and_timed_redaction_produce_valid_media() {
     assert_eq!(frames[0].buffer().dimensions(), (160, 90));
 
     let redacted = dir.path().join("blur.mp4");
-    let (graph, label) = video::build_blur_filter(&[video::Redaction { x: 40, y: 40, w: 100, h: 80, start: 0.5, end: 1.5 }], 8, 320, 180);
+    let (graph, label) = video::build_blur_filter(&[video::Redaction { blur: None, x: 40, y: 40, w: 100, h: 80, start: 0.5, end: 1.5 }], 8, 320, 180);
     ffmpeg_run(vec!["-y".into(), "-i".into(), src.into(), "-filter_complex".into(), graph, "-map".into(), format!("[{label}]"), "-c:v".into(), "libx264".into(), "-crf".into(), "0".into(), redacted.to_str().unwrap().into()]);
     let blurred_frame = dir.path().join("blurred.png");
     ffmpeg_run(video::build_frame_grab_args(redacted.to_str().unwrap(), 1.0, blurred_frame.to_str().unwrap()));
@@ -101,4 +101,30 @@ fn video_trim_frame_gif_and_timed_redaction_produce_valid_media() {
     let outside = image::open(outside_frame).unwrap().to_rgb8();
     let average = original.as_raw().iter().zip(outside.as_raw()).map(|(a,b)| a.abs_diff(*b) as f64).sum::<f64>() / original.as_raw().len() as f64;
     assert!(average < 3.0, "blur must stop outside its selected time span: {average}");
+}
+
+#[test]
+#[ignore = "real FFmpeg cut/audio integration"]
+fn cutting_middle_and_edges_preserves_retained_frames_and_audio() {
+    use wondershot_core::video;
+    let dir = tempfile::tempdir().unwrap();
+    let source = dir.path().join("source.mp4");
+    ffmpeg_run(["-y", "-f", "lavfi", "-i", "testsrc=size=160x120:rate=10:duration=4", "-f", "lavfi", "-i", "sine=frequency=440:duration=4", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", source.to_str().unwrap()].iter().map(|s|s.to_string()).collect());
+    for (start,end,count) in [(1.0,2.0,30), (0.0,1.0,30), (3.0,4.0,30)] {
+        let out = dir.path().join(format!("cut-{start}.mp4"));
+        ffmpeg_run(video::build_cut_args(source.to_str().unwrap(),start,end,out.to_str().unwrap()));
+        assert_eq!(frame_count(&out),count,"retained video frames");
+        let decoded = Command::new(find_ffmpeg().unwrap()).args(["-v","error","-i"]).arg(&out)
+            .args(["-map","0:a","-f","s16le","-ac","1","-ar","44100","pipe:1"]).output().unwrap();
+        assert!(decoded.status.success(),"audio must survive cut");
+        let seconds = decoded.stdout.len() as f64 / (2.0*44100.0);
+        assert!((seconds-3.0).abs() < 0.1,"retained audio duration {seconds}");
+    }
+    let silent = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../static/fixtures/video.mp4");
+    let out = dir.path().join("silent.mp4");
+    ffmpeg_run(video::build_cut_args(silent.to_str().unwrap(),1.0,2.0,out.to_str().unwrap()));
+    let decoded = Command::new(find_ffmpeg().unwrap()).args(["-v","error","-i"]).arg(&out)
+        .args(["-fps_mode","passthrough","-pix_fmt","rgb24","-f","rawvideo","pipe:1"]).output().unwrap();
+    assert!(decoded.status.success());
+    assert_eq!(decoded.stdout.len()/(320*180*3),30);
 }

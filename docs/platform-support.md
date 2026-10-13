@@ -122,7 +122,10 @@ interaction tests, Rust workspace tests, real FFmpeg recording/editing tests,
 and a signed debug app build. Browser tests exercise canvas tools and video
 controls against fixtures; FFmpeg integration tests verify pause/resume,
 trimmed frame counts, GIF dimensions/ranges, frame extraction, and timed blur
-pixels. These checks do not move the desktop pointer or use personal captures.
+pixels. Video regressions also exercise draggable trim/cut selection, per-blur
+move/resize/properties/delete/undo, draft reopening, and cuts at the beginning,
+middle, and end with audio preserved. These checks do not move the desktop
+pointer or use personal captures.
 The optional Wonderblob reference screenshot test requires its external server.
 
 Installed-app screen capture checks use LaunchServices so macOS attributes

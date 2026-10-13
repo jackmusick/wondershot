@@ -65,6 +65,10 @@ export function pushMockRecording(): void {
 }
 
 export async function mockInvoke(cmd: string, _args?: unknown): Promise<unknown> {
+  if (typeof window !== 'undefined') {
+    const target = window as unknown as { __wsMockCalls?: { command: string; args: unknown }[] };
+    (target.__wsMockCalls ??= []).push({ command: cmd, args: _args });
+  }
   switch (cmd) {
     case 'health':
       return 'ok';
@@ -170,11 +174,15 @@ export async function mockInvoke(cmd: string, _args?: unknown): Promise<unknown>
     case 'grab_frame':
     case 'apply_blur':
     case 'export_gif':
+    case 'cut_video':
     case 'trim_video': {
-      // No ffmpeg in browser dev: echo back a plausible output path so the
-      // player's success paths (loadLibrary + select) resolve without crashing.
+      // Each operation creates a library result, as the native backend does.
       const p = (_args as { path?: string } | undefined)?.path ?? '/mock/video.mp4';
-      return p;
+      const suffix = { grab_frame: 'frame', apply_blur: 'redacted', export_gif: 'export', trim_video: 'trimmed', cut_video: 'cut' }[cmd];
+      const extension = cmd === 'grab_frame' ? '.png' : cmd === 'export_gif' ? '.gif' : '.mp4';
+      const out = p.replace(/\.[^/.]+$/, '') + `-${suffix}-${++counter}${extension}`;
+      mockList = [{ id: `edit${counter}`, path: out, kind: extension === '.mp4' ? 'video' : 'image', thumbnail: PIXEL, createdAt: Date.now()+counter, title: `${suffix} result` }, ...mockList];
+      return out;
     }
     case 'bg_model_available':
       // No u2net model in browser dev → the Remove BG button stays disabled.

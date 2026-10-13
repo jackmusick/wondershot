@@ -39,6 +39,14 @@ point.
 - Post-capture quick-action bar: Edit / Copy / Save as / Share / Trash
 
 **Video**
+
+- **Trim / Cut**: drag the range timeline, then **Save trim** to keep it or
+  **Remove selection** to cut it out. Both create a new video with audio.
+- **Grab frame** saves the current frame as an editable picture.
+- Blur layers can be selected from the video or their list, moved, resized,
+  given independent timing/strength, and deleted with undo/redo. Drafts are
+  saved per original video. Apply blur before trimming or exporting frames/GIFs;
+  rendered results are new files, and the original keeps its editable draft.
 - One-click screen recording (mic + camera bubble optional)
 - Range blur: pause, box the sensitive bits, set time spans on the
   timeline, render — `-redacted.mp4` lands next to the original

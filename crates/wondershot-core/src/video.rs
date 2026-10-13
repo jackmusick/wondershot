@@ -16,6 +16,8 @@ pub struct Redaction {
     pub h: i64,
     pub start: f64,
     pub end: f64,
+    #[serde(default)]
+    pub blur: Option<i64>,
 }
 
 /// ffmpeg `filter_complex` applying each redaction as a blurred overlay
@@ -46,12 +48,20 @@ pub fn build_blur_filter(
             w = w.min(video_w - x);
             h = h.min(video_h - y);
         }
-        // encoders want even dims
-        w = (4).max(w - w % 2);
-        h = (4).max(h - h % 2);
+        // Round bounding edges outward so odd coordinates cannot leave an
+        // unblurred strip inside the requested region.
+        let right = x + w.max(4);
+        let bottom = y + h.max(4);
         x -= x % 2;
         y -= y % 2;
-        parts.push(format!("[c{i}]crop={w}:{h}:{x}:{y},boxblur={blur}[b{i}]"));
+        w = ((right + 1) / 2 * 2 - x).max(4);
+        h = ((bottom + 1) / 2 * 2 - y).max(4);
+        if video_w > 0 && video_h > 0 {
+            w = w.min(video_w - x);
+            h = h.min(video_h - y);
+        }
+        let radius = r.blur.unwrap_or(blur).max(1).min(w / 4).min(h / 4);
+        parts.push(format!("[c{i}]crop={w}:{h}:{x}:{y},boxblur={radius}[b{i}]"));
         let out = format!("v{i}");
         parts.push(format!(
             "[{cur}][b{i}]overlay={x}:{y}:enable='between(t,{:.3},{:.3})'[{out}]",
@@ -121,6 +131,21 @@ pub fn build_trim_args(
     }
     args.push(out.into());
     args
+}
+
+/// Remove one selected interval, joining the retained video and audio on a
+/// continuous timeline. Audio mapping is optional for silent recordings.
+pub fn build_cut_args(src: &str, start: f64, end: f64, out: &str) -> Vec<String> {
+    let span = end - start;
+    vec![
+        "-y".into(), "-i".into(), src.into(),
+        "-map".into(), "0:v:0".into(), "-map".into(), "0:a:0?".into(),
+        "-vf".into(), format!("setpts=PTS-STARTPTS,select='lt(t,{start:.3})+gte(t,{end:.3})',setpts='PTS-if(gte(T,{end:.3}),{span:.3},0)/TB'"),
+        "-af".into(), format!("asetpts=PTS-STARTPTS,aselect='lt(t,{start:.3})+gte(t,{end:.3})',asetpts=N/SR/TB"),
+        "-c:v".into(), "libx264".into(), "-crf".into(), "20".into(),
+        "-preset".into(), "veryfast".into(), "-c:a".into(), "aac".into(),
+        "-movflags".into(), "+faststart".into(), out.into(),
+    ]
 }
 
 /// ffmpeg args for the two-pass palette GIF convert.
@@ -202,6 +227,7 @@ mod tests {
     #[test]
     fn single_redaction_graph() {
         let r = vec![Redaction {
+            blur: None,
             x: 100,
             y: 50,
             w: 200,
@@ -225,6 +251,7 @@ mod tests {
     #[test]
     fn odd_dims_rounded_even() {
         let r = vec![Redaction {
+            blur: None,
             x: 11,
             y: 7,
             w: 101,
@@ -234,13 +261,14 @@ mod tests {
         }];
         assert!(build_blur_filter(&r, 14, 0, 0)
             .0
-            .contains("crop=100:50:10:6"));
+            .contains("crop=102:52:10:6"));
     }
 
     #[test]
     fn multiple_redactions_chain() {
         let r = vec![
             Redaction {
+            blur: None,
                 x: 0,
                 y: 0,
                 w: 10,
@@ -249,6 +277,7 @@ mod tests {
                 end: 1.0,
             },
             Redaction {
+            blur: None,
                 x: 20,
                 y: 20,
                 w: 10,
@@ -270,6 +299,7 @@ mod tests {
     fn rect_clamped_to_frame() {
         // rect beyond frame is clamped (video_w=200,video_h=150)
         let r = vec![Redaction {
+            blur: None,
             x: 198,
             y: 148,
             w: 50,
@@ -285,6 +315,7 @@ mod tests {
     fn rect_clamped_to_frame_python_case() {
         // Exact parity with test_video_filter.py::test_rect_clamped_to_frame
         let r = vec![Redaction {
+            blur: None,
             x: 600,
             y: 340,
             w: 200,
@@ -299,14 +330,25 @@ mod tests {
     #[test]
     fn blur_strength_override() {
         let r = vec![Redaction {
+            blur: None,
             x: 0,
             y: 0,
-            w: 10,
-            h: 10,
+            w: 200,
+            h: 200,
             start: 0.0,
             end: 1.0,
         }];
         assert!(build_blur_filter(&r, 30, 0, 0).0.contains("boxblur=30"));
+    }
+
+    #[test]
+    fn individual_strength_and_small_region_radius() {
+        let mut region = Redaction { x: 0, y: 0, w: 200, h: 200, start: 0.0, end: 1.0, blur: Some(5) };
+        assert!(build_blur_filter(&[region], 30, 320, 180).0.contains("boxblur=5"));
+        region.w = 4; region.h = 4;
+        assert!(build_blur_filter(&[region], 30, 320, 180).0.contains("boxblur=1"));
+        let old: Redaction = serde_json::from_str(r#"{"x":0,"y":0,"w":100,"h":100,"start":0,"end":1}"#).unwrap();
+        assert_eq!(old.blur, None, "older drafts retain global strength fallback");
     }
 
     #[test]

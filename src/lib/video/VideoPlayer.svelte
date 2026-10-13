@@ -5,7 +5,7 @@
 
   // A blur region in VIDEO pixel coords, active for [start,end] seconds.
   // Field names match wondershot-core::video::Redaction (serde).
-  type Redaction = { x: number; y: number; w: number; h: number; start: number; end: number };
+  type Redaction = { x: number; y: number; w: number; h: number; start: number; end: number; blur?: number };
 
   let { path }: { path: string } = $props();
 
@@ -13,8 +13,15 @@
   let videoEl = $state<HTMLVideoElement | null>(null);
   let src = $state('');
   let playing = $state(false);
+  let rangeMode = $state(false);
+  let rangeStart = $state(0);
+  let rangeEnd = $state(0);
+  let rangeBar = $state<HTMLDivElement | null>(null);
+  let rangeDrag: { mode: 'start' | 'end' | 'define'; anchor: number } | null = null;
   let current = $state(0);
   let duration = $state(0);
+  let videoWidth = $state(0);
+  let videoHeight = $state(0);
 
   // Resolve the playable src for the path (re-resolves if path changes).
   $effect(() => {
@@ -49,8 +56,70 @@
 
   // --- redaction overlay: draw boxes while paused ---------------------------
   let overlayEl = $state<HTMLElement | null>(null);
+  let overlaySize = $state({ width: 0, height: 0 });
+  $effect(() => {
+    const overlay = overlayEl; if (!overlay) return;
+    const observer = new ResizeObserver(([entry]) => {
+      overlaySize = { width: entry.contentRect.width, height: entry.contentRect.height };
+    });
+    observer.observe(overlay);
+    return () => observer.disconnect();
+  });
   let redactions = $state<Redaction[]>([]);
   let blur = $state(30);
+  let undoStack = $state<Redaction[][]>([]);
+  let redoStack = $state<Redaction[][]>([]);
+  const snapshot = () => redactions.map(r => ({ ...r }));
+  function remember() { undoStack = [...undoStack, snapshot()].slice(-100); redoStack = []; }
+  function undo() {
+    const previous = undoStack.at(-1); if (!previous || busy) return;
+    redoStack = [...redoStack, snapshot()]; undoStack = undoStack.slice(0, -1);
+    redactions = previous; selected = Math.max(0, Math.min(selected, redactions.length - 1));
+    blur = redactions[selected]?.blur ?? blur;
+  }
+  function redo() {
+    const next = redoStack.at(-1); if (!next || busy) return;
+    undoStack = [...undoStack, snapshot()]; redoStack = redoStack.slice(0, -1);
+    redactions = next; selected = Math.max(0, Math.min(selected, redactions.length - 1));
+    blur = redactions[selected]?.blur ?? blur;
+  }
+  // Preserve editable drafts per source, independently of rendered exports.
+  $effect(() => {
+    const key = `wondershot-video-blurs:${path}`;
+    videoEl?.pause(); playing = false; current = 0; duration = 0; videoWidth = 0; videoHeight = 0;
+    rangeMode = false; gifOpen = false; drag = null; transformDrag = null;
+    undoStack = []; redoStack = []; selected = 0;
+    try {
+      const saved = JSON.parse(localStorage.getItem(key) ?? '[]');
+      redactions = Array.isArray(saved) ? saved.filter(r => ['x','y','w','h','start','end'].every(k => Number.isFinite(r[k])) && r.w > 0 && r.h > 0 && r.start >= 0 && r.end > r.start && (r.blur == null || (Number.isFinite(r.blur) && r.blur >= 1 && r.blur <= 60))) : [];
+    } catch { redactions = []; }
+  });
+  $effect(() => {
+    try { localStorage.setItem(`wondershot-video-blurs:${path}`, JSON.stringify(redactions)); } catch { /* storage may be unavailable */ }
+  });
+  let transformDrag: { index: number; mode: 'move' | 'resize'; x: number; y: number; original: Redaction; recorded: boolean } | null = null;
+  function selectRegion(i: number) {
+    selected = i; blur = redactions[i]?.blur ?? blur; videoEl?.pause(); playing = false;
+    const r = redactions[i]; if (r && (current < r.start || current >= r.end)) scrub(r.start);
+  }
+  function beginTransform(e: PointerEvent, i: number, mode: 'move' | 'resize') {
+    if (playing || busy || rangeMode || e.button !== 0) return;
+    e.stopPropagation(); selectRegion(i);
+    const p = localPoint(e); transformDrag = { index: i, mode, ...p, original: { ...redactions[i] }, recorded: false };
+    overlayEl?.setPointerCapture(e.pointerId);
+  }
+  function changeStrength(value: number) {
+    blur = value;
+    if (redactions[selected]) { remember(); redactions = redactions.map((r,i) => i === selected ? {...r, blur:value} : r); }
+  }
+  function updateRegion(i: number, key: 'x' | 'y' | 'w' | 'h' | 'start' | 'end', value: number) {
+    const r = redactions[i]; if (!r || !Number.isFinite(value)) return;
+    const vw = videoEl?.videoWidth ?? 0, vh = videoEl?.videoHeight ?? 0;
+    const limits = { x: [0, Math.max(0, vw - r.w)], y: [0, Math.max(0, vh - r.h)], w: [4, Math.max(4, vw - r.x)], h: [4, Math.max(4, vh - r.y)], start: [0, r.end - MIN_SPAN], end: [r.start + MIN_SPAN, duration] };
+    const [min, max] = limits[key]; remember();
+    redactions = redactions.map((item,j) => j === i ? { ...item, [key]: key === 'start' || key === 'end' ? round3(Math.max(min, Math.min(max,value))) : Math.round(Math.max(min, Math.min(max,value))) } : item);
+  }
+
 
   // Per-region colour (Qt parity: video.py PALETTE). Used to tell the timeline
   // bands apart and to tint the SELECTED overlay box — never the export, which
@@ -79,19 +148,20 @@
     const v = videoEl;
     const ov = overlayEl;
     if (!v || !ov) return null;
-    const vw = v.videoWidth || 0;
-    const vh = v.videoHeight || 0;
+    const vw = videoWidth;
+    const vh = videoHeight;
     const r = ov.getBoundingClientRect();
-    if (vw === 0 || vh === 0 || r.width === 0 || r.height === 0) {
+    const width = overlaySize.width || r.width, height = overlaySize.height || r.height;
+    if (vw === 0 || vh === 0 || width === 0 || height === 0) {
       // No intrinsic size yet (mock/headless): fall back to 1:1 with the box.
-      return { left: 0, top: 0, w: r.width, h: r.height, sx: 1, sy: 1 };
+      return { left: 0, top: 0, w: width, h: height, sx: 1, sy: 1 };
     }
     // contain scale: the smaller ratio fills.
-    const scale = Math.min(r.width / vw, r.height / vh);
+    const scale = Math.min(width / vw, height / vh);
     const dispW = vw * scale;
     const dispH = vh * scale;
-    const left = (r.width - dispW) / 2;
-    const top = (r.height - dispH) / 2;
+    const left = (width - dispW) / 2;
+    const top = (height - dispH) / 2;
     return { left, top, w: dispW, h: dispH, sx: vw / dispW, sy: vh / dispH };
   }
 
@@ -99,11 +169,15 @@
   function boxStyle(r: Redaction): string {
     const c = displayContentBox();
     if (!c) return 'display:none';
-    const left = c.left + r.x / c.sx;
-    const top = c.top + r.y / c.sy;
-    const w = r.w / c.sx;
-    const h = r.h / c.sy;
-    return `left:${left}px;top:${top}px;width:${w}px;height:${h}px`;
+    // Match the outward-rounded pixel edges used by the export backend.
+    const x = Math.floor(r.x / 2) * 2, y = Math.floor(r.y / 2) * 2;
+    const right = Math.min(videoWidth || Infinity, Math.ceil((r.x + r.w) / 2) * 2);
+    const bottom = Math.min(videoHeight || Infinity, Math.ceil((r.y + r.h) / 2) * 2);
+    const left = c.left + x / c.sx;
+    const top = c.top + y / c.sy;
+    const w = (right - x) / c.sx;
+    const h = (bottom - y) / c.sy;
+    return `left:${left}px;top:${top}px;width:${w}px;height:${h}px;--blur:${(r.blur ?? blur) / c.sx}px`;
   }
 
   function localPoint(e: PointerEvent): { x: number; y: number } {
@@ -112,18 +186,31 @@
   }
 
   function onPointerDown(e: PointerEvent) {
-    if (playing) return; // only draw while paused
+    if (playing || busy || rangeMode) return; // only draw while paused
     if (e.button !== 0) return;
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
     const p = localPoint(e);
     drag = { x0: p.x, y0: p.y, x1: p.x, y1: p.y };
   }
   function onPointerMove(e: PointerEvent) {
+    if (transformDrag) {
+      const c = displayContentBox(); if (!c) return;
+      const p = localPoint(e), d = transformDrag, r = d.original;
+      const dx = (p.x - d.x) * c.sx, dy = (p.y - d.y) * c.sy;
+      if (Math.abs(dx) + Math.abs(dy) < 1) return;
+      if (!d.recorded) { remember(); d.recorded = true; }
+      const vw = videoEl?.videoWidth || c.w * c.sx, vh = videoEl?.videoHeight || c.h * c.sy;
+      const updated = d.mode === 'move'
+        ? { ...r, x: Math.round(Math.max(0, Math.min(vw-r.w, r.x+dx))), y: Math.round(Math.max(0, Math.min(vh-r.h, r.y+dy))) }
+        : { ...r, w: Math.round(Math.max(4, Math.min(vw-r.x, r.w+dx))), h: Math.round(Math.max(4, Math.min(vh-r.y, r.h+dy))) };
+      redactions = redactions.map((item,i) => i === d.index ? updated : item); return;
+    }
     if (!drag) return;
     const p = localPoint(e);
     drag = { ...drag, x1: p.x, y1: p.y };
   }
   function onPointerUp() {
+    if (transformDrag) { transformDrag = null; return; }
     if (!drag) return;
     const c = displayContentBox();
     const dx = Math.min(drag.x0, drag.x1);
@@ -135,13 +222,15 @@
     // display → video coords; clamp to content area then scale.
     const vx = Math.max(0, (dx - c.left)) * c.sx;
     const vy = Math.max(0, (dy - c.top)) * c.sy;
-    const vw = dw * c.sx;
-    const vh = dh * c.sy;
-    const start = current;
+    const vw = Math.min(dw * c.sx, c.w * c.sx - vx);
+    const vh = Math.min(dh * c.sy, c.h * c.sy - vy);
+    if (vw < 4 || vh < 4) return;
+    const start = Math.min(current, Math.max(0, duration - MIN_SPAN));
     const end = Math.min(duration || start + 2, start + 2);
+    remember();
     redactions = [
       ...redactions,
-      { x: Math.round(vx), y: Math.round(vy), w: Math.round(vw), h: Math.round(vh), start, end }
+      { x: Math.round(vx), y: Math.round(vy), w: Math.round(vw), h: Math.round(vh), start, end, blur }
     ];
     selected = redactions.length - 1; // new blur becomes the active span
   }
@@ -169,13 +258,15 @@
   // The video scrubs live during every drag.
   let selected = $state(0);
   let spanbarEl = $state<HTMLDivElement | null>(null);
-  type SpanDrag = { idx: number; mode: 'start' | 'end' | 'move' | 'define'; grab: number; anchor: number };
+  type SpanDrag = { idx: number; mode: 'start' | 'end' | 'move' | 'define'; grab: number; anchor: number; recorded?: boolean };
   let spanDrag: SpanDrag | null = null;
   const EDGE_PX = 7;
   const MIN_SPAN = 0.05;
   // Hover cursor on the span bar — Qt SpanBar parity (video.py mouseMoveEvent):
   // resize over an edge handle, grab over a band body, crosshair on empty.
   let spanCursor = $state('crosshair');
+
+  function regionOrder() { return [selected, ...redactions.map((_,i) => i).filter(i => i !== selected)].filter(i => !!redactions[i]); }
 
   /** What a press at the pointer would do (edge handle / band body / empty). */
   function spanHit(e: PointerEvent): 'start' | 'end' | 'move' | null {
@@ -184,12 +275,12 @@
     const x = e.clientX - r.left;
     const t = tAt(e);
     // Edges first so adjacent/overlapping bands stay resizable.
-    for (let i = 0; i < redactions.length; i++) {
+    for (const i of regionOrder()) {
       const b = redactions[i];
       if (Math.abs(x - (b.start / duration) * r.width) <= EDGE_PX) return 'start';
       if (Math.abs(x - (b.end / duration) * r.width) <= EDGE_PX) return 'end';
     }
-    for (let i = 0; i < redactions.length; i++) {
+    for (const i of regionOrder()) {
       const b = redactions[i];
       if (t >= b.start && t <= b.end) return 'move';
     }
@@ -212,18 +303,19 @@
   }
 
   function spanPointerDown(e: PointerEvent) {
-    if (!duration || !spanbarEl || e.button !== 0) return;
+    if (!duration || !spanbarEl || e.button !== 0 || busy) return;
     spanbarEl.setPointerCapture(e.pointerId);
     const r = spanbarEl.getBoundingClientRect();
     const x = e.clientX - r.left;
     const t = tAt(e);
     // Edges win over interiors so adjacent/overlapping bands stay editable.
-    for (let i = 0; i < redactions.length; i++) {
+    for (const i of regionOrder()) {
       const b = redactions[i];
       const x0 = (b.start / duration) * r.width;
       const x1 = (b.end / duration) * r.width;
       if (Math.abs(x - x0) <= EDGE_PX) {
         selected = i;
+        blur = b.blur ?? blur;
         spanDrag = { idx: i, mode: 'start', grab: 0, anchor: t };
         spanCursor = 'ew-resize';
         scrub(b.start);
@@ -231,16 +323,18 @@
       }
       if (Math.abs(x - x1) <= EDGE_PX) {
         selected = i;
+        blur = b.blur ?? blur;
         spanDrag = { idx: i, mode: 'end', grab: 0, anchor: t };
         spanCursor = 'ew-resize';
         scrub(b.end);
         return;
       }
     }
-    for (let i = 0; i < redactions.length; i++) {
+    for (const i of regionOrder()) {
       const b = redactions[i];
       if (t >= b.start && t <= b.end) {
         selected = i;
+        blur = b.blur ?? blur;
         spanDrag = { idx: i, mode: 'move', grab: t - b.start, anchor: t };
         spanCursor = 'grabbing';
         scrub(t);
@@ -250,7 +344,8 @@
     if (redactions.length > 0) {
       const i = Math.min(selected, redactions.length - 1);
       selected = i;
-      spanDrag = { idx: i, mode: 'define', grab: 0, anchor: t };
+      remember();
+      spanDrag = { idx: i, mode: 'define', grab: 0, anchor: t, recorded: true };
       spanCursor = 'grabbing';
       redactions = redactions.map((b, j) =>
         j === i ? { ...b, start: round3(t), end: round3(Math.min(duration, t + MIN_SPAN)) } : b
@@ -272,6 +367,7 @@
     const { idx, mode, grab, anchor } = spanDrag;
     const b = redactions[idx];
     if (!b) return;
+    if (!spanDrag.recorded) { remember(); spanDrag.recorded = true; }
     if (mode === 'start') {
       setField(idx, 'start', round3(Math.min(Math.max(0, t), b.end - MIN_SPAN)));
     } else if (mode === 'end') {
@@ -301,12 +397,16 @@
   function onKeyDown(e: KeyboardEvent) {
     const el = e.target as HTMLElement | null;
     if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+    if (busy || rangeMode) return;
     if ((e.key === 'Delete' || e.key === 'Backspace') && redactions.length > 0) {
       removeRedaction(selected);
       e.preventDefault();
     }
   }
   function removeRedaction(i: number) {
+    if (busy || !redactions[i]) return;
+    remember();
     redactions = redactions.filter((_, j) => j !== i);
     selected = Math.max(0, Math.min(selected, redactions.length - 1));
   }
@@ -336,7 +436,6 @@
     busy = true;
     try {
       const out = await ipcInvoke<string>('apply_blur', { path, redactions, blur });
-      redactions = [];
       await selectByPath(out);
       flash('Blur applied');
     } catch (e) {
@@ -344,6 +443,47 @@
     } finally {
       busy = false;
     }
+  }
+
+  function openRange() {
+    if (redactions.length && !rangeMode) { flash('Apply or remove blur layers before trimming', true); return; }
+    videoEl?.pause(); playing = false; rangeMode = !rangeMode;
+    if (rangeMode) { rangeStart = 0; rangeEnd = duration; }
+  }
+  function rangeTime(e: PointerEvent) {
+    const r = rangeBar!.getBoundingClientRect();
+    return round3(Math.max(0, Math.min(1,(e.clientX-r.left)/r.width))*duration);
+  }
+  function rangeDown(e: PointerEvent) {
+    if (e.button !== 0 || busy || !duration || !rangeBar) return;
+    rangeBar.setPointerCapture(e.pointerId); const t = rangeTime(e);
+    const tolerance = duration * 10 / rangeBar.getBoundingClientRect().width;
+    const mode = Math.abs(t-rangeStart) < tolerance ? 'start' : Math.abs(t-rangeEnd) < tolerance ? 'end' : 'define';
+    rangeDrag = { mode, anchor: t };
+    if (mode === 'define') { rangeStart = Math.min(t,duration-MIN_SPAN); rangeEnd = Math.min(duration,t+MIN_SPAN); }
+    scrub(t);
+  }
+  function rangeMove(e: PointerEvent) {
+    if (!rangeDrag) return; const t = rangeTime(e);
+    if (rangeDrag.mode === 'start') rangeStart = Math.min(t,rangeEnd-MIN_SPAN);
+    else if (rangeDrag.mode === 'end') rangeEnd = Math.max(t,rangeStart+MIN_SPAN);
+    else { rangeStart = Math.min(rangeDrag.anchor,t,duration-MIN_SPAN); rangeEnd = Math.min(duration,Math.max(rangeDrag.anchor,t,rangeStart+MIN_SPAN)); }
+    scrub(t);
+  }
+  const rangeValid = $derived(Number.isFinite(rangeStart) && Number.isFinite(rangeEnd) && rangeStart >= 0 && rangeEnd <= duration && rangeEnd-rangeStart >= MIN_SPAN);
+  async function saveRange(cut: boolean) {
+    if (busy || !rangeValid) return;
+    busy = true;
+    try {
+      const out = await ipcInvoke<string>(cut ? 'cut_video' : 'trim_video', { path, start: rangeStart, end: rangeEnd, reencode: true });
+      await selectByPath(out); rangeMode = false; flash(cut ? 'Section removed — saved as a new video' : 'Trim saved as a new video');
+    } catch (e) { flash(`Video edit failed: ${e}`,true); } finally { busy = false; }
+  }
+  async function grabFrame() {
+    if (redactions.length) { flash('Apply blur layers before grabbing a frame',true); return; }
+    if (busy) return; busy = true;
+    try { const out = await ipcInvoke<string>('grab_frame', { path, position: Math.min(current, Math.max(0,duration-0.05)) }); await selectByPath(out); flash('Frame saved'); }
+    catch(e) { flash(`Frame capture failed: ${e}`,true); } finally { busy = false; }
   }
 
   // --- GIF dialog -----------------------------------------------------------
@@ -355,6 +495,7 @@
   let gifEnd = $state(0);
 
   function openGif() {
+    if (redactions.length) { flash('Apply blur layers before exporting a GIF',true); return; }
     gifStart = Number(current.toFixed(3));
     gifEnd = Number(Math.min(duration || current + 3, current + 3).toFixed(3));
     gifOpen = true;
@@ -386,6 +527,14 @@
 <svelte:window onkeydown={onKeyDown} />
 
 <div class="player">
+  <div class="video-toolbar" aria-label="Video editing tools">
+    <button class="ghost" class:chosen={rangeMode} onclick={openRange} disabled={busy || !duration} aria-pressed={rangeMode}>Trim / Cut</button>
+    <button class="ghost" onclick={grabFrame} disabled={busy || !duration}>Grab frame</button>
+    <button class="ghost" onclick={undo} disabled={busy || !undoStack.length}>Undo</button>
+    <button class="ghost" onclick={redo} disabled={busy || !redoStack.length}>Redo</button>
+    <span class="spacer"></span>
+    <span class="empty">{rangeMode ? 'Drag a range below to keep or remove' : 'Pause to select, move, resize, or add blur layers'}</span>
+  </div>
   <div class="stage">
     <!-- svelte-ignore a11y_media_has_caption -->
     <video
@@ -394,7 +543,7 @@
       onplay={() => (playing = true)}
       onpause={() => (playing = false)}
       ontimeupdate={() => (current = videoEl?.currentTime ?? 0)}
-      onloadedmetadata={() => (duration = videoEl?.duration ?? 0)}
+      onloadedmetadata={() => { duration = videoEl?.duration ?? 0; videoWidth = videoEl?.videoWidth ?? 0; videoHeight = videoEl?.videoHeight ?? 0; }}
       onerror={() => console.error('video error', videoEl?.error?.code, videoEl?.error?.message)}
       onclick={togglePlay}
     ></video>
@@ -402,12 +551,13 @@
     <!-- Redaction overlay: draws boxes when paused. -->
     <div
       class="overlay"
-      class:drawing={!playing}
+      class:drawing={!playing && !rangeMode}
       bind:this={overlayEl}
       role="presentation"
       onpointerdown={onPointerDown}
       onpointermove={onPointerMove}
       onpointerup={onPointerUp}
+      onpointercancel={() => { drag = null; transformDrag = null; }}
     >
       {#each redactions as r, i (i)}
         <!-- Qt parity (video.py:295): only frost the region while the playhead
@@ -417,13 +567,20 @@
           <!-- Plain blur by default; only the SELECTED region gets its palette
                colour, so you can tell which one you're editing. Colour is
                preview-only CSS — it never reaches the exported video. -->
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
           <div
             class="redbox"
+            role="button" tabindex={0} aria-label={`Blur region ${i + 1}`}
+            onpointerdown={(e) => beginTransform(e,i,'move')}
+            onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectRegion(i); } }}
             class:sel={i === selected}
             style="{boxStyle(r)};--c:{colorOf(i)}"
             title={`${r.start.toFixed(1)}s–${r.end.toFixed(1)}s`}
           >
-            {#if i === selected}<span class="rednum">{i + 1}</span>{/if}
+            {#if i === selected}
+              <span class="rednum">{i + 1}</span>
+              <button class="resize-handle" aria-label={`Resize blur region ${i + 1}`} onpointerdown={(e) => beginTransform(e,i,'resize')}></button>
+            {/if}
           </div>
         {/if}
       {/each}
@@ -432,8 +589,8 @@
       {/if}
     </div>
 
-    {#if !playing}
-      <div class="hint">Drag on the video to add a blur region</div>
+    {#if !playing && !rangeMode}
+      <div class="hint">Drag empty space to add a blur · drag a box to move it</div>
     {/if}
   </div>
 
@@ -487,13 +644,29 @@
     <span class="time">{fmt(current)} / {fmt(duration)}</span>
   </div>
 
+  {#if rangeMode}
+    <div class="range-panel">
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div class="rangebar" role="presentation" bind:this={rangeBar} onpointerdown={rangeDown} onpointermove={rangeMove} onpointerup={() => rangeDrag = null} onpointercancel={() => rangeDrag = null}>
+        <div class="range-selection" style={`left:${rangeStart/duration*100}%;width:${(rangeEnd-rangeStart)/duration*100}%`}><span class="grip l"></span><span class="grip r"></span></div>
+      </div>
+      <div class="range-actions">
+        <label>Selection start <input type="number" min="0" max={duration} step="0.01" bind:value={rangeStart} /></label>
+        <label>Selection end <input type="number" min="0" max={duration} step="0.01" bind:value={rangeEnd} /></label>
+        <button class="primary" onclick={() => saveRange(false)} disabled={busy || !rangeValid}>Save trim</button>
+        <button class="ghost" onclick={() => saveRange(true)} disabled={busy || !rangeValid || (rangeStart === 0 && rangeEnd === duration)}>Remove selection</button>
+        <button class="ghost" onclick={() => rangeMode = false} disabled={busy}>Cancel</button>
+      </div>
+      <div class="empty">Save trim keeps the selection. Remove selection cuts it out. Both save a new video and preserve the original.</div>
+    </div>
+  {/if}
   <!-- Redaction panel -->
   <div class="panel">
     <div class="panel-head">
       <span class="title">Blur regions</span>
       <label class="field" title="Blur strength">
         <span class="lbl">Strength</span>
-        <input type="range" min="1" max="60" bind:value={blur} />
+        <input aria-label="Blur strength" type="range" min="1" max="60" value={blur} oninput={(e) => changeStrength(Number(e.currentTarget.value))} disabled={busy} />
         <span class="num">{blur}</span>
       </label>
       <div class="spacer"></div>
@@ -503,6 +676,27 @@
       </button>
     </div>
 
+    {#if redactions.length > 0}
+      <div class="blur-layers" aria-label="Blur layers">
+        {#each redactions as r, i}
+          <div class="blur-layer" class:chosen={i === selected}>
+            <button class="ghost" aria-pressed={i === selected} onclick={() => selectRegion(i)}>Blur {i + 1}</button>
+            <label>Start <input aria-label={`Blur ${i+1} start`} type="number" step="0.01" value={r.start} onchange={(e) => updateRegion(i,'start',e.currentTarget.valueAsNumber)} disabled={busy} /></label>
+            <label>End <input aria-label={`Blur ${i+1} end`} type="number" step="0.01" value={r.end} onchange={(e) => updateRegion(i,'end',e.currentTarget.valueAsNumber)} disabled={busy} /></label>
+            <button class="del" aria-label={`Delete blur ${i+1}`} onclick={() => removeRedaction(i)} disabled={busy}>×</button>
+          </div>
+        {/each}
+        {#if redactions[selected]}
+          <div class="geometry-fields">
+            {#each ['x','y','w','h'] as field}
+              <label>{({x:'X',y:'Y',w:'Width',h:'Height'} as Record<string,string>)[field]}
+                <input aria-label={`Selected blur ${({x:'X',y:'Y',w:'Width',h:'Height'} as Record<string,string>)[field]}`} type="number" step="1" value={redactions[selected][field as keyof Redaction]} onchange={(e) => updateRegion(selected,field as 'x' | 'y' | 'w' | 'h',e.currentTarget.valueAsNumber)} disabled={busy} />
+              </label>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    {/if}
     {#if redactions.length === 0}
       <div class="empty">Pause the video and drag a box to redact a region.</div>
     {:else}
@@ -554,6 +748,19 @@
 </div>
 
 <style>
+  .video-toolbar, .range-actions, .geometry-fields, .blur-layer { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .video-toolbar, .range-panel { padding:8px 12px; border-bottom:1px solid var(--border); flex-shrink:0; }
+  .video-toolbar .empty { padding:0; }
+  .chosen { border-color:var(--accent); background:var(--bg-hover); }
+  .rangebar { height:28px; position:relative; background:var(--bg-field); border:1px solid var(--border); border-radius:4px; touch-action:none; cursor:crosshair; margin-bottom:8px; }
+  .range-selection { position:absolute; top:2px; bottom:2px; border:2px solid var(--accent); background:color-mix(in srgb,var(--accent) 30%,transparent); pointer-events:none; }
+  .range-actions label, .geometry-fields label, .blur-layer label { display:flex; align-items:center; gap:6px; font-size:var(--text-small); color:var(--fg-secondary); }
+  .range-actions input, .geometry-fields input, .blur-layer input { width:76px; background:var(--bg-field); color:var(--fg-primary); border:1px solid var(--border); border-radius:4px; padding:4px; }
+  .blur-layers { margin-top:8px; display:flex; flex-direction:column; gap:6px; }
+  .blur-layer { padding:5px; border:1px solid var(--border); border-radius:4px; }
+  .blur-layer .del { margin-left:auto; }
+  .resize-handle { position:absolute; right:-5px; bottom:-5px; width:10px; height:10px; border:1px solid white; background:var(--c); cursor:nwse-resize; padding:0; }
+
   .player {
     flex: 1;
     display: flex;
@@ -593,13 +800,16 @@
        region. Colour appears solely on the selected box (.sel). */
     border: 1px solid rgba(255, 255, 255, 0.22);
     background: transparent;
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(var(--blur,8px));
+    -webkit-backdrop-filter: blur(var(--blur,8px));
     border-radius: 2px;
-    pointer-events: none;
+    pointer-events: auto;
+    cursor: move;
+    touch-action: none;
   }
   /* The in-progress draw band (transient) — accent so you see what you're drawing. */
   .redbox.active {
+    pointer-events: none;
     border-color: var(--accent);
     background: rgba(59, 130, 246, 0.18);
     backdrop-filter: blur(4px);

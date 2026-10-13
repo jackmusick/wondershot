@@ -1595,6 +1595,20 @@ pub async fn export_gif(
     run_ffmpeg_to_library(&args, &tmp, &library_dir, &out_name).await
 }
 
+/// Save a new video with the selected interval removed.
+#[tauri::command]
+pub async fn cut_video(path: String, start: f64, end: f64) -> Result<String, String> {
+    if !start.is_finite() || !end.is_finite() || start < 0.0 || end <= start {
+        return Err("select a valid section to remove".into());
+    }
+    let (library_dir, rendering) = library_and_rendering();
+    let stem = Path::new(&path).file_stem().ok_or("missing video filename")?.to_string_lossy();
+    let out_name = format!("{stem}-cut.mp4");
+    let tmp = rendering.join(&out_name);
+    let args = video::build_cut_args(&path, start, end, &tmp.to_string_lossy());
+    run_ffmpeg_to_library(&args, &tmp, &library_dir, &out_name).await
+}
+
 /// Trim the video to `[start, end]`. Stream-copy keeps the source container;
 /// re-encode lands in `.mp4` (always x264). Returns the new file's path.
 #[tauri::command]

@@ -586,6 +586,7 @@ pub fn run() {
             commands::apply_blur,
             commands::export_gif,
             commands::trim_video,
+            commands::cut_video,
             commands::install_desktop,
             commands::import_files,
             commands::toggle_camera_bubble,
