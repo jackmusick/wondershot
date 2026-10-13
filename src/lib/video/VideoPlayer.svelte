@@ -76,12 +76,14 @@
     redoStack = [...redoStack, snapshot()]; undoStack = undoStack.slice(0, -1);
     redactions = previous; selected = Math.max(0, Math.min(selected, redactions.length - 1));
     blur = redactions[selected]?.blur ?? blur;
+    if (redactions.length) { rangeMode = false; gifOpen = false; }
   }
   function redo() {
     const next = redoStack.at(-1); if (!next || busy) return;
     undoStack = [...undoStack, snapshot()]; redoStack = redoStack.slice(0, -1);
     redactions = next; selected = Math.max(0, Math.min(selected, redactions.length - 1));
     blur = redactions[selected]?.blur ?? blur;
+    if (redactions.length) { rangeMode = false; gifOpen = false; }
   }
   // Preserve editable drafts per source, independently of rendered exports.
   $effect(() => {
@@ -186,7 +188,7 @@
   }
 
   function onPointerDown(e: PointerEvent) {
-    if (playing || busy || rangeMode) return; // only draw while paused
+    if (playing || busy || rangeMode || gifOpen) return; // only draw while paused
     if (e.button !== 0) return;
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
     const p = localPoint(e);
@@ -447,6 +449,7 @@
 
   function openRange() {
     if (redactions.length && !rangeMode) { flash('Apply or remove blur layers before trimming', true); return; }
+    gifOpen = false;
     videoEl?.pause(); playing = false; rangeMode = !rangeMode;
     if (rangeMode) { rangeStart = 0; rangeEnd = duration; }
   }
@@ -472,6 +475,7 @@
   }
   const rangeValid = $derived(Number.isFinite(rangeStart) && Number.isFinite(rangeEnd) && rangeStart >= 0 && rangeEnd <= duration && rangeEnd-rangeStart >= MIN_SPAN);
   async function saveRange(cut: boolean) {
+    if (redactions.length) { flash('Apply or remove blur layers before trimming',true); return; }
     if (busy || !rangeValid) return;
     busy = true;
     try {
@@ -496,11 +500,13 @@
 
   function openGif() {
     if (redactions.length) { flash('Apply blur layers before exporting a GIF',true); return; }
+    rangeMode = false;
     gifStart = Number(current.toFixed(3));
     gifEnd = Number(Math.min(duration || current + 3, current + 3).toFixed(3));
     gifOpen = true;
   }
   async function exportGif() {
+    if (redactions.length) { flash('Apply blur layers before exporting a GIF',true); return; }
     if (busy) return;
     busy = true;
     try {
@@ -527,14 +533,7 @@
 <svelte:window onkeydown={onKeyDown} />
 
 <div class="player">
-  <div class="video-toolbar" aria-label="Video editing tools">
-    <button class="ghost" class:chosen={rangeMode} onclick={openRange} disabled={busy || !duration} aria-pressed={rangeMode}>Trim / Cut</button>
-    <button class="ghost" onclick={grabFrame} disabled={busy || !duration}>Grab frame</button>
-    <button class="ghost" onclick={undo} disabled={busy || !undoStack.length}>Undo</button>
-    <button class="ghost" onclick={redo} disabled={busy || !redoStack.length}>Redo</button>
-    <span class="spacer"></span>
-    <span class="empty">{rangeMode ? 'Drag a range below to keep or remove' : 'Pause to select, move, resize, or add blur layers'}</span>
-  </div>
+  <div class="video-main">
   <div class="stage">
     <!-- svelte-ignore a11y_media_has_caption -->
     <video
@@ -551,7 +550,7 @@
     <!-- Redaction overlay: draws boxes when paused. -->
     <div
       class="overlay"
-      class:drawing={!playing && !rangeMode}
+      class:drawing={!playing && !rangeMode && !gifOpen}
       bind:this={overlayEl}
       role="presentation"
       onpointerdown={onPointerDown}
@@ -589,13 +588,9 @@
       {/if}
     </div>
 
-    {#if !playing && !rangeMode}
-      <div class="hint">Drag empty space to add a blur · drag a box to move it</div>
-    {/if}
   </div>
 
-  <!-- Transport controls -->
-  <div class="controls">
+    <div class="controls" aria-label="Video editing tools">
     <button class="iconbtn" onclick={togglePlay} aria-label={playing ? 'Pause' : 'Play'} title={playing ? 'Pause' : 'Play'}>
       {#if playing}
         <svg viewBox="0 0 16 16"><rect x="3.5" y="2.5" width="3" height="11" /><rect x="9.5" y="2.5" width="3" height="11" /></svg>
@@ -603,113 +598,38 @@
         <svg viewBox="0 0 16 16"><path d="M4 2.5l9 5.5-9 5.5z" /></svg>
       {/if}
     </button>
-    <div class="tstack">
-      {#if redactions.length > 0}
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div
-          class="spanbar"
-          style="cursor:{spanCursor}"
-          bind:this={spanbarEl}
-          onpointerdown={spanPointerDown}
-          onpointermove={spanPointerMove}
-          onpointerup={spanPointerUp}
-          onpointercancel={spanPointerUp}
-          title="Drag edges to adjust · drag inside to move · drag empty space to redefine the selected blur"
-        >
-          {#if duration > 0}
-            {#each redactions as b, i (i)}
-              <div
-                class="span"
-                class:sel={i === selected}
-                style="left:{(b.start / duration) * 100}%; width:{Math.max(0.6, ((b.end - b.start) / duration) * 100)}%; --c:{colorOf(i)}"
-              >
-                <span class="grip l"></span>
-                <span class="grip r"></span>
-              </div>
-            {/each}
+      <div class="tstack">
+        <div class="timeline-track">
+          <input class="timeline" type="range" min="0" max={duration || 0} step="0.01" value={current} oninput={onSeek} aria-label="Seek" />
+          {#if rangeMode}
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <div class="rangebar" role="presentation" bind:this={rangeBar} onpointerdown={rangeDown} onpointermove={rangeMove} onpointerup={() => rangeDrag = null} onpointercancel={() => rangeDrag = null} title="Drag to select a section; drag its edges to adjust">
+              <div class="range-selection" style={`left:${rangeStart/duration*100}%;width:${(rangeEnd-rangeStart)/duration*100}%`}><span class="grip l"></span><span class="grip r"></span></div>
+            </div>
+          {:else if redactions.length > 0}
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <div class="spanbar" role="presentation" style="cursor:{spanCursor}" bind:this={spanbarEl} onpointerdown={spanPointerDown} onpointermove={spanPointerMove} onpointerup={spanPointerUp} onpointercancel={spanPointerUp} title="Drag blur edges to adjust timing; drag a band to move it">
+              {#if duration > 0}
+                {#each redactions as b, i}
+                  <div class="span" class:sel={i === selected} style="left:{(b.start/duration)*100}%;width:{Math.max(.6,((b.end-b.start)/duration)*100)}%;--c:{colorOf(i)}"><span class="grip l"></span><span class="grip r"></span></div>
+                {/each}
+              {/if}
+            </div>
           {/if}
         </div>
-      {/if}
-      <input
-        class="timeline"
-        type="range"
-        min="0"
-        max={duration || 0}
-        step="0.01"
-        value={current}
-        oninput={onSeek}
-        aria-label="Seek"
-      />
+      </div>
+      <span class="time">{fmt(current)} / {fmt(duration)}</span>
+      <div class="toolbar-actions">
+        <button class="ghost" class:chosen={rangeMode} onclick={openRange} disabled={busy || !duration} aria-pressed={rangeMode}>Trim / Cut</button>
+        <button class="ghost" onclick={grabFrame} disabled={busy || !duration}>Grab frame</button>
+        <button class="ghost" onclick={undo} disabled={busy || !undoStack.length} title="Undo (⌘Z)">Undo</button>
+        <button class="ghost" onclick={redo} disabled={busy || !redoStack.length} title="Redo (⇧⌘Z)">Redo</button>
+        <button class="ghost" onclick={openGif} disabled={busy}>Export GIF…</button>
+      </div>
     </div>
-    <span class="time">{fmt(current)} / {fmt(duration)}</span>
   </div>
-
-  {#if rangeMode}
-    <div class="range-panel">
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div class="rangebar" role="presentation" bind:this={rangeBar} onpointerdown={rangeDown} onpointermove={rangeMove} onpointerup={() => rangeDrag = null} onpointercancel={() => rangeDrag = null}>
-        <div class="range-selection" style={`left:${rangeStart/duration*100}%;width:${(rangeEnd-rangeStart)/duration*100}%`}><span class="grip l"></span><span class="grip r"></span></div>
-      </div>
-      <div class="range-actions">
-        <label>Selection start <input type="number" min="0" max={duration} step="0.01" bind:value={rangeStart} /></label>
-        <label>Selection end <input type="number" min="0" max={duration} step="0.01" bind:value={rangeEnd} /></label>
-        <button class="primary" onclick={() => saveRange(false)} disabled={busy || !rangeValid}>Save trim</button>
-        <button class="ghost" onclick={() => saveRange(true)} disabled={busy || !rangeValid || (rangeStart === 0 && rangeEnd === duration)}>Remove selection</button>
-        <button class="ghost" onclick={() => rangeMode = false} disabled={busy}>Cancel</button>
-      </div>
-      <div class="empty">Save trim keeps the selection. Remove selection cuts it out. Both save a new video and preserve the original.</div>
-    </div>
-  {/if}
-  <!-- Redaction panel -->
-  <div class="panel">
-    <div class="panel-head">
-      <span class="title">Blur regions</span>
-      <label class="field" title="Blur strength">
-        <span class="lbl">Strength</span>
-        <input aria-label="Blur strength" type="range" min="1" max="60" value={blur} oninput={(e) => changeStrength(Number(e.currentTarget.value))} disabled={busy} />
-        <span class="num">{blur}</span>
-      </label>
-      <div class="spacer"></div>
-      <button class="ghost" onclick={openGif} disabled={busy}>Export GIF…</button>
-      <button class="primary" onclick={applyBlur} disabled={busy || redactions.length === 0}>
-        {busy ? 'Working…' : 'Apply blur'}
-      </button>
-    </div>
-
-    {#if redactions.length > 0}
-      <div class="blur-layers" aria-label="Blur layers">
-        {#each redactions as r, i}
-          <div class="blur-layer" class:chosen={i === selected}>
-            <button class="ghost" aria-pressed={i === selected} onclick={() => selectRegion(i)}>Blur {i + 1}</button>
-            <label>Start <input aria-label={`Blur ${i+1} start`} type="number" step="0.01" value={r.start} onchange={(e) => updateRegion(i,'start',e.currentTarget.valueAsNumber)} disabled={busy} /></label>
-            <label>End <input aria-label={`Blur ${i+1} end`} type="number" step="0.01" value={r.end} onchange={(e) => updateRegion(i,'end',e.currentTarget.valueAsNumber)} disabled={busy} /></label>
-            <button class="del" aria-label={`Delete blur ${i+1}`} onclick={() => removeRedaction(i)} disabled={busy}>×</button>
-          </div>
-        {/each}
-        {#if redactions[selected]}
-          <div class="geometry-fields">
-            {#each ['x','y','w','h'] as field}
-              <label>{({x:'X',y:'Y',w:'Width',h:'Height'} as Record<string,string>)[field]}
-                <input aria-label={`Selected blur ${({x:'X',y:'Y',w:'Width',h:'Height'} as Record<string,string>)[field]}`} type="number" step="1" value={redactions[selected][field as keyof Redaction]} onchange={(e) => updateRegion(selected,field as 'x' | 'y' | 'w' | 'h',e.currentTarget.valueAsNumber)} disabled={busy} />
-              </label>
-            {/each}
-          </div>
-        {/if}
-      </div>
-    {/if}
-    {#if redactions.length === 0}
-      <div class="empty">Pause the video and drag a box to redact a region.</div>
-    {:else}
-      <div class="spanhint">
-        {redactions.length} region{redactions.length === 1 ? '' : 's'} — the orange bands above
-        the timeline are when each blur is active: drag the handles to adjust, drag inside to
-        move, click a band to select it.
-        <button class="del" title="Delete the selected region (Del)" aria-label="Delete the selected region" onclick={() => removeRedaction(selected)}>✕ region {selected + 1}</button>
-      </div>
-    {/if}
-  </div>
-
-  {#if gifOpen}
+  <aside class="properties" aria-label="Video properties">
+    {#if gifOpen}
     <div class="gif-dialog">
       <div class="gif-head">
         <span class="title">Export GIF</span>
@@ -740,377 +660,117 @@
         <button class="primary" onclick={exportGif} disabled={busy}>{busy ? 'Working…' : 'Export GIF'}</button>
       </div>
     </div>
-  {/if}
-
-  {#if toast}
-    <div class="toast" class:err={errored}>{toast}</div>
-  {/if}
+    {:else if rangeMode}
+      <div class="section">Trim / Cut</div>
+      <div class="fields">
+        <label>Start <input aria-label="Selection start" type="number" min="0" max={duration} step="0.01" bind:value={rangeStart} /></label>
+        <label>End <input aria-label="Selection end" type="number" min="0" max={duration} step="0.01" bind:value={rangeEnd} /></label>
+      </div>
+      <button class="primary" onclick={() => saveRange(false)} disabled={busy || !rangeValid} title="Keep the selected section in a new video">Save trim</button>
+      <button class="ghost" onclick={() => saveRange(true)} disabled={busy || !rangeValid || (rangeStart === 0 && rangeEnd === duration)} title="Remove the selected section and join the rest in a new video">Remove selection</button>
+      <button class="ghost" onclick={() => rangeMode = false} disabled={busy}>Cancel</button>
+      <p class="help">Drag the playback timeline to select a section. Saves a new video.</p>
+    {:else}
+      <div class="section">{redactions.length ? 'Blur layers' : 'Video'}</div>
+      {#if redactions.length}
+        <div class="blur-layers" aria-label="Blur layers">
+          {#each redactions as r,i}
+            <div class="blur-layer" class:chosen={i === selected}>
+              <button class="layer-select" aria-label={`Blur ${i+1}`} aria-pressed={i === selected} onclick={() => selectRegion(i)}>Blur {i+1}<span>{r.start.toFixed(1)}–{r.end.toFixed(1)}s</span></button>
+              <button class="del" aria-label={`Delete blur ${i+1}`} onclick={() => removeRedaction(i)} disabled={busy}>×</button>
+            </div>
+          {/each}
+        </div>
+        {#if redactions[selected]}
+          <div class="fields">
+            <label>Start <input aria-label={`Blur ${selected+1} start`} type="number" step="0.01" value={redactions[selected].start} onchange={(e) => updateRegion(selected,'start',e.currentTarget.valueAsNumber)} disabled={busy} /></label>
+            <label>End <input aria-label={`Blur ${selected+1} end`} type="number" step="0.01" value={redactions[selected].end} onchange={(e) => updateRegion(selected,'end',e.currentTarget.valueAsNumber)} disabled={busy} /></label>
+          </div>
+        {/if}
+      {/if}
+      <label class="strength">Strength <span>{blur}</span><input aria-label="Blur strength" type="range" min="1" max="60" value={blur} oninput={(e) => changeStrength(Number(e.currentTarget.value))} disabled={busy} /></label>
+      {#if redactions[selected]}
+        <details>
+          <summary>Position and size</summary>
+          <div class="fields geometry-fields">
+            {#each ['x','y','w','h'] as field}
+              <label>{({x:'X',y:'Y',w:'Width',h:'Height'} as Record<string,string>)[field]}
+                <input aria-label={`Selected blur ${({x:'X',y:'Y',w:'Width',h:'Height'} as Record<string,string>)[field]}`} type="number" step="1" value={redactions[selected][field as keyof Redaction]} onchange={(e) => updateRegion(selected,field as 'x' | 'y' | 'w' | 'h',e.currentTarget.valueAsNumber)} disabled={busy} />
+              </label>
+            {/each}
+          </div>
+        </details>
+      {/if}
+      <button class="primary" onclick={applyBlur} disabled={busy || !redactions.length}>{busy ? 'Working…' : 'Apply blur'}</button>
+      {#if !redactions.length}<p class="help">Pause and drag on the video to add a blur.</p>{/if}
+    {/if}
+  </aside>
+  {#if toast}<div class="toast" class:err={errored}>{toast}</div>{/if}
 </div>
 
 <style>
-  .video-toolbar, .range-actions, .geometry-fields, .blur-layer { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-  .video-toolbar, .range-panel { padding:8px 12px; border-bottom:1px solid var(--border); flex-shrink:0; }
-  .video-toolbar .empty { padding:0; }
-  .chosen { border-color:var(--accent); background:var(--bg-hover); }
-  .rangebar { height:28px; position:relative; background:var(--bg-field); border:1px solid var(--border); border-radius:4px; touch-action:none; cursor:crosshair; margin-bottom:8px; }
-  .range-selection { position:absolute; top:2px; bottom:2px; border:2px solid var(--accent); background:color-mix(in srgb,var(--accent) 30%,transparent); pointer-events:none; }
-  .range-actions label, .geometry-fields label, .blur-layer label { display:flex; align-items:center; gap:6px; font-size:var(--text-small); color:var(--fg-secondary); }
-  .range-actions input, .geometry-fields input, .blur-layer input { width:76px; background:var(--bg-field); color:var(--fg-primary); border:1px solid var(--border); border-radius:4px; padding:4px; }
-  .blur-layers { margin-top:8px; display:flex; flex-direction:column; gap:6px; }
-  .blur-layer { padding:5px; border:1px solid var(--border); border-radius:4px; }
-  .blur-layer .del { margin-left:auto; }
+  .player { flex:1; display:flex; min-width:0; min-height:0; background:var(--bg-content); position:relative; }
+  .video-main { flex:1; display:flex; flex-direction:column; min-width:0; min-height:0; }
+  .stage { position:relative; flex:1; min-height:0; background:#000; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+  video { width:100%; height:100%; object-fit:contain; display:block; }
+  .overlay { position:absolute; inset:0; }
+  .overlay.drawing { cursor:crosshair; }
+  .redbox { position:absolute; border:1px solid rgba(255,255,255,.22); background:transparent; backdrop-filter:blur(var(--blur,8px)); -webkit-backdrop-filter:blur(var(--blur,8px)); border-radius:2px; pointer-events:auto; cursor:move; touch-action:none; }
+  .redbox.active { pointer-events:none; border-color:var(--accent); background:rgba(59,130,246,.18); backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px); }
+  .redbox.sel { border:2px solid var(--c); box-shadow:0 0 0 1px rgba(0,0,0,.45); }
+  .rednum { position:absolute; top:2px; left:4px; font-size:11px; font-weight:700; line-height:1; color:white; text-shadow:0 1px 2px rgba(0,0,0,.8); pointer-events:none; }
   .resize-handle { position:absolute; right:-5px; bottom:-5px; width:10px; height:10px; border:1px solid white; background:var(--c); cursor:nwse-resize; padding:0; }
-
-  .player {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    background: var(--bg-content);
-    position: relative;
-  }
-  .stage {
-    position: relative;
-    flex: 1;
-    min-height: 0;
-    background: #000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-  }
-  video {
-    max-width: 100%;
-    max-height: 100%;
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-    display: block;
-  }
-  .overlay {
-    position: absolute;
-    inset: 0;
-  }
-  .overlay.drawing {
-    cursor: crosshair;
-  }
-  .redbox {
-    position: absolute;
-    /* Plain blur — neutral hairline only, no colour, so it reads as a frosted
-       region. Colour appears solely on the selected box (.sel). */
-    border: 1px solid rgba(255, 255, 255, 0.22);
-    background: transparent;
-    backdrop-filter: blur(var(--blur,8px));
-    -webkit-backdrop-filter: blur(var(--blur,8px));
-    border-radius: 2px;
-    pointer-events: auto;
-    cursor: move;
-    touch-action: none;
-  }
-  /* The in-progress draw band (transient) — accent so you see what you're drawing. */
-  .redbox.active {
-    pointer-events: none;
-    border-color: var(--accent);
-    background: rgba(59, 130, 246, 0.18);
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
-  }
-  .redbox.sel {
-    border: 2px solid var(--c);
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
-  }
-  .rednum {
-    position: absolute;
-    top: 2px;
-    left: 4px;
-    font-size: 11px;
-    font-weight: 700;
-    line-height: 1;
-    color: #fff;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
-    pointer-events: none;
-  }
-  .hint {
-    position: absolute;
-    bottom: 10px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: rgba(0, 0, 0, 0.6);
-    color: #fff;
-    font-size: var(--text-small);
-    padding: 4px 10px;
-    border-radius: var(--radius);
-    pointer-events: none;
-  }
-
-  .controls {
-    height: 44px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 0 12px;
-    background: var(--bg-content);
-    border-top: 1px solid var(--border);
-    flex-shrink: 0;
-  }
-  .iconbtn {
-    width: 28px;
-    height: 28px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border: none;
-    background: transparent;
-    color: var(--fg-primary);
-    border-radius: var(--radius);
-    cursor: pointer;
-    padding: 0;
-  }
-  .iconbtn:hover {
-    background: var(--bg-hover);
-  }
-  .iconbtn svg {
-    width: 16px;
-    height: 16px;
-    fill: currentColor;
-  }
-  .tstack {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    min-width: 0;
-  }
-  .timeline {
-    width: 100%;
-    accent-color: var(--accent);
-  }
-  /* Blur-span bands: deliberately NOT the accent blue — these are blur time
-     ranges, not a seek control. */
-  .spanbar {
-    position: relative;
-    height: 18px;
-    background: var(--bg-field);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    cursor: crosshair;
-    touch-action: none;
-    user-select: none;
-  }
-  /* Each band is tinted with its region's palette colour (--c) so multiple
-     blurs are distinguishable; the selected one is more saturated. */
-  .span {
-    position: absolute;
-    top: 1px;
-    bottom: 1px;
-    background: color-mix(in srgb, var(--c) 28%, transparent);
-    border: 1px solid var(--c);
-    border-radius: 3px;
-    cursor: grab;
-    pointer-events: none; /* the bar owns hit-testing (edges need slop) */
-  }
-  .span.sel {
-    background: color-mix(in srgb, var(--c) 60%, transparent);
-    border-width: 2px;
-    z-index: 1;
-  }
-  .grip {
-    position: absolute;
-    top: 2px;
-    bottom: 2px;
-    width: 4px;
-    border-radius: 2px;
-    background: rgba(255, 255, 255, 0.92);
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
-  }
-  .grip.l { left: -2px; }
-  .grip.r { right: -2px; }
-  .spanhint {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: var(--text-small);
-    color: var(--fg-secondary);
-    padding: 4px 2px;
-  }
-  .spanhint .del {
-    margin-left: auto;
-    white-space: nowrap;
-  }
-  .time {
-    font-size: var(--text-small);
-    color: var(--fg-secondary);
-    font-variant-numeric: tabular-nums;
-    min-width: 84px;
-    text-align: right;
-  }
-
-  .panel {
-    background: var(--bg-content);
-    border-top: 1px solid var(--border);
-    padding: 8px 12px;
-    flex-shrink: 0;
-    max-height: 38vh;
-    overflow: auto;
-  }
-  .panel-head {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-  .panel-head .title {
-    font-size: var(--text-base);
-    font-weight: 600;
-    color: var(--fg-primary);
-  }
-  .spacer {
-    flex: 1;
-  }
-  .field {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    color: var(--fg-secondary);
-    font-size: var(--text-small);
-  }
-  .field input[type='range'] {
-    width: 90px;
-    accent-color: var(--accent);
-  }
-  .field .num,
-  .grow .num {
-    min-width: 28px;
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-    color: var(--fg-primary);
-  }
-  .field .lbl {
-    color: var(--fg-secondary);
-  }
-
-  .empty {
-    color: var(--fg-secondary);
-    font-size: var(--text-small);
-    padding: 10px 2px;
-  }
-  .del {
-    height: 22px;
-    min-width: 22px;
-    border: 1px solid var(--border);
-    background: var(--bg-content);
-    color: var(--danger);
-    border-radius: var(--radius);
-    cursor: pointer;
-    font-size: 12px;
-    line-height: 1;
-  }
-  .del:hover {
-    background: var(--bg-hover);
-  }
-
-  .ghost,
-  .primary {
-    height: 28px;
-    padding: 0 12px;
-    border-radius: var(--radius);
-    cursor: pointer;
-    font-size: var(--text-small);
-    font-weight: 600;
-  }
-  .ghost {
-    border: 1px solid var(--border-strong);
-    background: var(--bg-field);
-    color: var(--fg-primary);
-  }
-  .ghost:hover {
-    background: var(--bg-hover);
-  }
-  .primary {
-    border: 1px solid var(--accent);
-    background: var(--accent);
-    color: #fff;
-  }
-  .primary:hover:not(:disabled) {
-    filter: brightness(1.08);
-  }
-  .ghost:disabled,
-  .primary:disabled {
-    opacity: 0.45;
-    cursor: default;
-  }
-
-  .gif-dialog {
-    position: absolute;
-    right: 16px;
-    bottom: 60px;
-    width: 280px;
-    background: var(--bg-elevated);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius);
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
-    padding: 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    z-index: 10;
-  }
-  .gif-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-  .gif-head .title {
-    font-weight: 600;
-    color: var(--fg-primary);
-  }
-  .gif-dialog .grow {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: var(--text-small);
-    color: var(--fg-secondary);
-  }
-  .gif-dialog .grow input[type='range'] {
-    flex: 1;
-    accent-color: var(--accent);
-  }
-  .toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: var(--text-small);
-    color: var(--fg-primary);
-    cursor: pointer;
-  }
-  .toggle input {
-    accent-color: var(--accent);
-  }
-  .range-row {
-    display: flex;
-    gap: 10px;
-  }
-  .gif-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-  }
-
-  .toast {
-    position: absolute;
-    bottom: 60px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: var(--bg-elevated);
-    border: 1px solid var(--border-strong);
-    color: var(--fg-primary);
-    padding: 8px 14px;
-    border-radius: var(--radius);
-    font-size: var(--text-small);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-    z-index: 20;
-  }
-  .toast.err {
-    border-color: var(--danger);
-    color: var(--danger);
-  }
+  .controls { height:44px; flex-shrink:0; display:flex; align-items:center; gap:6px; padding:0 8px; border-top:1px solid var(--border); }
+  .iconbtn { width:28px; height:28px; display:inline-flex; align-items:center; justify-content:center; border:0; background:transparent; color:var(--fg-primary); border-radius:var(--radius); cursor:pointer; padding:0; flex-shrink:0; }
+  .iconbtn:hover { background:var(--bg-hover); }
+  .iconbtn svg { width:16px; height:16px; fill:currentColor; }
+  .tstack { flex:1; min-width:60px; }
+  .timeline-track { height:28px; position:relative; }
+  .timeline { width:100%; height:28px; accent-color:var(--accent); margin:0; }
+  .rangebar { position:absolute; inset:4px 0; cursor:crosshair; touch-action:none; user-select:none; }
+  .range-selection { position:absolute; inset:0 auto; border:1px solid var(--accent); background:color-mix(in srgb,var(--accent) 35%,transparent); pointer-events:none; border-radius:3px; }
+  .spanbar { position:absolute; top:0; left:0; right:0; height:9px; touch-action:none; user-select:none; }
+  .span { position:absolute; inset:0 auto; background:color-mix(in srgb,var(--c) 28%,transparent); border:1px solid var(--c); border-radius:2px; pointer-events:none; }
+  .span.sel { background:color-mix(in srgb,var(--c) 60%,transparent); z-index:1; }
+  .grip { position:absolute; top:1px; bottom:1px; width:3px; background:rgba(255,255,255,.92); border-radius:2px; }
+  .grip.l { left:-1px; } .grip.r { right:-1px; }
+  .time { font-size:10px; color:var(--fg-secondary); font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .toolbar-actions { display:flex; align-items:center; gap:4px; flex-shrink:0; }
+  .properties { width:220px; flex-shrink:0; display:flex; flex-direction:column; gap:12px; padding:14px; background:var(--bg-content); border-left:1px solid var(--border); overflow-y:auto; }
+  .section { font-weight:700; color:var(--fg-primary); font-size:var(--text-base); }
+  .fields { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .fields label { display:flex; flex-direction:column; gap:4px; min-width:0; color:var(--fg-secondary); font-size:var(--text-small); }
+  input[type=number] { width:100%; min-width:0; background:var(--bg-field); color:var(--fg-primary); border:1px solid var(--border); border-radius:var(--radius); padding:4px 6px; }
+  .strength { display:flex; flex-wrap:wrap; align-items:center; gap:6px; color:var(--fg-secondary); font-size:var(--text-small); }
+  .strength span { margin-left:auto; font-variant-numeric:tabular-nums; }
+  .strength input { width:100%; accent-color:var(--accent); }
+  .blur-layers { display:flex; flex-direction:column; max-height:30vh; overflow:auto; gap:2px; }
+  .blur-layer { display:flex; align-items:center; gap:4px; border-radius:var(--radius); }
+  .chosen { background:var(--bg-hover); }
+  .layer-select { flex:1; min-width:0; display:flex; justify-content:space-between; gap:6px; padding:7px 6px; border:0; background:transparent; color:var(--fg-primary); font-size:var(--text-small); text-align:left; cursor:pointer; }
+  .layer-select span { color:var(--fg-secondary); font-size:10px; }
+  .blur-layer.chosen .layer-select { color:var(--accent); }
+  .del { width:24px; height:24px; border:0; background:transparent; color:var(--fg-secondary); cursor:pointer; border-radius:var(--radius); }
+  .del:hover { color:var(--danger); background:var(--bg-hover); }
+  details { font-size:var(--text-small); color:var(--fg-secondary); }
+  summary { cursor:pointer; }
+  .geometry-fields { padding-top:8px; }
+  .help { margin:0; font-size:var(--text-small); color:var(--fg-secondary); line-height:1.5; }
+  .ghost, .primary { height:28px; padding:0 8px; border-radius:var(--radius); cursor:pointer; font-size:var(--text-small); font-weight:600; }
+  .ghost { border:1px solid var(--border-strong); background:var(--bg-field); color:var(--fg-primary); }
+  .ghost:hover { background:var(--bg-hover); }
+  .primary { border:1px solid var(--accent); background:var(--accent); color:white; }
+  .ghost.chosen { border-color:var(--accent); }
+  .ghost:disabled, .primary:disabled { opacity:.45; cursor:default; }
+  .gif-dialog { display:flex; flex-direction:column; gap:12px; }
+  .gif-head { display:flex; justify-content:space-between; align-items:center; font-weight:700; color:var(--fg-primary); }
+  .grow { display:flex; align-items:center; flex-wrap:wrap; gap:6px; font-size:var(--text-small); color:var(--fg-secondary); }
+  .grow input { flex:1; min-width:60px; accent-color:var(--accent); }
+  .toggle { font-size:var(--text-small); color:var(--fg-secondary); display:flex; align-items:center; gap:6px; }
+  .range-row { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .t { display:flex; flex-direction:column; gap:4px; font-size:var(--text-small); color:var(--fg-secondary); }
+  .gif-actions { display:flex; flex-direction:column; gap:8px; }
+  .toast { position:absolute; bottom:52px; left:50%; transform:translateX(-50%); padding:8px 12px; background:var(--bg-content); border:1px solid var(--border); color:var(--fg-primary); border-radius:var(--radius); font-size:var(--text-small); z-index:5; }
+  .toast.err { color:var(--danger); }
+  @media (max-width:950px) { .toolbar-actions { gap:2px; } .toolbar-actions .ghost { padding:0 5px; font-size:10px; } }
 </style>

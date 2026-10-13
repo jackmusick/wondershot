@@ -27,9 +27,9 @@ test('draw two blur regions, delete one, and apply blur', async ({ page }) => {
     await page.mouse.move(x, cy - 30); await page.mouse.down();
     await page.mouse.move(x + 80, cy + 30, { steps: 8 }); await page.mouse.up();
   }
-  await expect(page.getByText(/2 regions —/)).toBeVisible();
-  await page.getByRole('button', { name: 'Delete the selected region', exact: true }).click();
-  await expect(page.getByText(/1 region —/)).toBeVisible();
+  await expect(page.getByRole('button',{name:'Blur 2',exact:true})).toBeVisible();
+  await page.getByRole('button', { name: 'Delete blur 2', exact: true }).click();
+  await expect(page.getByRole('button',{name:'Blur 2',exact:true})).toHaveCount(0);
   await page.getByRole('button', { name: 'Apply blur', exact: true }).click();
   await expect(page.getByText('Blur applied', { exact: true })).toBeVisible();
   expect((await lastCall(page,'apply_blur')).args.redactions).toHaveLength(1);
@@ -64,6 +64,7 @@ test('select, move, resize, edit and delete a specific blur layer with undo and 
   await expect(page.getByRole('button',{name:'Blur 1',exact:true})).toHaveAttribute('aria-pressed','true');
   const first = page.getByRole('button',{name:'Blur region 1',exact:true});
   const box = await first.boundingBox(); if (!box) throw new Error('missing first region');
+  await page.getByText('Position and size',{exact:true}).click();
   const xInput = page.getByRole('spinbutton',{name:'Selected blur X',exact:true});
   const originalX = Number(await xInput.inputValue());
   await page.mouse.move(box.x + box.width/2,box.y + box.height/2); await page.mouse.down();
@@ -144,9 +145,58 @@ test('exports select the new library result while the original retains editable 
   await page.waitForFunction(() => (document.querySelector('video')?.duration ?? 0) > 0);
   // Restored layer pixels must be scaled to the decoded video, not 1:1.
   const region = await page.getByRole('button',{name:'Blur region 1',exact:true}).boundingBox();
+  await page.getByText('Position and size',{exact:true}).click();
   const pixels = Number(await page.getByRole('spinbutton',{name:'Selected blur Width',exact:true}).inputValue());
   expect(region!.width).toBeGreaterThan(pixels * 1.5);
   await page.getByRole('button',{name:'Delete blur 1',exact:true}).click();
   await page.getByRole('button',{name:'Grab frame',exact:true}).click();
   await expect(page.getByRole('button',{name:'Arrow',exact:true})).toBeVisible();
+});
+
+for (const width of [1280, 860]) {
+  test(`compact video layout keeps preview height through trim and blur editing at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({width,height:800});
+    const stage = page.locator('.stage');
+    const initial = await stage.boundingBox(); if (!initial) throw new Error('missing video stage');
+    const controls = page.locator('.controls');
+    await expect(controls).toHaveCSS('height','44px');
+    expect(await controls.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    await page.getByRole('button',{name:'Trim / Cut',exact:true}).click();
+    await expect(page.locator('.controls .rangebar')).toBeVisible();
+    const duringTrim = await stage.boundingBox();
+    expect(duringTrim!.height).toBeCloseTo(initial.height,0);
+    expect(duringTrim!.width).toBeCloseTo(initial.width,0);
+    const properties = await page.getByRole('complementary',{name:'Video properties'}).boundingBox();
+    expect(properties!.width).toBe(220);
+    expect(properties!.x).toBeCloseTo(initial.x+initial.width,0);
+    await expect(page.getByRole('complementary',{name:'Video properties'}).getByRole('button',{name:'Save trim',exact:true})).toBeVisible();
+    await page.getByRole('button',{name:'Cancel',exact:true}).click();
+    await drawBlur(page,.3); await drawBlur(page,.6);
+    const duringBlur = await stage.boundingBox();
+    expect(duringBlur!.height).toBeCloseTo(initial.height,0);
+    expect(duringBlur!.width).toBeCloseTo(initial.width,0);
+    await expect(page.getByRole('complementary',{name:'Video properties'}).getByRole('button',{name:'Blur 2',exact:true})).toBeVisible();
+    expect(await controls.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    await page.screenshot({path:`artifacts/ui/video-compact-${width}.png`});
+  });
+}
+
+test('GIF mode prevents new blur drawing and undo returns restored layers to their properties', async ({ page }) => {
+  await page.getByRole('button',{name:'Export GIF…',exact:true}).click();
+  await drawBlur(page,.4);
+  await expect(page.getByRole('button',{name:'Blur 1',exact:true})).toHaveCount(0);
+  await page.getByRole('button',{name:'Cancel',exact:true}).click();
+  await drawBlur(page,.4);
+  await page.getByRole('button',{name:'Delete blur 1',exact:true}).click();
+  await page.getByRole('button',{name:'Export GIF…',exact:true}).click();
+  await page.getByRole('button',{name:'Undo',exact:true}).click();
+  await expect(page.locator('.gif-dialog')).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'Blur 1',exact:true})).toBeVisible();
+  expect(await lastCall(page,'export_gif')).toBeUndefined();
+  await page.getByRole('button',{name:'Delete blur 1',exact:true}).click();
+  await page.getByRole('button',{name:'Trim / Cut',exact:true}).click();
+  await page.getByRole('button',{name:'Undo',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Save trim',exact:true})).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'Blur 1',exact:true})).toBeVisible();
+  expect(await lastCall(page,'trim_video')).toBeUndefined();
 });

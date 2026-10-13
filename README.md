@@ -42,6 +42,8 @@ point.
 
 - **Trim / Cut**: drag the range timeline, then **Save trim** to keep it or
   **Remove selection** to cut it out. Both create a new video with audio.
+  Range selection shares the playback timeline; tool settings and blur layers
+  use the right-hand properties panel, matching the picture editor.
 - **Grab frame** saves the current frame as an editable picture.
 - Blur layers can be selected from the video or their list, moved, resized,
   given independent timing/strength, and deleted with undo/redo. Drafts are
