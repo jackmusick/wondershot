@@ -38,7 +38,9 @@ fn record(paused_stop: bool) {
 
 fn frame_count(path: &std::path::Path) -> usize {
     let decoded = Command::new(find_ffmpeg().unwrap()).args(["-v", "error", "-i"]).arg(path)
-        .args(["-fps_mode", "passthrough", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"]).output().unwrap();
+        // -vsync 0 also supports Ubuntu 22.04's FFmpeg 4.4; it preserves
+        // decoded frame counts just like newer -fps_mode passthrough.
+        .args(["-vsync", "0", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"]).output().unwrap();
     assert!(decoded.status.success(), "{}", String::from_utf8_lossy(&decoded.stderr));
     decoded.stdout.len() / (160 * 120 * 3)
 }
@@ -74,8 +76,8 @@ fn video_trim_frame_gif_and_timed_redaction_produce_valid_media() {
     let trimmed = dir.path().join("trim.mp4");
     ffmpeg_run(video::build_trim_args(src, 1.0, 2.0, trimmed.to_str().unwrap(), true, "libx264"));
     let decoded = Command::new(find_ffmpeg().unwrap()).args(["-v", "error", "-i"]).arg(&trimmed)
-        .args(["-fps_mode", "passthrough", "-pix_fmt", "rgb24", "-f", "rawvideo", "pipe:1"]).output().unwrap();
-    assert!(decoded.status.success());
+        .args(["-vsync", "0", "-pix_fmt", "rgb24", "-f", "rawvideo", "pipe:1"]).output().unwrap();
+    assert!(decoded.status.success(), "{}", String::from_utf8_lossy(&decoded.stderr));
     assert_eq!(decoded.stdout.len() / (320 * 180 * 3), 10, "trim must contain exactly one second");
 
     let gif = dir.path().join("range.gif");
@@ -129,7 +131,7 @@ fn cutting_middle_and_edges_preserves_retained_frames_and_audio() {
     let out = dir.path().join("silent.mp4");
     ffmpeg_run(video::build_cut_args(silent.to_str().unwrap(),1.0,2.0,out.to_str().unwrap()));
     let decoded = Command::new(find_ffmpeg().unwrap()).args(["-v","error","-i"]).arg(&out)
-        .args(["-fps_mode","passthrough","-pix_fmt","rgb24","-f","rawvideo","pipe:1"]).output().unwrap();
-    assert!(decoded.status.success());
+        .args(["-vsync","0","-pix_fmt","rgb24","-f","rawvideo","pipe:1"]).output().unwrap();
+    assert!(decoded.status.success(), "{}", String::from_utf8_lossy(&decoded.stderr));
     assert_eq!(decoded.stdout.len()/(320*180*3),30);
 }
