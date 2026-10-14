@@ -1,14 +1,6 @@
 import { writable, get } from 'svelte/store';
-import type { Capture, RecordingState } from '$lib/types';
+import type { Capture, CaptureOutcome, RecordingState } from '$lib/types';
 import { ipcInvoke, normalizeCaptures } from '$lib/ipc';
-import {
-  selectNativeRegion,
-  selectNativeScreen,
-  selectNativeWindow,
-  supportsNativeScreenPicker,
-  supportsNativeRegionPicker,
-  supportsNativeWindowPicker
-} from '$lib/capture/nativeRegion';
 
 export type View = 'gallery' | 'editor' | 'video';
 
@@ -19,6 +11,10 @@ export const recording = writable<RecordingState>({ status: 'idle' });
 export const recordingError = writable('');
 export const settingsOpen = writable<boolean>(false);
 export const capturePanelOpen = writable<boolean>(false);
+export const captureError = writable<string>('');
+/** Paths selected in the filmstrip. Kept separate from activeItem so a group
+ * can be operated on while one member remains the editor preview. */
+export const selectedCapturePaths = writable<string[]>([]);
 /** Pinned capture paths (filmstrip pin affordance). */
 export const pinned = writable<string[]>([]);
 /** Editor autosave status — drives the toolbar indicator ('error' = the last
@@ -27,7 +23,10 @@ export const autosaveState = writable<'saved' | 'saving' | 'error'>('saved');
 
 export async function loadLibrary(): Promise<void> {
   const caps = await ipcInvoke<Capture[]>('list_library');
-  captures.set(await normalizeCaptures(caps));
+  const normalized = await normalizeCaptures(caps);
+  captures.set(normalized);
+  const available = new Set(normalized.map((c) => c.path));
+  selectedCapturePaths.update((paths) => paths.filter((path) => available.has(path)));
   await loadPinned();
 }
 
@@ -52,14 +51,33 @@ export async function togglePin(c: Capture): Promise<void> {
 }
 
 /** Move a library item to the trash (filmstrip hover-delete) + refresh. */
-export async function trashItem(c: Capture): Promise<void> {
+export async function trashItems(items: Capture[]): Promise<void> {
+  if (items.length === 0) return;
+  const removed = new Set<string>();
+  const failures: unknown[] = [];
+  for (const item of items) {
+    try {
+      await ipcInvoke('trash_item', { path: item.path });
+      removed.add(item.path);
+    } catch (e) {
+      failures.push(e);
+    }
+  }
+
+  const active = get(activeItem);
+  if (active && removed.has(active.path)) activeItem.set(null);
+  selectedCapturePaths.update((paths) => paths.filter((path) => !removed.has(path)));
   try {
-    await ipcInvoke('trash_item', { path: c.path });
-    if (get(activeItem)?.id === c.id) activeItem.set(null);
     await loadLibrary();
   } catch (e) {
-    console.error('trash failed', e);
+    failures.push(e);
   }
+  if (failures.length > 0) console.error('trash failed', failures);
+}
+
+/** Move one library item to the trash (filmstrip hover-delete). */
+export async function trashItem(c: Capture): Promise<void> {
+  await trashItems([c]);
 }
 
 /** Open the editor on a library item by path (CLI `--edit FILE`). */
@@ -82,43 +100,32 @@ export async function importPaths(paths: string[]): Promise<void> {
   }
 }
 
-export async function takeCapture(mode: 'region' | 'fullscreen' | 'window' | 'screen'): Promise<void> {
-  if (mode === 'region' && await supportsNativeRegionPicker()) {
-    const path = await selectNativeRegion();
-    if (!path) return;
-    await loadLibrary();
-    const list = get(captures);
-    const justTaken = list.find((c) => c.path === path) ?? list[0];
-    if (justTaken) activeItem.set(justTaken);
-    return;
-  }
-  if (mode === 'screen' && await supportsNativeScreenPicker()) {
-    const path = await selectNativeScreen();
-    if (!path) return;
-    await loadLibrary();
-    const list = get(captures);
-    const justTaken = list.find((c) => c.path === path) ?? list[0];
-    if (justTaken) activeItem.set(justTaken);
-    return;
-  }
-  if (mode === 'window' && await supportsNativeWindowPicker()) {
-    const path = await selectNativeWindow();
-    if (!path) return;
-    await loadLibrary();
-    const list = get(captures);
-    const justTaken = list.find((c) => c.path === path) ?? list[0];
-    if (justTaken) activeItem.set(justTaken);
-    return;
-  }
+export async function takeCapture(mode: 'region' | 'fullscreen' | 'window'): Promise<void> {
   const cmd = `capture_${mode}`;
+  captureError.set('');
   try {
-    const path = await ipcInvoke<string>(cmd);
-    await loadLibrary();
-    // select the newest item (the one just captured), best-effort by path match
-    const list = get(captures);
-    const justTaken = list.find((c) => c.path === path) ?? list[0];
-    if (justTaken) activeItem.set(justTaken);
+    const outcome = await ipcInvoke<CaptureOutcome>(cmd);
+    const [justTaken] = await normalizeCaptures([outcome.capture]);
+    if (!justTaken) return;
+
+    // Capture completion is incremental: inserting one known file avoids two
+    // immediate full directory scans (and the watcher provides reconciliation
+    // for genuinely external changes).
+    captures.update((items) => [justTaken, ...items.filter((c) => c.path !== justTaken.path)]);
+    activeItem.set(justTaken);
+    view.set(outcome.showPreview ? 'editor' : 'gallery');
+
+    // Clipboard encoding can be comparatively expensive. It must not hold up
+    // the first usable preview frame.
+    if (outcome.copyAfterCapture) {
+      void ipcInvoke('copy_image', { path: justTaken.path }).catch((e) => {
+        console.error('copy-after-capture failed', e);
+      });
+    }
   } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    if (/cancel(?:led|ed)?/i.test(message)) return;
     console.error('capture failed', e);
+    captureError.set(message);
   }
 }

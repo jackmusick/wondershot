@@ -62,7 +62,7 @@ jobs:
           sudo apt-get install -y flatpak flatpak-builder
           flatpak remote-add --user --if-not-exists flathub \
             https://flathub.org/repo/flathub.flatpakrepo
-          flatpak install --user -y flathub org.gnome.Platform//47 org.gnome.Sdk//47
+          flatpak install --user -y flathub org.gnome.Platform//49 org.gnome.Sdk//49
 
           # tauri-action leaves the deb under the workspace target dir; the
           # manifest expects it copied in as wondershot.deb. productName is
@@ -79,6 +79,10 @@ jobs:
           flatpak build-bundle \
             --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo \
             fp-repo wondershot.flatpak io.github.jackmusick.wondershot
+
+          flatpak install --user -y --noninteractive wondershot.flatpak
+          flatpak run io.github.jackmusick.wondershot --self-check \
+            | grep -q '^wondershot self check '
 
           gh release upload "${{ github.ref_name }}" wondershot.flatpak --clobber
 
@@ -102,6 +106,12 @@ jobs:
 
       - name: Install frontend dependencies
         run: npm ci
+
+      - name: Cache FFmpeg download
+        uses: actions/cache@v4
+        with:
+          path: .tauri-sidecars/*.zip
+          key: windows-ffmpeg-${{ hashFiles('scripts/Prepare-WindowsFfmpeg.ps1') }}
 
       - name: Stage FFmpeg sidecar
         shell: pwsh

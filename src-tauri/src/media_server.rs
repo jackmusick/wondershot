@@ -36,6 +36,10 @@ fn content_type(path: &str) -> &'static str {
         Some("mov") => "video/quicktime",
         Some("avi") => "video/x-msvideo",
         Some("gif") => "image/gif",
+        Some("png") => "image/png",
+        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("webp") => "image/webp",
+        Some("bmp") => "image/bmp",
         _ => "application/octet-stream",
     }
 }
@@ -111,6 +115,7 @@ pub fn start() -> u16 {
 /// Each new /camera request bumps this; older streams notice and end, so the
 /// (exclusive) v4l2 device is released for the newcomer instead of the two
 /// fighting over it.
+#[cfg(target_os = "linux")]
 static CAMERA_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 /// Force any live camera stream to end — frees the camera + PipeWire node
@@ -119,12 +124,17 @@ static CAMERA_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::
 /// pipeline PLAYING → camera node stays "in use" → the machine never idles).
 /// The active MjpegReader notices the generation bump within ~500ms, returns
 /// EOF, and its drop sets the pipeline to Null. Called when the bubble hides.
+#[cfg(target_os = "linux")]
 pub fn stop_camera() {
     CAMERA_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 }
 
+#[cfg(not(target_os = "linux"))]
+pub fn stop_camera() {}
+
 /// Streams MJPEG parts from a backend camera pipeline. tiny_http pulls this
 /// Reader until the client disconnects; dropping it tears the pipeline down.
+#[cfg(target_os = "linux")]
 struct MjpegReader {
     stream: wondershot_core::camera::CameraStream,
     buf: Vec<u8>,
@@ -132,6 +142,7 @@ struct MjpegReader {
     generation: u64,
 }
 
+#[cfg(target_os = "linux")]
 impl std::io::Read for MjpegReader {
     fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
         use std::sync::atomic::Ordering;
@@ -167,6 +178,7 @@ impl std::io::Read for MjpegReader {
     }
 }
 
+#[cfg(target_os = "linux")]
 fn mjpeg_part(jpeg: &[u8]) -> Vec<u8> {
     let mut out = format!(
         "--wsframe\r\nContent-Type: image/jpeg\r\nContent-Length: {}\r\n\r\n",
@@ -182,6 +194,7 @@ fn mjpeg_part(jpeg: &[u8]) -> Vec<u8> {
 /// (empty label = first available). Runs on its own thread — the stream lives
 /// as long as the bubble's <img> keeps the connection open, and must not
 /// occupy a worker-pool slot.
+#[cfg(target_os = "linux")]
 fn camera_handle(request: tiny_http::Request) {
     let url = request.url().to_string();
     let label = url
@@ -227,8 +240,16 @@ fn handle(request: tiny_http::Request) {
     // Camera streams are long-lived: hand them their own thread instead of
     // pinning a worker-pool slot for the bubble's whole lifetime.
     if request.url().starts_with("/camera") {
-        std::thread::spawn(move || camera_handle(request));
-        return;
+        #[cfg(target_os = "linux")]
+        {
+            std::thread::spawn(move || camera_handle(request));
+            return;
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = request.respond(tiny_http::Response::empty(404));
+            return;
+        }
     }
     // ?path=<urlencoded absolute path>
     let url = request.url().to_string();
@@ -251,6 +272,11 @@ fn handle(request: tiny_http::Request) {
     let ctype = tiny_http::Header::from_bytes(&b"Content-Type"[..], content_type(&path).as_bytes())
         .unwrap();
     let accept = tiny_http::Header::from_bytes(&b"Accept-Ranges"[..], &b"bytes"[..]).unwrap();
+    // The editor sets crossOrigin=anonymous before loading this loopback URL,
+    // keeping the Konva canvas origin-clean without copying multi-megabyte PNGs
+    // through Tauri IPC as base64.
+    let cors =
+        tiny_http::Header::from_bytes(&b"Access-Control-Allow-Origin"[..], &b"*"[..]).unwrap();
 
     let range = request
         .headers()
@@ -272,7 +298,7 @@ fn handle(request: tiny_http::Request) {
             .unwrap();
             tiny_http::Response::new(
                 tiny_http::StatusCode(206),
-                vec![ctype, accept, crange],
+                vec![ctype, accept, cors, crange],
                 Box::new(f.take(n)) as Box<dyn Read + Send>,
                 Some(n as usize),
                 None,
@@ -280,7 +306,7 @@ fn handle(request: tiny_http::Request) {
         }
         None => tiny_http::Response::new(
             tiny_http::StatusCode(200),
-            vec![ctype, accept],
+            vec![ctype, accept, cors],
             Box::new(f) as Box<dyn Read + Send>,
             Some(len as usize),
             None,

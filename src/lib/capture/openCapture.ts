@@ -1,7 +1,7 @@
 import { screenCaptureBlocked, screenCapturePermissionStatus } from '$lib/capture/permissions';
 import { ipcInvoke } from '$lib/ipc';
 import { currentPlatform } from '$lib/platform';
-import { capturePanelOpen, takeCapture } from '$lib/stores';
+import { capturePanelOpen } from '$lib/stores';
 
 const USE_MOCK = typeof (globalThis as any).__TAURI_INTERNALS__ === 'undefined';
 
@@ -17,8 +17,6 @@ export async function openCapturePicker() {
         capturePanelOpen.set(true);
         return;
       }
-      await takeCapture('region');
-      return;
     }
     await ipcInvoke('show_capture_window');
   } catch (e) {

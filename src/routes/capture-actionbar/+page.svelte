@@ -16,7 +16,13 @@
     await ipcInvoke('debug_log', { message: `capture-actionbar action ${kind}` });
     await ipcEmit('capture-actionbar://action', kind);
   }
+
+  function handleKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape') void action('cancel');
+  }
 </script>
+
+<svelte:window onkeydown={handleKeydown} />
 
 <div class="bar">
   <button class="tool primary" title="Capture" aria-label="Capture" onclick={() => action('capture')}>
@@ -35,7 +41,7 @@
   :global(html, body) {
     margin: 0;
     overflow: hidden;
-    background: #141417;
+    background: transparent;
     font-family: var(--font-ui, Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
   }
 

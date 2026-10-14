@@ -128,7 +128,7 @@ test('cut (vertical band) removes a strip → image width shrinks', async ({ pag
     .toBeLessThan(before.w);
 });
 
-test('step tool places exactly one badge per click (not drag-existing + add)', async ({ page }) => {
+test('step tool places one badge per empty-canvas click and does not stamp over existing badges', async ({ page }) => {
   await gotoEditor(page);
   const box = await canvasBox(page);
   const cx = box.x + box.width / 2;

@@ -21,6 +21,30 @@ pub struct Capture {
     pub title: String,
 }
 
+/// Build library metadata for one completed media file without rescanning every
+/// configured directory. Capture completion uses this on the latency-critical
+/// path; `scan` remains the reconciliation path for external filesystem edits.
+pub fn from_path(path: &Path) -> Option<Capture> {
+    if !path.is_file() {
+        return None;
+    }
+    let ext = path.extension()?.to_string_lossy();
+    let kind = if is_image_ext(&ext) {
+        CaptureKind::Image
+    } else if is_video_ext(&ext) {
+        CaptureKind::Video
+    } else {
+        return None;
+    };
+    Some(Capture {
+        id: path.to_string_lossy().to_string(),
+        path: path.to_path_buf(),
+        kind,
+        created_at: mtime_ms(path),
+        title: path.file_stem()?.to_string_lossy().to_string(),
+    })
+}
+
 pub fn is_image_ext(ext: &str) -> bool {
     IMAGE_EXTS.contains(&ext.to_ascii_lowercase().as_str())
 }
@@ -49,28 +73,9 @@ pub fn scan(dirs: &[PathBuf]) -> Vec<Capture> {
             if !path.is_file() {
                 continue;
             }
-            let Some(ext) = path.extension().map(|e| e.to_string_lossy().to_string()) else {
-                continue;
-            };
-            let kind = if is_image_ext(&ext) {
-                CaptureKind::Image
-            } else if is_video_ext(&ext) {
-                CaptureKind::Video
-            } else {
-                continue;
-            };
-            let title = path
-                .file_stem()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .to_string();
-            caps.push(Capture {
-                id: path.to_string_lossy().to_string(),
-                created_at: mtime_ms(&path),
-                kind,
-                path,
-                title,
-            });
+            if let Some(capture) = from_path(&path) {
+                caps.push(capture);
+            }
         }
     }
     caps.sort_by(|a, b| b.created_at.cmp(&a.created_at));
@@ -111,5 +116,17 @@ mod tests {
         }
         assert!(!is_image_ext("txt"));
         assert!(is_image_ext("PNG"));
+    }
+
+    #[test]
+    fn from_path_builds_one_capture_without_a_directory_scan() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("one.png");
+        fs::write(&path, b"png").unwrap();
+        let capture = from_path(&path).unwrap();
+        assert_eq!(capture.path, path);
+        assert_eq!(capture.title, "one");
+        assert_eq!(capture.kind, CaptureKind::Image);
+        assert!(from_path(&dir.path().join("missing.png")).is_none());
     }
 }

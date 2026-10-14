@@ -1,3 +1,4 @@
+#[cfg(any(target_os = "windows", target_os = "macos"))]
 use std::sync::Mutex;
 
 #[derive(Default)]

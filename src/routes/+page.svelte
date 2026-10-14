@@ -1,12 +1,13 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
-  import { loadLibrary, takeCapture, openEditorByPath, importPaths } from '$lib/stores';
+  import { loadLibrary, takeCapture, openEditorByPath, importPaths, trashItems, selectedCapturePaths } from '$lib/stores';
   import { ipcListen, ipcEmit, ipcInvoke } from '$lib/ipc';
   import { openCapturePicker } from '$lib/capture/openCapture';
   import { initRecordingEvents, startRecording, startRecordingRect } from '$lib/recorder/control';
-  import { activeItem, captures, settingsOpen } from '$lib/stores';
+  import { activeItem, captureError, captures, settingsOpen } from '$lib/stores';
   import CaptureHeader from '$lib/components/CaptureHeader.svelte';
+  import MainTitlebar from '$lib/components/MainTitlebar.svelte';
   import ContentView from '$lib/components/ContentView.svelte';
   import PropertiesPanel from '$lib/components/PropertiesPanel.svelte';
   import ZoomBar from '$lib/components/ZoomBar.svelte';
@@ -29,16 +30,24 @@
           if (s.copy_after_capture !== false && path) {
             await ipcInvoke('copy_image', { path });
           }
+          if (s.auto_share_after_capture === true && path) {
+            await ipcInvoke('share_capture', { path });
+          }
         } catch (e) {
-          console.error('copy-after-capture failed', e);
+          console.error('post-capture action failed', e);
         }
       }));
       // Live folder watching: the backend debounce-emits this when a media file
       // lands in / leaves a watched dir (global hotkey, external drop).
       uns.push(await ipcListen('settings://open', () => settingsOpen.set(true)));
       uns.push(await ipcListen('library://changed', () => void loadLibrary()));
-      // CLI / global-hotkey forwarding (parity with the Python --capture model).
+      // CLI / global-hotkey forwarding: the backend starts direct region
+      // capture on Linux and restores the main window when it completes.
       uns.push(await ipcListen('cli://capture', () => void openCapturePicker()));
+      uns.push(await ipcListen<string>('capture://failed', (error) => {
+        const message = String(error);
+        if (!/cancel(?:led|ed)?/i.test(message)) captureError.set(message);
+      }));
       uns.push(await ipcListen('cli://fullscreen', () => takeCapture('fullscreen')));
       uns.push(await ipcListen<string>('cli://edit', (p) => openEditorByPath(p)));
       uns.push(await ipcListen<string[]>('cli://import', (fs) => importPaths(fs)));
@@ -53,7 +62,7 @@
           if (p.kind === 'record') {
             void startRecording(p.mode === 'screen' ? 'display' : p.mode === 'region' ? 'region' : 'screen');
           }
-          else void takeCapture(p.mode ?? 'region');
+          else void takeCapture(p.mode === 'screen' ? 'fullscreen' : p.mode ?? 'region');
         }
       ));
       // Signal the backend that cli:// listeners are attached; it then dispatches
@@ -85,7 +94,10 @@
     const cur = get(activeItem);
     const idx = cur ? list.findIndex((c) => c.id === cur.id) : -1;
     const next = list[Math.max(0, Math.min(list.length - 1, idx + delta))];
-    if (next && next.id !== cur?.id) activeItem.set(next);
+    if (next && next.id !== cur?.id) {
+      activeItem.set(next);
+      selectedCapturePaths.set([next.path]);
+    }
   }
 
   async function onKeyDown(e: KeyboardEvent) {
@@ -95,13 +107,31 @@
     // Ctrl/Cmd+C → copy the current image to the clipboard.
     if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) {
       const cur = get(activeItem);
-      if (cur && cur.kind !== 'video') {
+      const paths = get(selectedCapturePaths);
+      const selected = get(captures).filter((item) => paths.includes(item.path));
+      if (selected.length > 1 || selected[0]?.kind === 'video') {
         e.preventDefault();
         try {
-          await ipcInvoke('copy_image', { path: cur.path });
+          await ipcInvoke('copy_files', { paths: selected.map((item) => item.path) });
         } catch (err) {
           console.error('copy failed', err);
         }
+      } else if (selected.length === 1 || (cur && cur.kind !== 'video')) {
+        e.preventDefault();
+        try {
+          await ipcInvoke('copy_image', { path: selected[0]?.path ?? cur!.path });
+        } catch (err) {
+          console.error('copy failed', err);
+        }
+      }
+      return;
+    }
+    if (e.key === 'Delete') {
+      const paths = get(selectedCapturePaths);
+      const selected = get(captures).filter((item) => paths.includes(item.path));
+      if (selected.length > 0) {
+        e.preventDefault();
+        await trashItems(selected);
       }
       return;
     }
@@ -113,7 +143,14 @@
 <svelte:window on:keydown={onKeyDown} />
 
 <div class="shell">
+  <MainTitlebar />
   <CaptureHeader />
+  {#if $captureError}
+    <div class="capture-error" role="alert">
+      <span>Capture failed: {$captureError}</span>
+      <button aria-label="Dismiss capture error" onclick={() => captureError.set('')}>Close</button>
+    </div>
+  {/if}
   <div class="work">
     <ContentView />
     {#if $activeItem && $activeItem.kind !== 'video'}
@@ -131,4 +168,13 @@
 <style>
   .shell { display: flex; flex-direction: column; height: 100vh; background: var(--bg-content); }
   .work { flex: 1; display: flex; min-height: 0; }
+  .capture-error {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    padding: 8px 12px; color: #fff; background: color-mix(in srgb, var(--danger) 78%, #111);
+    border-bottom: 1px solid var(--danger); font-size: var(--text-small); flex-shrink: 0;
+  }
+  .capture-error button {
+    border: 1px solid rgba(255,255,255,.45); border-radius: var(--radius); padding: 3px 9px;
+    background: transparent; color: inherit; cursor: pointer;
+  }
 </style>

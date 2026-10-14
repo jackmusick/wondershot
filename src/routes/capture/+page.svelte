@@ -11,6 +11,11 @@
   let preview = $state(true);
   let cursor = $state(false);
   let delay = $state(0);
+  let lastPersisted = '';
+
+  function snapshot() {
+    return JSON.stringify({ copy_after_capture: copyAfter, show_gallery_after_capture: preview, capture_cursor: cursor, capture_delay: delay });
+  }
 
   async function load() {
     const s = (await ipcInvoke<Record<string, unknown>>('get_settings')) ?? {};
@@ -18,10 +23,13 @@
     preview = s.show_gallery_after_capture !== false;
     cursor = s.capture_cursor === true;
     delay = Number(s.capture_delay ?? 0);
+    lastPersisted = snapshot();
   }
 
-  function persist() {
-    void ipcInvoke('set_settings', {
+  async function persist() {
+    const next = snapshot();
+    if (next === lastPersisted) return;
+    await ipcInvoke('set_settings', {
       values: {
         copy_after_capture: copyAfter,
         show_gallery_after_capture: preview,
@@ -29,6 +37,7 @@
         capture_delay: delay,
       },
     });
+    lastPersisted = next;
   }
 
   async function win() {
@@ -39,8 +48,15 @@
   async function hideSelf() { if (!USE_MOCK) try { await (await win()).hide(); } catch {} }
   async function closeSelf() { if (!USE_MOCK) try { await (await win()).close(); } catch {} }
 
-  async function run(kind: 'capture' | 'record', mode?: 'region' | 'fullscreen') {
-    persist();
+  async function dragTitlebar(event: PointerEvent) {
+    if (USE_MOCK || event.button !== 0) return;
+    const target = event.target as Element | null;
+    if (target?.closest('button, input, select, textarea, a')) return;
+    try { await (await win()).startDragging(); } catch {}
+  }
+
+  async function run(kind: 'capture' | 'record', mode?: 'region' | 'fullscreen' | 'window') {
+    await persist();
     await hideSelf();
     void ipcEmit('capture-cmd', { kind, mode });
   }
@@ -48,8 +64,8 @@
   onMount(load);
 </script>
 
-<div class="titlebar" data-tauri-drag-region>
-  <span class="ttitle" data-tauri-drag-region>Capture</span>
+<div class="titlebar" role="presentation" onpointerdown={dragTitlebar}>
+  <span class="ttitle">Capture</span>
   <span class="tbtns">
     <button class="twin" title="Minimize" onclick={minimizeSelf} aria-label="Minimize">
       <svg viewBox="0 0 12 12" width="11" height="11"><path d="M2 6h8" /></svg>
@@ -75,6 +91,7 @@
   </button>
   <div class="actions">
     <button class="act" onclick={() => run('capture', 'fullscreen')}>Full screen</button>
+    <button class="act" onclick={() => run('capture', 'window')}>Window</button>
     <button class="act" onclick={() => run('record')}>Record</button>
     <button class="act" onclick={() => run('record', 'region')}>Record Region</button>
   </div>

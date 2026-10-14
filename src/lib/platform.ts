@@ -9,7 +9,14 @@ export const USE_MOCK =
   typeof (globalThis as any).__TAURI_INTERNALS__ === 'undefined';
 
 export async function currentPlatform(): Promise<PlatformName> {
-  if (USE_MOCK) return 'unknown';
+  if (USE_MOCK) {
+    // Local UI harnesses can render platform-specific settings without
+    // pretending to be a Tauri webview (for example, `?platform=linux`).
+    if (import.meta.env.DEV && typeof window !== 'undefined') {
+      return new URLSearchParams(window.location.search).get('platform') ?? 'unknown';
+    }
+    return 'unknown';
+  }
   if (!cachedPlatform) {
     try {
       cachedPlatform = await ipcInvoke<string>('platform');

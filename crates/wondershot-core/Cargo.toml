@@ -15,6 +15,8 @@ ndarray = { version = "0.17", optional = true }
 [target.'cfg(target_os = "linux")'.dependencies]
 ashpd = { version = "0.9", default-features = false, features = ["tokio"] }
 zbus = "4"
+rustix = { version = "1", features = ["pipe"] }
+tokio = { version = "1", features = ["rt"] }
 gstreamer = "0.23"
 gstreamer-base = "0.23"
 gstreamer-app = "0.23"
@@ -29,6 +31,11 @@ windows-sys = { version = "0.61", features = [
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_WindowsAndMessaging",
 ] }
+windows-capture = "2.0.1"
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_Graphics_Gdi"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+screencapturekit = { version = "8.0.1", features = ["macos_14_0"] }
 
 [features]
 # AI background removal via ONNX Runtime. `ort` is built with `load-dynamic`:

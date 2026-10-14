@@ -6,5 +6,7 @@
   <string>Wondershot uses the camera to show the optional camera bubble while recording.</string>
   <key>NSMicrophoneUsageDescription</key>
   <string>Wondershot uses the microphone when you enable microphone audio for screen recordings.</string>
+  <key>NSScreenCaptureUsageDescription</key>
+  <string>Wondershot captures the screen, windows, or selected regions when you request a screenshot.</string>
 </dict>
 </plist>

@@ -9,6 +9,15 @@ export interface Capture {
   title: string;
 }
 
+export interface CaptureOutcome {
+  capture: Capture;
+  operationId: string;
+  backend: string;
+  captureElapsedMs: number;
+  copyAfterCapture: boolean;
+  showPreview: boolean;
+}
+
 export interface LibraryGroup {
   label: string;       // "Today", "Yesterday", or a date
   items: Capture[];

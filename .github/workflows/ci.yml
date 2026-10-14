@@ -39,6 +39,39 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Installer smoke tests
+        if: runner.os == 'Linux'
+        run: ./scripts/test-install.sh
+
+      - name: Frontend typecheck
+        run: npm run check
+
+      - name: Frontend unit tests
+        run: npm test
+
+      # Tauri validates configured externalBin paths during cargo check/test.
+      # Keep those code-only gates independent of the network; the real FFmpeg
+      # executable replaces this placeholder before the Windows package build.
+      - name: Stage Windows sidecar placeholder for checks
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force src-tauri/binaries | Out-Null
+          New-Item -ItemType File -Force src-tauri/binaries/ffmpeg-x86_64-pc-windows-msvc.exe | Out-Null
+
+      - name: Rust check
+        run: cargo check --workspace --all-targets
+
+      - name: Rust workspace tests
+        run: cargo test --workspace
+
+      - name: Cache Windows FFmpeg download
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: .tauri-sidecars/*.zip
+          key: windows-ffmpeg-${{ hashFiles('scripts/Prepare-WindowsFfmpeg.ps1') }}
+
       - name: Stage Windows FFmpeg sidecar
         if: runner.os == 'Windows'
         shell: pwsh
@@ -64,18 +97,6 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: choco install nsis -y --no-progress
-
-      - name: Frontend typecheck
-        run: npm run check
-
-      - name: Frontend unit tests
-        run: npm test
-
-      - name: Rust check
-        run: cargo check --workspace --all-targets
-
-      - name: Rust core tests
-        run: cargo test -p wondershot-core
 
       - name: Tauri build smoke
         if: runner.os == 'Linux'

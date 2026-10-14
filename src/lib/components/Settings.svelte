@@ -426,11 +426,6 @@
               <small>{recordingHotkey ? hotkeyRecorderMsg || (isMac ? 'Use Cmd, Ctrl, Option, or Shift with a letter, number, or function key.' : 'Use Ctrl, Alt, Shift, or Win with a letter, number, function key, or Print Screen.') : 'Registered directly by Wondershot while the app is running.'}</small>
             </label>
           {:else if isLinux}
-            <label class="field">
-              <span>Capture hotkey</span>
-              <input type="text" bind:value={s.hotkey_capture} />
-              <small>Bind this manually in KDE settings — shown here for reference.</small>
-            </label>
             <fieldset class="group">
               <legend>Global capture hotkey</legend>
               <small>
@@ -443,16 +438,6 @@
             </fieldset>
           {/if}
         {:else if tab === 'capture'}
-          {#if isLinux}
-            <label class="field row">
-              <span>Backend</span>
-              <select bind:value={s.backend}>
-                <option value="auto">Auto</option>
-                <option value="spectacle">Spectacle</option>
-                <option value="portal">Portal</option>
-              </select>
-            </label>
-          {/if}
           <label class="check"><input type="checkbox" bind:checked={s.capture_cursor} /> Capture cursor</label>
           <label class="field row">
             <span>Capture delay (s)</span>
@@ -530,6 +515,7 @@
             Upload a capture to a cloud target and copy a share link. Credentials are
             shared with the previous Wondershot, so an existing sign-in carries over.
           </p>
+          <label class="check"><input type="checkbox" bind:checked={s.auto_share_after_capture} /> Share automatically after capture</label>
           <label class="field row">
             <span>Default provider</span>
             <select bind:value={s.share_provider}>
