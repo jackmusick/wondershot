@@ -198,8 +198,17 @@ jobs:
           $process = Start-Process $installer.FullName -ArgumentList "/S /D=$installDir" -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "Installer failed: $($process.ExitCode)" }
           $app = Join-Path $installDir 'wondershot.exe'
-          $check = & $app --self-check
-          if ($LASTEXITCODE -ne 0 -or $check -notmatch '^wondershot self check ') { throw 'Installed app self-check failed' }
+          # The release binary has the Windows GUI subsystem. Explicitly
+          # redirect handles and wait; PowerShell's bare & invocation can
+          # return before a GUI process finishes and leave LASTEXITCODE stale.
+          $stdout = Join-Path $env:RUNNER_TEMP 'wondershot-self-check.stdout'
+          $stderr = Join-Path $env:RUNNER_TEMP 'wondershot-self-check.stderr'
+          $checkProcess = Start-Process $app -ArgumentList '--self-check' -Wait -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          $check = Get-Content $stdout -Raw
+          if ($checkProcess.ExitCode -ne 0 -or $check -notmatch '^wondershot self check ') {
+            Get-Content $stderr
+            throw "Installed app self-check failed: exit=$($checkProcess.ExitCode), output=$check"
+          }
           $ffmpeg = Get-ChildItem $installDir -Recurse -Filter 'ffmpeg*.exe' | Select-Object -First 1
           if (-not $ffmpeg) { throw 'Installed FFmpeg sidecar missing' }
           & $ffmpeg.FullName -version

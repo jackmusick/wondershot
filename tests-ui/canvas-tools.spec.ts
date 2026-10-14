@@ -10,6 +10,23 @@ async function editor(page: import('@playwright/test').Page) {
 async function count(page: import('@playwright/test').Page) {
   return page.evaluate(() => (window as any).__wsEditor.itemCount());
 }
+
+/** Wait for Konva to rebuild and paint the annotation's actual pointer target. */
+async function waitForAnnotationHit(
+  page: import('@playwright/test').Page,
+  pageX: number,
+  pageY: number,
+  expectedZIndex: number,
+) {
+  await expect.poll(() => page.evaluate(({ pageX, pageY, expectedZIndex }) => {
+    const stage = (window as any).__wsEditor?.stage;
+    if (!stage) return false;
+    const bounds = stage.container().getBoundingClientRect();
+    const node = stage.getIntersection({ x: pageX - bounds.left, y: pageY - bounds.top });
+    return node?.hasName('wsNode') === true && node.zIndex() === expectedZIndex;
+  }, { pageX, pageY, expectedZIndex })).toBe(true);
+}
+
 for (const tool of ['Arrow', 'Line', 'Box', 'Ellipse', 'Pen', 'Highlight', 'Pixelate', 'Blur']) {
   test(`${tool}: draw, undo, redo`, async ({ page }) => {
     const c = await editor(page);
@@ -138,17 +155,20 @@ test('editing properties preserves annotation stacking through undo and redo', a
   await expect.poll(() => page.evaluate(() => (window as any).__wsEditor.selectionCount())).toBe(1);
   const selectedIndex = () => page.evaluate(() => (window as any).__wsEditor.transformer.nodes()[0]?.zIndex());
   const before = await selectedIndex();
+  expect(before).toBe(0);
   await page.getByLabel('Stroke width', { exact: true }).fill('12');
   await expect.poll(selectedIndex).toBe(before);
   await expect.poll(() => page.evaluate(() => (window as any).__wsEditor.items()[0].width)).toBe(12);
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
   // Undo/redo rebuild Konva's annotation hit graph asynchronously. Wait until
-  // the old transformer selection is cleared before clicking the box stroke.
+  // the old transformer is cleared and the rebuilt box can receive the click.
   await expect.poll(() => page.evaluate(() => (window as any).__wsEditor.selectionCount())).toBe(0);
+  await waitForAnnotationHit(page, c.x, c.y - 30, before);
   await page.mouse.click(c.x, c.y - 30);
   await expect.poll(selectedIndex).toBe(before);
   await page.getByRole('button', { name: 'Redo', exact: true }).click();
   await expect.poll(() => page.evaluate(() => (window as any).__wsEditor.selectionCount())).toBe(0);
+  await waitForAnnotationHit(page, c.x, c.y - 30, before);
   await page.mouse.click(c.x, c.y - 30);
   await expect.poll(selectedIndex).toBe(before);
 });
