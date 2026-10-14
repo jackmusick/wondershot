@@ -129,6 +129,9 @@ jobs:
         run: |
           test -x target/release/wondershot
           target/release/wondershot --self-check | grep -q '^wondershot self check '
+          appimage=$(find target/release/bundle/appimage -name '*.AppImage' -print -quit)
+          test -n "$appimage"
+          APPIMAGE_EXTRACT_AND_RUN=1 "$appimage" --self-check | grep -q '^wondershot self check '
 
       - name: Upload Linux installers
         if: runner.os == 'Linux'
@@ -152,6 +155,21 @@ jobs:
           "$app/Contents/MacOS/wondershot" --self-check | grep -q '^wondershot self check '
           "$app/Contents/Resources/ffmpeg" -version
 
+      - name: Verify app copied from macOS DMG
+        if: runner.os == 'macOS'
+        run: |
+          dmg=$(find target/release/bundle/dmg -name '*.dmg' -print -quit)
+          test -n "$dmg"
+          mount_dir=$(mktemp -d)
+          install_dir=$(mktemp -d)
+          trap 'hdiutil detach "$mount_dir" >/dev/null 2>&1 || true' EXIT
+          hdiutil attach "$dmg" -readonly -nobrowse -mountpoint "$mount_dir"
+          ditto "$mount_dir/Wondershot.app" "$install_dir/Wondershot.app"
+          app="$install_dir/Wondershot.app"
+          codesign --verify --strict --deep "$app"
+          "$app/Contents/MacOS/wondershot" --self-check | grep -q '^wondershot self check '
+          "$app/Contents/Resources/ffmpeg" -version
+
       - name: Archive macOS app bundle
         if: runner.os == 'macOS'
         run: tar -C target/release/bundle/macos -czf Wondershot.app.tar.gz Wondershot.app
@@ -169,6 +187,23 @@ jobs:
       - name: Build Windows installers
         if: runner.os == 'Windows'
         run: npx tauri build --ci --bundles nsis,msi -- --locked
+
+      - name: Verify installed Windows app and FFmpeg
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
+          if (-not $installer) { throw 'NSIS installer missing' }
+          $installDir = Join-Path $env:RUNNER_TEMP 'wondershot-install-smoke'
+          $process = Start-Process $installer.FullName -ArgumentList "/S /D=$installDir" -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Installer failed: $($process.ExitCode)" }
+          $app = Join-Path $installDir 'wondershot.exe'
+          $check = & $app --self-check
+          if ($LASTEXITCODE -ne 0 -or $check -notmatch '^wondershot self check ') { throw 'Installed app self-check failed' }
+          $ffmpeg = Get-ChildItem $installDir -Recurse -Filter 'ffmpeg*.exe' | Select-Object -First 1
+          if (-not $ffmpeg) { throw 'Installed FFmpeg sidecar missing' }
+          & $ffmpeg.FullName -version
+          if ($LASTEXITCODE -ne 0) { throw 'Installed FFmpeg failed' }
 
       - name: Upload Windows installers
         if: runner.os == 'Windows'
