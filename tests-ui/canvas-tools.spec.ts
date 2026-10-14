@@ -142,9 +142,13 @@ test('editing properties preserves annotation stacking through undo and redo', a
   await expect.poll(selectedIndex).toBe(before);
   await expect.poll(() => page.evaluate(() => (window as any).__wsEditor.items()[0].width)).toBe(12);
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  // Undo/redo rebuild Konva's annotation hit graph asynchronously. Wait until
+  // the old transformer selection is cleared before clicking the box stroke.
+  await expect.poll(() => page.evaluate(() => (window as any).__wsEditor.selectionCount())).toBe(0);
   await page.mouse.click(c.x, c.y - 30);
   await expect.poll(selectedIndex).toBe(before);
   await page.getByRole('button', { name: 'Redo', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => (window as any).__wsEditor.selectionCount())).toBe(0);
   await page.mouse.click(c.x, c.y - 30);
   await expect.poll(selectedIndex).toBe(before);
 });

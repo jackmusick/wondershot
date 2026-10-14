@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
 
 jobs:
   tauri:
@@ -24,7 +29,7 @@ jobs:
             libayatana-appindicator3-dev librsvg2-dev libssl-dev \
             libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
             gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly \
-            libunwind-dev ffmpeg
+            libunwind-dev ffmpeg patchelf rpm
           sudo apt-get install -y --no-install-recommends gstreamer1.0-pipewire || true
 
       - uses: actions/setup-node@v4
@@ -38,6 +43,10 @@ jobs:
 
       - name: Install frontend dependencies
         run: npm ci
+
+      - name: macOS bundle command tests
+        if: runner.os == 'macOS'
+        run: node --test scripts/build-macos.test.mjs
 
       - name: Installer smoke tests
         if: runner.os == 'Linux'
@@ -59,11 +68,20 @@ jobs:
           New-Item -ItemType Directory -Force src-tauri/binaries | Out-Null
           New-Item -ItemType File -Force src-tauri/binaries/ffmpeg-x86_64-pc-windows-msvc.exe | Out-Null
 
+      # Tauri reads the macOS resource declarations during Rust checks. Stage
+      # the bundled FFmpeg first so code-only gates do not depend on missing
+      # package resources.
+      - name: Stage macOS FFmpeg for checks and packaging
+        if: runner.os == 'macOS'
+        run: |
+          brew install ffmpeg
+          python3 scripts/prepare-macos-ffmpeg.py
+
       - name: Rust check
-        run: cargo check --workspace --all-targets
+        run: cargo check --locked --workspace --all-targets
 
       - name: Rust workspace tests
-        run: cargo test --workspace
+        run: cargo test --locked --workspace
 
       - name: Cache Windows FFmpeg download
         if: runner.os == 'Windows'
@@ -77,51 +95,87 @@ jobs:
         shell: pwsh
         run: ./scripts/Prepare-WindowsFfmpeg.ps1
 
-      - name: Stage macOS FFmpeg
-        if: runner.os == 'macOS'
-        run: |
-          brew install ffmpeg
-          python3 scripts/prepare-macos-ffmpeg.py
-
       - name: Browser interaction regressions
         if: runner.os == 'macOS'
         run: |
           npx playwright install chromium webkit
           npm run test:ui
 
+      - name: Linux Chromium interaction regressions
+        if: runner.os == 'Linux'
+        run: |
+          npx playwright install --with-deps chromium
+          npx playwright test --project=chromium --workers=2
+
       - name: macOS recording and video processing regressions
         if: runner.os == 'macOS'
         run: npm run test:macos:media
 
+      - name: Linux video processing regressions
+        if: runner.os == 'Linux'
+        run: cargo test -p wondershot-core --test macos_media_smoke --locked -- --ignored
+
       - name: Install Windows installer tooling
         if: runner.os == 'Windows'
         shell: pwsh
-        run: choco install nsis -y --no-progress
+        run: choco install nsis wixtoolset -y --no-progress
 
-      - name: Tauri build smoke
+      - name: Build Linux installers
         if: runner.os == 'Linux'
-        run: npx tauri build --no-bundle
+        run: npx tauri build --ci --bundles appimage,deb,rpm --features bgremove -- --locked
 
-      - name: Signed macOS app build
+      - name: Verify Linux installer binary
+        if: runner.os == 'Linux'
+        run: |
+          test -x target/release/wondershot
+          target/release/wondershot --self-check | grep -q '^wondershot self check '
+
+      - name: Upload Linux installers
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: wondershot-linux-installers
+          path: |
+            target/**/bundle/appimage/*.AppImage
+            target/**/bundle/deb/*.deb
+            target/**/bundle/rpm/*.rpm
+          if-no-files-found: error
+
+      - name: Build signed macOS app and DMG
         if: runner.os == 'macOS'
         run: npm run build:macos
 
-      - name: Upload macOS app
+      - name: Verify macOS bundled app
+        if: runner.os == 'macOS'
+        run: |
+          app=target/release/bundle/macos/Wondershot.app
+          "$app/Contents/MacOS/wondershot" --self-check | grep -q '^wondershot self check '
+          "$app/Contents/Resources/ffmpeg" -version
+
+      - name: Archive macOS app bundle
+        if: runner.os == 'macOS'
+        run: tar -C target/release/bundle/macos -czf Wondershot.app.tar.gz Wondershot.app
+
+      - name: Upload macOS installers
         if: runner.os == 'macOS'
         uses: actions/upload-artifact@v4
         with:
-          name: wondershot-macos-app
-          path: target/release/bundle/macos/Wondershot.app/**
+          name: wondershot-macos-installers
+          path: |
+            Wondershot.app.tar.gz
+            target/**/bundle/dmg/*.dmg
           if-no-files-found: error
 
-      - name: Windows setup build
+      - name: Build Windows installers
         if: runner.os == 'Windows'
-        run: npx tauri build -b nsis
+        run: npx tauri build --ci --bundles nsis,msi -- --locked
 
-      - name: Upload Windows setup
+      - name: Upload Windows installers
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: wondershot-windows-setup
-          path: target/**/bundle/nsis/*.exe
+          name: wondershot-windows-installers
+          path: |
+            target/**/bundle/nsis/*.exe
+            target/**/bundle/msi/*.msi
           if-no-files-found: error

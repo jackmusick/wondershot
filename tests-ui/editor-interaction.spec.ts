@@ -55,9 +55,10 @@ test('draw a box, then select it → transformer shows resize/rotate handles', a
     .poll(() => hook(page, () => (window as any).__wsEditor.itemCount()))
     .toBe(1);
 
-  // Switch to Select and click the rectangle's center.
+  // Box is stroke-only, so select its visible top edge rather than its empty
+  // center. This also exercises the hit target users rely on at fit zoom.
   await pickTool(page, 'Select');
-  await page.mouse.click(cx, cy);
+  await page.mouse.click(cx, cy - 60);
 
   await expect
     .poll(() => hook(page, () => (window as any).__wsEditor.selectionCount()))
@@ -98,7 +99,7 @@ test('transformer handles stay a usable size when zoomed out (large-image case)'
   await page.mouse.move(cx + 80, cy + 60, { steps: 6 });
   await page.mouse.up();
   await pickTool(page, 'Select');
-  await page.mouse.click(cx, cy);
+  await page.mouse.click(cx, cy - 60);
 
   // Zoom out a lot (simulates a large screenshot fit-scaled down).
   for (let i = 0; i < 8; i++) await page.locator('button[aria-label="Zoom out"]').click();

@@ -180,6 +180,7 @@ modules:
     buildsystem: cmake-ninja
     config-opts:
       - -DENABLE_GTKDOC=NO
+      - -DCMAKE_INSTALL_LIBDIR=lib
     sources:
       - type: archive
         url: https://github.com/AyatanaIndicators/ayatana-ido/archive/refs/tags/0.10.4.tar.gz
@@ -188,6 +189,7 @@ modules:
     buildsystem: cmake-ninja
     config-opts:
       - -DENABLE_GTKDOC=NO
+      - -DCMAKE_INSTALL_LIBDIR=lib
     sources:
       - type: archive
         url: https://github.com/AyatanaIndicators/libayatana-indicator/archive/refs/tags/0.9.4.tar.gz
@@ -198,6 +200,7 @@ modules:
       - -DENABLE_BINDINGS_MONO=NO
       - -DENABLE_BINDINGS_VALA=NO
       - -DENABLE_GTKDOC=NO
+      - -DCMAKE_INSTALL_LIBDIR=lib
     sources:
       - type: archive
         url: https://github.com/AyatanaIndicators/libayatana-appindicator/archive/refs/tags/0.5.93.tar.gz

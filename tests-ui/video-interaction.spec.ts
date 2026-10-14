@@ -182,10 +182,13 @@ for (const width of [1280, 860]) {
     expect(await controls.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
     await page.getByRole('button',{name:'Cancel',exact:true}).click();
     await drawBlur(page,.3); await drawBlur(page,.6);
+    const properties = page.getByRole('complementary',{name:'Video properties'});
+    await expect(properties).toBeVisible();
     const duringBlur = await stage.boundingBox();
+    const propertiesBox = await properties.boundingBox();
     expect(duringBlur!.height).toBeCloseTo(initial.height,0);
-    expect(duringBlur!.width).toBeCloseTo(initial.width-220,0);
-    await expect(page.getByRole('complementary',{name:'Video properties'}).getByRole('button',{name:'Blur 2',exact:true})).toBeVisible();
+    expect(duringBlur!.width).toBeCloseTo(initial.width-propertiesBox!.width,0);
+    await expect(properties.getByRole('button',{name:'Blur 2',exact:true})).toBeVisible();
     expect(await controls.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
     await page.screenshot({path:`artifacts/ui/video-compact-${width}.png`});
   });

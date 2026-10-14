@@ -1,81 +1,77 @@
 name: Release
 
-# Tag-gated: pushing a `v*` tag (e.g. v0.1.0) builds unsigned Rust/Tauri
-# installers for Linux and Windows, uploading them to a DRAFT prerelease for
-# review before publishing.
 on:
   push:
     tags:
       - "v*"
 
+permissions:
+  contents: write
+
 jobs:
-  linux:
-    permissions:
-      contents: write
-    # NOT ubuntu-latest: pinned for libwebkit2gtk-4.1 availability (Tauri's
-    # Linux webview), matching the wonderblob release pipeline.
+  build_installers:
+    uses: ./.github/workflows/ci.yml
+    secrets: inherit
+
+  publish_installers:
+    needs: build_installers
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create draft release with platform installers
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          mapfile -t assets < <(find dist -type f \( \
+            -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o \
+            -name '*.exe' -o -name '*.msi' -o -name '*.dmg' -o -name '*.tar.gz' \
+          \) -print)
+          test "${#assets[@]}" -gt 0 || { echo 'No installer artifacts were downloaded'; exit 1; }
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${assets[@]}" --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$TAG" "${assets[@]}" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Wondershot $TAG" \
+              --notes 'Unsigned platform installers for Linux, Windows, and macOS.' \
+              --draft --prerelease
+          fi
+
+  flatpak:
+    needs: publish_installers
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
 
-      - name: Linux deps (Tauri + gstreamer for the recorder)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev libgtk-3-dev \
-            libayatana-appindicator3-dev librsvg2-dev libssl-dev \
-            patchelf ffmpeg \
-            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
-            gstreamer1.0-pipewire
-
-      - uses: actions/setup-node@v4
+      - uses: actions/download-artifact@v4
         with:
-          node-version: 22
-          cache: npm
+          name: wondershot-linux-installers
+          path: dist/linux
 
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: Swatinem/rust-cache@v2
-
-      - name: Install frontend dependencies
-        run: npm ci
-
-      # tauri-action runs `beforeBuildCommand` (npm run build) then `tauri build`
-      # and attaches every produced installer (AppImage/rpm/deb) to the release.
-      # --features bgremove compiles in the ONNX background-removal path.
-      - uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: "Wondershot ${{ github.ref_name }}"
-          releaseBody: "Unsigned Linux builds. AppImage (curl|sh path), rpm, and the Flatpak bundle. Download the asset for your install method."
-          releaseDraft: true
-          prerelease: true
-          args: "--features bgremove"
-
-      - name: Build & attach Flatpak
+      - name: Build and attach Flatpak
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
         run: |
           set -eux
+          sudo apt-get update
           sudo apt-get install -y flatpak flatpak-builder
           flatpak remote-add --user --if-not-exists flathub \
             https://flathub.org/repo/flathub.flatpakrepo
           flatpak install --user -y flathub org.gnome.Platform//49 org.gnome.Sdk//49
 
-          # tauri-action leaves the deb under the workspace target dir; the
-          # manifest expects it copied in as wondershot.deb. productName is
-          # "Wondershot", so the file is Wondershot_<ver>_amd64.deb.
-          deb=$(find target src-tauri/target -path '*/bundle/deb/*' \
-            -iname 'wondershot_*_amd64.deb' 2>/dev/null | head -n1)
-          test -n "$deb" || { echo "no deb found under target/**/bundle/deb"; exit 1; }
+          deb=$(find dist/linux -type f -iname 'wondershot_*_amd64.deb' | head -n1)
+          test -n "$deb" || { echo 'No Linux deb installer was downloaded'; exit 1; }
           cp "$deb" packaging/flatpak/wondershot.deb
 
           flatpak-builder --user --force-clean --repo=fp-repo \
             fp-build packaging/flatpak/io.github.jackmusick.wondershot.yml
-          # --runtime-repo is mandatory: without it the bundle can't fetch
-          # org.gnome.Platform on machines that don't already have it.
           flatpak build-bundle \
             --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo \
             fp-repo wondershot.flatpak io.github.jackmusick.wondershot
@@ -83,47 +79,4 @@ jobs:
           flatpak install --user -y --noninteractive wondershot.flatpak
           flatpak run io.github.jackmusick.wondershot --self-check \
             | grep -q '^wondershot self check '
-
-          gh release upload "${{ github.ref_name }}" wondershot.flatpak --clobber
-
-  windows:
-    permissions:
-      contents: write
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-pc-windows-msvc
-
-      - uses: Swatinem/rust-cache@v2
-
-      - name: Install frontend dependencies
-        run: npm ci
-
-      - name: Cache FFmpeg download
-        uses: actions/cache@v4
-        with:
-          path: .tauri-sidecars/*.zip
-          key: windows-ffmpeg-${{ hashFiles('scripts/Prepare-WindowsFfmpeg.ps1') }}
-
-      - name: Stage FFmpeg sidecar
-        shell: pwsh
-        run: ./scripts/Prepare-WindowsFfmpeg.ps1
-
-      - uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: "Wondershot ${{ github.ref_name }}"
-          releaseBody: "Unsigned Rust/Tauri builds for Linux and Windows. Windows installers bundle FFmpeg for native recording/device support."
-          releaseDraft: true
-          prerelease: true
-          args: "--bundles nsis --bundles msi"
+          gh release upload "$TAG" wondershot.flatpak --repo "$GITHUB_REPOSITORY" --clobber

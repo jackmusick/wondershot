@@ -1,10 +1,13 @@
-#![cfg(target_os = "macos")]
-
-use std::{process::Command, sync::{Arc, Mutex}, time::Duration};
-use wondershot_core::{ffmpeg::find_ffmpeg, record::recorder::{Recorder, RecEvent}};
+use std::process::Command;
+use wondershot_core::ffmpeg::find_ffmpeg;
+#[cfg(target_os = "macos")]
+use std::{sync::{Arc, Mutex}, time::Duration};
+#[cfg(target_os = "macos")]
+use wondershot_core::record::recorder::{Recorder, RecEvent};
 
 // These use real FFmpeg and playable files, without taking over the screen,
 // requesting camera/microphone access, or writing to the user's library.
+#[cfg(target_os = "macos")]
 fn record(paused_stop: bool) {
     let dir = tempfile::tempdir().unwrap();
     let tmp = dir.path().join("recording.tmp.mp4");
@@ -41,10 +44,12 @@ fn frame_count(path: &std::path::Path) -> usize {
 }
 
 #[test]
+#[cfg(target_os = "macos")]
 #[ignore = "real FFmpeg integration; run with cargo test -p wondershot-core --test macos_media_smoke -- --ignored"]
 fn recording_pause_resume_produces_playable_active_time_only() { record(false); }
 
 #[test]
+#[cfg(target_os = "macos")]
 #[ignore = "real FFmpeg integration"]
 fn recording_can_stop_while_paused() { record(true); }
 
