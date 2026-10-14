@@ -7316,7 +7316,7 @@ checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 
 [[package]]
 name = "wondershot"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "arboard",
  "base64 0.22.1",
@@ -7350,7 +7350,7 @@ dependencies = [
 
 [[package]]
 name = "wondershot-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "ashpd 0.9.3",
  "chrono",
@@ -7375,7 +7375,7 @@ dependencies = [
 
 [[package]]
 name = "wondershot-selector"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "image",
  "serde",

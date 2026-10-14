@@ -99,7 +99,7 @@ flatpak install wondershot.flatpak
 One bundle, zero distro packages. (Flathub submission is planned —
 then it's just `flatpak install wondershot` with automatic updates.)
 
-### Linux (one-liner, latest main)
+### Linux (one-liner, latest release)
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/jackmusick/wondershot/main/install.sh | sh
@@ -109,6 +109,18 @@ Installs user-locally (no sudo) and tells you if any system packages
 are missing. The installer validates the downloaded app before reporting
 success, so stale legacy bundles are refused instead of silently installed.
 Re-run the same command to update.
+
+### macOS (Apple Silicon, macOS 14+)
+
+Download the `.dmg` from
+[Releases](https://github.com/jackmusick/wondershot/releases), open it,
+and drag Wondershot to Applications.
+
+The app is ad-hoc signed, not notarized. macOS may block the first launch;
+use System Settings → Privacy & Security → Open Anyway if offered.
+Allow Screen Recording when prompted; microphone and camera access are
+optional. Permission prompts and capture overlays still need hands-on
+verification on a physical Mac.
 
 ### From source (developers)
 
