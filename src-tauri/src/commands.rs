@@ -2108,30 +2108,7 @@ pub async fn apply_blur(
     let out_name = format!("{stem}-redacted.{coerced_ext}");
     let tmp = rendering.join(&out_name);
 
-    // video_w/video_h = 0 ⇒ the filter does not clamp (the UI already mapped
-    // boxes into valid frame coords).
-    let (graph, label) = video::build_blur_filter(&redactions, blur as i64, 0, 0);
-
-    let args: Vec<String> = vec![
-        "-y".into(),
-        "-i".into(),
-        path.clone(),
-        "-filter_complex".into(),
-        graph,
-        "-map".into(),
-        format!("[{label}]"),
-        "-map".into(),
-        "0:a?".into(),
-        "-c:v".into(),
-        "libx264".into(),
-        "-crf".into(),
-        "20".into(),
-        "-preset".into(),
-        "veryfast".into(),
-        "-movflags".into(),
-        "+faststart".into(),
-        tmp.to_string_lossy().into_owned(),
-    ];
+    let args = video::build_blur_args(&path, &redactions, blur as i64, &tmp.to_string_lossy());
     run_ffmpeg_to_library(&args, &tmp, &library_dir, &out_name).await
 }
 
@@ -2290,24 +2267,42 @@ pub fn install_desktop() -> Result<(), String> {
     Ok(())
 }
 
-/// Copy `paths` into the library dir (parity with Python `--import`), returning
-/// the destination paths. Files already inside the library are left in place.
+/// Native multi-file picker, shared by the Import button and keyboard shortcut.
 #[tauri::command]
-pub fn import_files(paths: Vec<String>) -> Result<Vec<String>, String> {
-    let lib = Settings::load().library_dir;
-    std::fs::create_dir_all(&lib).map_err(|e| e.to_string())?;
-    let lib_dir = Path::new(&lib);
-    let mut out = Vec::new();
-    for p in paths {
-        let src = std::path::PathBuf::from(&p);
-        let name = src
-            .file_name()
-            .ok_or_else(|| format!("bad import path: {p}"))?;
-        let dest = lib_dir.join(name);
-        if src != dest {
-            std::fs::copy(&src, &dest).map_err(|e| e.to_string())?;
+pub async fn pick_import_files() -> Result<Vec<String>, String> {
+    Ok(rfd::AsyncFileDialog::new()
+        .set_title("Import images or videos")
+        .add_filter("Images and videos", &["png", "jpg", "jpeg", "webp", "bmp", "gif", "mp4", "mkv", "webm", "mov", "avi", "m4v"])
+        .pick_files().await.unwrap_or_default().into_iter()
+        .map(|file| file.path().to_string_lossy().into_owned()).collect())
+}
+
+/// Copy originals intact. Containers unsupported by the player also get a
+/// compatible editing copy, retaining every audio track (including OBS tracks).
+#[tauri::command]
+pub async fn import_files(paths: Vec<String>) -> Result<Vec<String>, String> {
+    // Validate the batch before copying anything.
+    for path in &paths {
+        if wondershot_core::library::from_path(Path::new(path)).is_none() {
+            return Err(format!("Unsupported media file: {path}"));
         }
-        out.push(dest.to_string_lossy().into_owned());
+    }
+    let (library_dir, rendering) = library_and_rendering();
+    let mut out = Vec::new();
+    for path in paths {
+        let library = library_dir.clone();
+        let copied = tauri::async_runtime::spawn_blocking(move || {
+            wondershot_core::library::import_file(Path::new(&path), &library)
+        }).await.map_err(|e| e.to_string())??;
+        let copied = copied.to_string_lossy().into_owned();
+        if matches!(ext_of(&copied).as_str(), "mkv" | "avi" | "webm") {
+            let name = format!("{}-editable.mp4", Path::new(&copied).file_stem().unwrap().to_string_lossy());
+            let tmp = rendering.join(&name);
+            let args = video::build_import_args(&copied, &tmp.to_string_lossy());
+            out.push(run_ffmpeg_to_library(&args, &tmp, &library_dir, &name).await?);
+        } else {
+            out.push(copied);
+        }
     }
     Ok(out)
 }

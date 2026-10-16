@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
-  import { loadLibrary, takeCapture, openEditorByPath, importPaths, trashItems, selectedCapturePaths } from '$lib/stores';
+  import { loadLibrary, takeCapture, openEditorByPath, importPaths, trashItems, selectedCapturePaths, chooseImport, importBusy, importError } from '$lib/stores';
   import { ipcListen, ipcEmit, ipcInvoke } from '$lib/ipc';
   import { openCapturePicker } from '$lib/capture/openCapture';
   import { initRecordingEvents, startRecording, startRecordingRect } from '$lib/recorder/control';
@@ -14,8 +14,19 @@
   import Filmstrip from '$lib/components/Filmstrip.svelte';
   import Settings from '$lib/components/Settings.svelte';
   import CapturePanel from '$lib/components/CapturePanel.svelte';
+  let dropping = false;
   onMount(() => {
+    let disposed = false;
     const uns: Array<() => void> = [];
+    if (typeof (globalThis as any).__TAURI_INTERNALS__ !== 'undefined') {
+      void import('@tauri-apps/api/webview').then(async ({ getCurrentWebview }) => {
+        const un = await getCurrentWebview().onDragDropEvent(({ payload }) => {
+          dropping = payload.type === 'enter' || payload.type === 'over';
+          if (payload.type === 'drop') void importPaths(payload.paths);
+        });
+        if (disposed) un(); else uns.push(un);
+      }).catch(e => importError.set(String(e)));
+    }
     let unRecording: (() => void) | undefined;
     loadLibrary().then(async () => {
       uns.push(await ipcListen<string>('capture://done', async (path) => {
@@ -73,6 +84,7 @@
       unRecording = un;
     });
     return () => {
+      disposed = true;
       uns.forEach((un) => un());
       unRecording?.();
     };
@@ -103,6 +115,9 @@
   async function onKeyDown(e: KeyboardEvent) {
     if (e.defaultPrevented) return;
     if ((e.metaKey || e.ctrlKey) && e.key === ',') { e.preventDefault(); settingsOpen.set(true); return; }
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'o') {
+      e.preventDefault(); void chooseImport(); return;
+    }
     if (isTyping()) return;
     // Ctrl/Cmd+C → copy the current image to the clipboard.
     if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) {
@@ -145,6 +160,18 @@
 <div class="shell">
   <MainTitlebar />
   <CaptureHeader />
+  {#if $importBusy}
+    <div class="import-status" role="status">Importing media… Preparing videos for editing; audio tracks are kept.</div>
+  {/if}
+  {#if $importError}
+    <div class="capture-error" role="alert">
+      <span>Import failed: {$importError}</span>
+      <button onclick={() => importError.set('')}>Dismiss</button>
+    </div>
+  {/if}
+  {#if dropping}
+    <div class="drop-overlay">Drop images or videos to edit</div>
+  {/if}
   {#if $captureError}
     <div class="capture-error" role="alert">
       <span>Capture failed: {$captureError}</span>
@@ -166,6 +193,8 @@
 </div>
 
 <style>
+  .import-status { padding: 8px 14px; color: var(--fg-secondary); }
+  .drop-overlay { position: fixed; inset: 12px; z-index: 1000; display: grid; place-items: center; pointer-events: none; border: 3px dashed var(--accent, #488eff); border-radius: 12px; background: var(--bg-content); opacity: .94; color: var(--fg-primary); font-size: 24px; }
   .shell { display: flex; flex-direction: column; height: 100vh; background: var(--bg-content); }
   .work { flex: 1; display: flex; min-height: 0; }
   .capture-error {

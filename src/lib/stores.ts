@@ -90,13 +90,37 @@ export async function openEditorByPath(path: string): Promise<void> {
   }
 }
 
-/** Copy files into the library and refresh (CLI `--import F…`). */
+export const importBusy = writable(false);
+export const importError = writable('');
+
+/** Import a private library copy and open it for editing. */
 export async function importPaths(paths: string[]): Promise<void> {
+  if (!paths.length || get(importBusy)) return;
+  importBusy.set(true);
+  importError.set('');
   try {
-    await ipcInvoke<string[]>('import_files', { paths });
+    const imported = await ipcInvoke<string[]>('import_files', { paths });
     await loadLibrary();
+    const items = get(captures).filter(c => imported.includes(c.path));
+    const first = get(captures).find(c => c.path === imported[0]);
+    if (first) {
+      activeItem.set(first);
+      view.set(first.kind === 'video' ? 'video' : 'editor');
+      selectedCapturePaths.set(items.map(c => c.path));
+    }
   } catch (e) {
-    console.error('import failed', e);
+    importError.set(e instanceof Error ? e.message : String(e));
+  } finally {
+    importBusy.set(false);
+  }
+}
+
+export async function chooseImport(): Promise<void> {
+  if (get(importBusy)) return;
+  try {
+    await importPaths(await ipcInvoke<string[]>('pick_import_files'));
+  } catch (e) {
+    importError.set(e instanceof Error ? e.message : String(e));
   }
 }
 

@@ -152,3 +152,32 @@ fn cutting_middle_and_edges_preserves_retained_frames_and_audio() {
     assert!(decoded.status.success(), "{}", String::from_utf8_lossy(&decoded.stderr));
     assert_eq!(decoded.stdout.len()/(320*180*3),30);
 }
+
+#[test]
+#[ignore = "real FFmpeg import and multitrack audio integration"]
+fn obs_import_blur_trim_and_cut_keep_all_audio_tracks() {
+    use wondershot_core::video;
+    let dir = tempfile::tempdir().unwrap();
+    let source = dir.path().join("obs.mkv");
+    ffmpeg_run(["-y", "-f", "lavfi", "-i", "testsrc=size=160x120:rate=10", "-f", "lavfi", "-i", "sine=frequency=440", "-f", "lavfi", "-i", "sine=frequency=880", "-t", "3", "-map", "0:v", "-map", "1:a", "-map", "2:a", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", source.to_str().unwrap()].into_iter().map(String::from).collect());
+    let editable = dir.path().join("editable.mp4");
+    ffmpeg_run(video::build_import_args(source.to_str().unwrap(), editable.to_str().unwrap()));
+    let trim = dir.path().join("trim.mp4");
+    ffmpeg_run(video::build_trim_args(editable.to_str().unwrap(), 0.5, 2.5, trim.to_str().unwrap(), true, "libx264"));
+    let cut = dir.path().join("cut.mp4");
+    ffmpeg_run(video::build_cut_args(editable.to_str().unwrap(), 1.0, 2.0, cut.to_str().unwrap()));
+    let blurred = dir.path().join("blur.mp4");
+    ffmpeg_run(video::build_blur_args(editable.to_str().unwrap(),
+        &[video::Redaction { x: 20, y: 20, w: 60, h: 40, start: 0.0, end: 2.0, blur: None }],
+        8, blurred.to_str().unwrap()));
+    for path in [&editable, &trim, &cut, &blurred] {
+        // Decode both audio tracks separately to prove neither was discarded.
+        for track in ["0:a:0", "0:a:1"] {
+            let decoded = Command::new(find_ffmpeg().unwrap()).args(["-v", "error", "-i"]).arg(path)
+                .args(["-map", track, "-f", "s16le", "pipe:1"]).output().unwrap();
+            assert!(decoded.status.success(), "{}: {}", path.display(), String::from_utf8_lossy(&decoded.stderr));
+            assert!(!decoded.stdout.is_empty());
+        }
+    }
+    assert!(source.exists());
+}

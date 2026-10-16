@@ -17,7 +17,7 @@
       {/if}
     {/key}
   {:else}
-    <div class="placeholder">Select or take a capture</div>
+    <div class="placeholder">Drop images or videos here, or choose Import</div>
   {/if}
 </div>
 

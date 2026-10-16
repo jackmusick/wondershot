@@ -187,9 +187,18 @@ export async function mockInvoke(cmd: string, _args?: unknown): Promise<unknown>
     case 'install_desktop':
     case 'trash_item':
       return null;
-    case 'import_files':
-      // Echo back the requested paths; no real copy in browser dev.
-      return (_args as { paths?: string[] } | undefined)?.paths ?? [];
+    case 'pick_import_files':
+      return ['/mock/OBS recording.mp4'];
+    case 'import_files': {
+      const paths = (_args as { paths?: string[] } | undefined)?.paths ?? [];
+      for (const path of paths) {
+        if (mockList.some(c => c.path === path)) continue;
+        mockList.unshift({ id: `import${++counter}`, path,
+          kind: /\.(mp4|mkv|webm|mov|avi|m4v)$/i.test(path) ? 'video' : 'image',
+          thumbnail: PIXEL, createdAt: Date.now(), title: path.split('/').pop() ?? path });
+      }
+      return paths;
+    }
     case 'grab_frame':
     case 'apply_blur':
     case 'export_gif':

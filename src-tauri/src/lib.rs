@@ -679,6 +679,7 @@ pub fn run() {
             commands::cut_video,
             commands::install_desktop,
             commands::import_files,
+            commands::pick_import_files,
             commands::toggle_camera_bubble,
             commands::set_camera_bubble,
             commands::trash_item,

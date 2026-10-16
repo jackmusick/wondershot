@@ -82,10 +82,54 @@ pub fn scan(dirs: &[PathBuf]) -> Vec<Capture> {
     caps
 }
 
+/// Copy media without replacing existing captures, even when names collide.
+pub fn import_file(src: &Path, library: &Path) -> Result<PathBuf, String> {
+    if from_path(src).is_none() {
+        return Err(format!("Unsupported media file: {}", src.display()));
+    }
+    std::fs::create_dir_all(library).map_err(|e| e.to_string())?;
+    let src = src.canonicalize().map_err(|e| e.to_string())?;
+    let library = library.canonicalize().map_err(|e| e.to_string())?;
+    if src.parent() == Some(library.as_path()) { return Ok(src); }
+    let name = src.file_name().ok_or("Missing filename")?.to_string_lossy();
+    loop {
+        let dest = crate::paths::unique_path(&library, &name);
+        let mut output = match std::fs::OpenOptions::new().write(true).create_new(true).open(&dest) {
+            Ok(file) => file,
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(e.to_string()),
+        };
+        let result = std::fs::File::open(&src).and_then(|mut input| std::io::copy(&mut input, &mut output));
+        if let Err(e) = result {
+            drop(output);
+            let _ = std::fs::remove_file(&dest);
+            return Err(e.to_string());
+        }
+        return Ok(dest);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn imports_preserve_sources_and_existing_names() {
+        let source = tempfile::tempdir().unwrap();
+        let library = tempfile::tempdir().unwrap();
+        let src = source.path().join("OBS.mkv");
+        fs::write(&src, b"new video and audio").unwrap();
+        fs::write(library.path().join("OBS.mkv"), b"existing").unwrap();
+        let imported = import_file(&src, library.path()).unwrap();
+        assert_ne!(imported, library.path().join("OBS.mkv"));
+        assert_eq!(fs::read(&imported).unwrap(), fs::read(&src).unwrap());
+        assert_eq!(fs::read(library.path().join("OBS.mkv")).unwrap(), b"existing");
+        assert_eq!(import_file(&imported, library.path()).unwrap(), imported);
+        let txt = source.path().join("notes.txt");
+        fs::write(&txt, b"notes").unwrap();
+        assert!(import_file(&txt, library.path()).is_err());
+    }
 
     #[test]
     fn scan_lists_media_newest_first_and_skips_sidecar_dir() {

@@ -72,6 +72,24 @@ pub fn build_blur_filter(
     (parts.join(";"), cur)
 }
 
+/// Render timed blur overlays while retaining every audio stream.
+pub fn build_blur_args(src: &str, redactions: &[Redaction], blur: i64, out: &str) -> Vec<String> {
+    let (graph, label) = build_blur_filter(redactions, blur, 0, 0);
+    vec!["-y".into(), "-i".into(), src.into(), "-filter_complex".into(), graph,
+         "-map".into(), format!("[{label}]"), "-map".into(), "0:a?".into(),
+         "-c:a".into(), "aac".into(), "-c:v".into(), "libx264".into(),
+         "-crf".into(), "20".into(), "-preset".into(), "veryfast".into(),
+         "-movflags".into(), "+faststart".into(), out.into()]
+}
+
+/// Compatible editing copy for OBS MKV and other non-native containers.
+/// Keep every audio stream; the untouched original remains in the library.
+pub fn build_import_args(src: &str, out: &str) -> Vec<String> {
+    ["-y", "-i", src, "-map", "0:v:0", "-map", "0:a?", "-c:v", "libx264",
+     "-crf", "18", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-c:a", "aac",
+     "-movflags", "+faststart", out].into_iter().map(String::from).collect()
+}
+
 /// ffmpeg args extracting one frame at `position_s` seconds.
 pub fn build_frame_grab_args(src: &str, position_s: f64, out: &str) -> Vec<String> {
     vec![
@@ -108,6 +126,7 @@ pub fn build_trim_args(
         "-i".into(),
         src.into(),
     ];
+    args.extend(["-map".into(), "0:v:0".into(), "-map".into(), "0:a?".into()]);
     if reencode {
         let enc_opts: Vec<String> = if encoder == "libx264" {
             vec![
@@ -139,7 +158,7 @@ pub fn build_cut_args(src: &str, start: f64, end: f64, out: &str) -> Vec<String>
     let span = end - start;
     vec![
         "-y".into(), "-i".into(), src.into(),
-        "-map".into(), "0:v:0".into(), "-map".into(), "0:a:0?".into(),
+        "-map".into(), "0:v:0".into(), "-map".into(), "0:a?".into(),
         "-vf".into(), format!("setpts=PTS-STARTPTS,select='lt(t,{start:.3})+gte(t,{end:.3})',setpts='PTS-if(gte(T,{end:.3}),{span:.3},0)/TB'"),
         "-af".into(), format!("asetpts=PTS-STARTPTS,aselect='lt(t,{start:.3})+gte(t,{end:.3})',asetpts=N/SR/TB"),
         "-c:v".into(), "libx264".into(), "-crf".into(), "20".into(),

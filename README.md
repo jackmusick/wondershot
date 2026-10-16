@@ -44,6 +44,20 @@ a persistent success badge.
 - Drag any thumbnail straight into Slack, a browser upload, your wiki
 - Post-capture quick-action bar: Edit / Copy / Save as / Share / Trash
 
+**Import existing media**
+
+Click **Import**, press **⌘O / Ctrl+O**, or drop images/videos onto the window.
+The first file opens when import finishes. Imports keep a library copy, leave your source
+untouched, and use unique names to avoid replacing existing captures.
+OBS MKV recordings (also AVI/WebM) get an H.264 MP4 editing copy automatically;
+all audio tracks are retained, and the original is kept. Preparation can take
+some time for long recordings. Blur, trim, and cut exports retain all audio
+tracks; GIFs and screenshots contain no audio.
+
+After recording in OBS: drop the file, pause on the sensitive content, draw a
+blur region, set its time range, then **Apply Blur**. Use the resulting video
+for further trimming or sharing.
+
 **Video**
 
 - **Trim / Cut**: drag the range timeline, then **Save Trim** to keep it or
@@ -162,7 +176,7 @@ wondershot                  show gallery (or start the app)
 wondershot -c, --capture    capture a region
 wondershot -f, --fullscreen capture the whole screen
 wondershot -e FILE          open FILE in the markup editor
-wondershot -i FILE...       import images into the library
+wondershot -i FILE...       import images/videos into the library
 wondershot --quit           stop the running instance
 ```
 

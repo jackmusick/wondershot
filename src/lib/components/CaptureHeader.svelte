@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { recording, recordingError, activeItem, settingsOpen } from '$lib/stores';
+  import { recording, recordingError, activeItem, settingsOpen, chooseImport, importBusy } from '$lib/stores';
   import { ipcInvoke } from '$lib/ipc';
   import { openCapturePicker } from '$lib/capture/openCapture';
   import {
@@ -78,6 +78,11 @@
   <button class="hbtn" title="Capture a region or hover a window" onclick={openCapturePicker}>
     <svg viewBox="0 0 16 16"><path d="M2 5.5A1.5 1.5 0 0 1 3.5 4h1l1-1.5h3L9.5 4h3A1.5 1.5 0 0 1 14 5.5V12a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 12z"/><circle cx="8" cy="8.5" r="2.5"/></svg>
     <span>Capture</span>
+  </button>
+
+  <button class="hbtn" title="Import images or videos (⌘O / Ctrl+O)" disabled={$importBusy} onclick={chooseImport}>
+    <svg viewBox="0 0 16 16"><path d="M2 6V3h5l2 2h5v8H2zM8 7v4M6 9l2 2 2-2"/></svg>
+    <span>{$importBusy ? 'Importing…' : 'Import'}</span>
   </button>
 
   {#if $recording.status === 'recording'}
