@@ -110,6 +110,10 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y flatpak flatpak-builder appstream-compose
+          # Match Flatpak's own CI setup: Ubuntu 24.04's AppArmor default
+          # prevents bubblewrap from creating the build sandbox on hosted VMs.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          sudo systemctl reload apparmor
           flatpak remote-add --user --if-not-exists flathub \
             https://flathub.org/repo/flathub.flatpakrepo
           flatpak install --user -y flathub org.gnome.Platform//49 org.gnome.Sdk//49
