@@ -217,6 +217,10 @@ modules:
       - tar -xf data.tar.* -C deb-root
       - install -Dm755 deb-root/usr/bin/wondershot ${FLATPAK_DEST}/bin/wondershot
       - install -Dm644 io.github.jackmusick.wondershot.metainfo.xml ${FLATPAK_DEST}/share/metainfo/io.github.jackmusick.wondershot.metainfo.xml
+      # Tauri's deb currently exports only its 1024px icon. AppStream needs
+      # standard 64/128px variants to expose the app in software managers.
+      - install -Dm644 wondershot-64.png ${FLATPAK_DEST}/share/icons/hicolor/64x64/apps/${FLATPAK_ID}.png
+      - install -Dm644 wondershot-128.png ${FLATPAK_DEST}/share/icons/hicolor/128x128/apps/${FLATPAK_ID}.png
       # Desktop file, renamed to the app-id with Icon= pointed at the app-id.
       # Ensure Exec passes URLs (%U) and the wondershot:// scheme is handled —
       # the interactive OneDrive sign-in redirects to wondershot://auth and the
@@ -243,3 +247,9 @@ modules:
         path: wondershot.deb
       - type: file
         path: io.github.jackmusick.wondershot.metainfo.xml
+      - type: file
+        path: ../../src-tauri/icons/64x64.png
+        dest-filename: wondershot-64.png
+      - type: file
+        path: ../../src-tauri/icons/128x128.png
+        dest-filename: wondershot-128.png

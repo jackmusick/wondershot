@@ -177,3 +177,8 @@ run ID. It verifies that the installers passed and match the tagged source,
 then repackages them using the current packaging runner without rebuilding the
 applications. Flatpak metadata generation needs builder 1.4 or newer; the job
 uses Ubuntu 24.04 so its AppStream composer supports the GNOME 49 runtime.
+
+Packaging retries use the manifest from the workflow revision while preserving
+the tagged application binary and icon sources. The published repository records
+that packaging revision in `packaging-commit.txt`. Standard 64px and 128px icons
+are included for AppStream catalog generation.

@@ -58,7 +58,7 @@ jobs:
           fi
 
   flatpak:
-    if: always() && (github.event_name == 'workflow_dispatch' || needs.publish_installers.result == 'success')
+    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.publish_installers.result == 'success') }}
     needs: publish_installers
     runs-on: ubuntu-24.04
     steps:
@@ -80,6 +80,15 @@ jobs:
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/jobs?per_page=100" \
             --jq '[.jobs[] | select(.name | startswith("build_installers / tauri")) | .conclusion] | length == 3 and all(. == "success")' \
             | grep -qx true
+
+      - name: Use packaging definitions from this workflow revision
+        env:
+          PACKAGING_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --depth=1 origin "$PACKAGING_SHA"
+          git show "$PACKAGING_SHA:packaging/flatpak/io.github.jackmusick.wondershot.yml" \
+            > packaging/flatpak/io.github.jackmusick.wondershot.yml
 
       - uses: actions/download-artifact@v4
         with:
@@ -167,6 +176,7 @@ jobs:
             io.github.jackmusick.wondershot//stable
           flatpak run io.github.jackmusick.wondershot --self-check \
             | grep -q '^wondershot self check '
+          printf '%s\n' "$GITHUB_SHA" > fp-site/packaging-commit.txt
           tar -czf flatpak-repository.tar.gz -C fp-site .
           gh release upload "$TAG" wondershot.flatpak flatpak-repository.tar.gz \
             fp-site/wondershot.flatpakref fp-site/wondershot.flatpakrepo \
