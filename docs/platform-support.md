@@ -150,3 +150,23 @@ To include hardware media checks, add `--with-microphone --with-camera` to the
 installed-app check. `--camera-label=Anker PowerConf C200` selects a camera for
 that check without changing saved preferences. These optional checks may show
 the ordinary macOS microphone/camera permission prompt on first use.
+
+## Stable Linux update repository
+
+Stable releases publish a GPG-signed Flatpak repository at
+`https://jackmusick.github.io/wondershot/repo`. The public key is checked in at
+`packaging/flatpak/repository-key.asc`; the dedicated private key is held in the
+GitHub Actions secret `FLATPAK_GPG_PRIVATE_KEY`. Keep this key across releases:
+replacing it without a key transition breaks trust for installed clients.
+
+The tag release workflow builds and smoke-tests installers, creates a draft
+release, and attaches both the Flatpak bundle and `flatpak-repository.tar.gz`.
+Publishing that release as stable triggers `Publish Flatpak repository`, which
+serves the signed repository and install descriptors via GitHub Pages. Drafts
+and prereleases never replace the stable repository. A manual dispatch with the
+latest published stable tag can retry a failed Pages deployment.
+
+The repository uses the `stable` branch and currently supports x86_64. Install
+through `install.sh` for CLI/capture-shortcut migration, or open the hosted
+`wondershot.flatpakref`. Updates then follow Discover/Flatpak policy. Raw RPM,
+deb, and AppImage downloads do not subscribe to an update repository.

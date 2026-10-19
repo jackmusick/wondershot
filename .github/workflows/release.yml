@@ -21,6 +21,7 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+          pattern: wondershot-*-installers
 
       - name: Create draft release with platform installers
         env:
@@ -54,12 +55,26 @@ jobs:
           name: wondershot-linux-installers
           path: dist/linux
 
+      - name: Import Flatpak signing key
+        env:
+          FLATPAK_GPG_PRIVATE_KEY: ${{ secrets.FLATPAK_GPG_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$FLATPAK_GPG_PRIVATE_KEY"
+          export GNUPGHOME="$RUNNER_TEMP/flatpak-gnupg"
+          mkdir -m700 "$GNUPGHOME"
+          printf '%s' "$FLATPAK_GPG_PRIVATE_KEY" | gpg --batch --import
+          key=$(gpg --show-keys --with-colons packaging/flatpak/repository-key.asc | awk -F: '$1 == "fpr" {print $10; exit}')
+          test -n "$key"
+          echo "GNUPGHOME=$GNUPGHOME" >> "$GITHUB_ENV"
+          echo "FLATPAK_GPG_KEY=$key" >> "$GITHUB_ENV"
+
       - name: Build and attach Flatpak
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
         run: |
-          set -eux
+          set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y flatpak flatpak-builder
           flatpak remote-add --user --if-not-exists flathub \
@@ -69,14 +84,45 @@ jobs:
           deb=$(find dist/linux -type f -iname 'wondershot_*_amd64.deb' | head -n1)
           test -n "$deb" || { echo 'No Linux deb installer was downloaded'; exit 1; }
           cp "$deb" packaging/flatpak/wondershot.deb
+          python3 - <<'PYMETA'
+          import datetime, json, os, xml.etree.ElementTree as ET
+          version = json.load(open('src-tauri/tauri.conf.json'))['version']
+          assert os.environ['TAG'] == f'v{version}', 'Release tag must match app version'
+          path = 'packaging/flatpak/io.github.jackmusick.wondershot.metainfo.xml'
+          tree = ET.parse(path)
+          release = tree.find('./releases/release')
+          release.set('version', version)
+          release.set('date', datetime.date.today().isoformat())
+          tree.write(path, encoding='UTF-8', xml_declaration=True)
+          PYMETA
 
-          flatpak-builder --user --force-clean --repo=fp-repo \
+          flatpak-builder --user --force-clean --repo=fp-site/repo \
+            --gpg-sign="$FLATPAK_GPG_KEY" \
             fp-build packaging/flatpak/io.github.jackmusick.wondershot.yml
+          flatpak build-update-repo --gpg-sign="$FLATPAK_GPG_KEY" \
+            --generate-static-deltas --prune fp-site/repo
+          gpg --export "$FLATPAK_GPG_KEY" > "$RUNNER_TEMP/flatpak-public.gpg"
+          python3 scripts/flatpak-repository.py fp-site \
+            "https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}" \
+            "$RUNNER_TEMP/flatpak-public.gpg"
           flatpak build-bundle \
+            --repo-url="https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/repo" \
+            --gpg-keys="$RUNNER_TEMP/flatpak-public.gpg" \
             --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo \
-            fp-repo wondershot.flatpak io.github.jackmusick.wondershot
+            fp-site/repo wondershot.flatpak io.github.jackmusick.wondershot stable
 
           flatpak install --user -y --noninteractive wondershot.flatpak
           flatpak run io.github.jackmusick.wondershot --self-check \
             | grep -q '^wondershot self check '
-          gh release upload "$TAG" wondershot.flatpak --repo "$GITHUB_REPOSITORY" --clobber
+          # Exercise signed summary + appstream, rather than only a detached bundle.
+          flatpak remote-add --user --gpg-import="$RUNNER_TEMP/flatpak-public.gpg" \
+            wondershot-test "file://$PWD/fp-site/repo"
+          flatpak remote-ls --user wondershot-test | grep io.github.jackmusick.wondershot
+          flatpak install --user -y --noninteractive --reinstall wondershot-test \
+            io.github.jackmusick.wondershot//stable
+          flatpak run io.github.jackmusick.wondershot --self-check \
+            | grep -q '^wondershot self check '
+          tar -czf flatpak-repository.tar.gz -C fp-site .
+          gh release upload "$TAG" wondershot.flatpak flatpak-repository.tar.gz \
+            fp-site/wondershot.flatpakref fp-site/wondershot.flatpakrepo \
+            --repo "$GITHUB_REPOSITORY" --clobber

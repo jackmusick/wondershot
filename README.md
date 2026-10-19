@@ -101,40 +101,29 @@ yourself.
 > The installer isn't code-signed yet, so SmartScreen will interject —
 > **More info → Run anyway**.
 
-### Linux (Flatpak)
-
-Download `wondershot.flatpak` from
-[Releases](https://github.com/jackmusick/wondershot/releases), then:
-
-```sh
-flatpak install wondershot.flatpak
-```
-
-One bundle, zero distro packages. (Flathub submission is planned —
-then it's just `flatpak install wondershot` with automatic updates.)
-
-### Linux (one-liner, latest release)
+### Linux (Flatpak, with package-manager updates)
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/jackmusick/wondershot/main/install.sh | sh
 ```
 
-Installs user-locally (no sudo) and tells you if any system packages
-are missing. The installer validates the downloaded app before reporting
-success, so stale legacy bundles are refused instead of silently installed.
-Re-run the same command to update.
+Installs the stable release from the signed Wondershot Flatpak repository,
+registers it for future updates in KDE Discover and other Flatpak software
+managers, and keeps the `wondershot` command available for capture shortcuts.
+Existing settings and screenshot libraries carry over. Flatpak must be installed.
 
-### macOS (Apple Silicon, macOS 14+)
+You can also open [the Flatpak install link](https://jackmusick.github.io/wondershot/wondershot.flatpakref)
+in your software manager. For command-line installation:
 
-Download the `.dmg` from
-[Releases](https://github.com/jackmusick/wondershot/releases), open it,
-and drag Wondershot to Applications.
+```sh
+flatpak install --user https://jackmusick.github.io/wondershot/wondershot.flatpakref
+```
 
-The app is ad-hoc signed, not notarized. macOS may block the first launch;
-use System Settings → Privacy & Security → Open Anyway if offered.
-Allow Screen Recording when prompted; microphone and camera access are
-optional. Permission prompts and capture overlays still need hands-on
-verification on a physical Mac.
+Future stable releases arrive through normal software-manager updates or
+`flatpak update`; you do not need to download release bundles or rerun the installer.
+Unattended installation follows your software manager's automatic-update settings.
+The standalone AppImage, RPM, and deb release assets remain available, but do not
+configure an update repository.
 
 ### From source (developers)
 

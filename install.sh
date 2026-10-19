@@ -1,139 +1,64 @@
 #!/bin/sh
-# Wondershot installer/updater for Linux.
-#
-#   curl -fsSL https://raw.githubusercontent.com/jackmusick/wondershot/main/install.sh | sh
-#
-# Installs the latest Wondershot from GitHub Releases. Prefers an AppImage asset
-# (user-local, no sudo) when a release ships one; otherwise installs the Flatpak
-# bundle (the current recommended Linux artifact) as a --user Flatpak. Re-run to
-# update in place.
+# Install once; subsequent stable releases arrive through Discover / flatpak update.
+# curl -fsSL https://raw.githubusercontent.com/jackmusick/wondershot/main/install.sh | sh
 set -eu
 
-REPO="jackmusick/wondershot"
 APPID="io.github.jackmusick.wondershot"
-HOME_DIR="${WONDERSHOT_HOME:-$HOME/.local/share/wondershot}"
+REPOSITORY="https://jackmusick.github.io/wondershot"
 BIN_DIR="${WONDERSHOT_BIN:-$HOME/.local/bin}"
 APP_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
-APPIMAGE="$HOME_DIR/Wondershot.AppImage"
+say() { printf '[wondershot] %s\n' "$*"; }
+fail() { say "$*" >&2; exit 1; }
 
-say()  { printf '\033[1m[wondershot]\033[0m %s\n' "$*"; }
-fail() { printf '\033[1;31m[wondershot]\033[0m %s\n' "$*" >&2; exit 1; }
+command -v flatpak >/dev/null 2>&1 || fail 'Install Flatpak with your distribution package manager, then re-run.'
+command -v curl >/dev/null 2>&1 || fail 'curl is required.'
+case "$(uname -m)" in
+    x86_64) ;;
+    *) fail 'The Linux release currently supports x86_64 only.' ;;
+esac
 
-smoke_command() {
-    cmd=$1
-    out=$(mktemp "${TMPDIR:-/tmp}/wondershot-smoke.XXXXXX")
-    if "$cmd" --self-check >"$out" 2>&1 \
-        && grep -q '^wondershot self check ' "$out"; then
-        rm -f "$out"
-        return 0
-    fi
-    # Compatibility with Tauri builds created before --self-check existed.
-    if "$cmd" --media-check >"$out" 2>&1 \
-        && grep -q '^wondershot media check' "$out"; then
-        rm -f "$out"
-        return 0
-    fi
-    say "validation output:"
-    sed 's/^/  /' "$out" >&2
-    rm -f "$out"
-    return 1
-}
+work=$(mktemp -d "${TMPDIR:-/tmp}/wondershot-install.XXXXXX")
+trap 'rm -rf "$work"' EXIT
+say 'Registering the signed Wondershot repository and installing the latest stable release...'
+curl -fsSL "$REPOSITORY/wondershot.flatpakref" -o "$work/wondershot.flatpakref"
+flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+flatpak install --user -y --noninteractive --or-update --from "$work/wondershot.flatpakref"
 
-smoke_flatpak() {
-    out=$(mktemp "${TMPDIR:-/tmp}/wondershot-smoke.XXXXXX")
-    if flatpak run "$APPID" --self-check >"$out" 2>&1 \
-        && grep -q '^wondershot self check ' "$out"; then
-        rm -f "$out"
-        return 0
-    fi
-    # Compatibility with Tauri builds created before --self-check existed.
-    if flatpak run "$APPID" --media-check >"$out" 2>&1 \
-        && grep -q '^wondershot media check' "$out"; then
-        rm -f "$out"
-        return 0
-    fi
-    say "validation output:"
-    sed 's/^/  /' "$out" >&2
-    rm -f "$out"
-    return 1
-}
-
-# -- pick the best asset from the latest release -------------------------------
-
-say "looking up the latest release..."
-assets=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" \
-    | grep -o '"browser_download_url": *"[^"]*"' | cut -d'"' -f4)
-appimage_url=$(printf '%s\n' "$assets" | grep -i '\.AppImage$' | head -n1 || true)
-flatpak_url=$(printf  '%s\n' "$assets" | grep -i '\.flatpak$'  | head -n1 || true)
-
-if [ -n "$appimage_url" ]; then
-    # ---- AppImage path: runs against host libs, so check them ----------------
-    missing=""
-    command -v ffmpeg >/dev/null 2>&1 || missing="$missing ffmpeg"
-    gst-inspect-1.0 pipewiresrc >/dev/null 2>&1 || missing="$missing gst-pipewire"
-    if [ -n "${WAYLAND_DISPLAY:-}" ] && ! command -v wl-copy >/dev/null 2>&1; then
-        missing="$missing wl-clipboard"   # holds the image selection on Wayland
-    fi
-    if [ -n "$missing" ]; then
-        say "missing system packages:$missing"
-        if command -v dnf >/dev/null 2>&1; then
-            say "  sudo dnf install ffmpeg gstreamer1-plugin-pipewire wl-clipboard"
-        elif command -v apt-get >/dev/null 2>&1; then
-            say "  sudo apt install ffmpeg gstreamer1.0-pipewire wl-clipboard"
-        else
-            say "  install ffmpeg, the GStreamer PipeWire plugin, and wl-clipboard"
-        fi
-        fail "re-run this script once they're installed"
-    fi
-
-    mkdir -p "$HOME_DIR" "$BIN_DIR" "$APP_DIR"
-    [ -d "$HOME_DIR/venv" ] && { say "removing the old Python install"; rm -rf "$HOME_DIR/venv"; }
-
-    tmp=$(mktemp "${TMPDIR:-/tmp}/wondershot.XXXXXX.AppImage")
-    trap 'rm -f "$tmp"' EXIT
-    say "downloading $appimage_url"
-    curl -fsSL "$appimage_url" -o "$tmp"
-    chmod +x "$tmp"
-    say "validating downloaded app..."
-    smoke_command "$tmp" || fail "downloaded AppImage is not a current Tauri Wondershot build"
-    mv "$tmp" "$APPIMAGE"; trap - EXIT
-    ln -sf "$APPIMAGE" "$BIN_DIR/wondershot"
-
-    cat > "$APP_DIR/$APPID.desktop" <<EOF
-[Desktop Entry]
-Type=Application
-Name=Wondershot
-Comment=Screenshot & screen-recording with annotation
-Exec=$BIN_DIR/wondershot
-Icon=$APPID
-Terminal=false
-Categories=Utility;Graphics;
-StartupNotify=true
-EOF
-    case ":$PATH:" in
-        *":$BIN_DIR:"*) ;;
-        *) say "NOTE: $BIN_DIR is not on your PATH — add it to use 'wondershot'" ;;
-    esac
-    say "done. Run: wondershot   (update later: re-run this command)"
-
-elif [ -n "$flatpak_url" ]; then
-    # ---- Flatpak path: the bundle carries its own runtime/deps ---------------
-    command -v flatpak >/dev/null 2>&1 || fail "flatpak not found — install flatpak, then re-run"
-    # the bundle references runtimes from Flathub; ensure a user remote exists
-    flatpak remote-add --user --if-not-exists flathub \
-        https://dl.flathub.org/repo/flathub.flatpakrepo
-
-    tmp=$(mktemp "${TMPDIR:-/tmp}/wondershot.XXXXXX.flatpak")
-    trap 'rm -f "$tmp"' EXIT
-    say "downloading $flatpak_url"
-    curl -fsSL "$flatpak_url" -o "$tmp"
-    say "installing the Flatpak bundle (user)..."
-    flatpak install --user -y --noninteractive "$tmp"
-    say "validating installed app..."
-    smoke_flatpak || fail "installed Flatpak is not a current Tauri Wondershot build; the release likely contains a stale Python/PySide bundle"
-    rm -f "$tmp"; trap - EXIT
-    say "done. Launch 'Wondershot' from your menu, or: flatpak run $APPID"
-
-else
-    fail "latest release of $REPO ships no .AppImage or .flatpak asset"
+say 'Checking the installed app...'
+if ! flatpak run "$APPID" --self-check >"$work/check" 2>&1 \
+    || ! grep -q '^wondershot self check ' "$work/check"; then
+    cat "$work/check" >&2
+    fail 'Flatpak validation failed; existing command and desktop launchers were preserved.'
 fi
+
+# Keep custom capture shortcuts working while package management owns the app.
+mkdir -p "$BIN_DIR" "$APP_DIR"
+cat >"$work/wondershot" <<'LAUNCHER'
+#!/bin/sh
+# Wondershot Flatpak launcher
+exec flatpak run io.github.jackmusick.wondershot "$@"
+LAUNCHER
+if [ -e "$BIN_DIR/wondershot" ] || [ -L "$BIN_DIR/wondershot" ]; then
+    if ! grep -q '^# Wondershot Flatpak launcher$' "$BIN_DIR/wondershot"; then
+        backup="$BIN_DIR/wondershot.before-flatpak.$(date +%s)"
+        cp -Pp "$BIN_DIR/wondershot" "$backup"
+        say "Previous command saved to $backup"
+    fi
+fi
+# Rename on the same filesystem, including when the previous binary is running.
+launcher=$(mktemp "$BIN_DIR/.wondershot.XXXXXX")
+cp "$work/wondershot" "$launcher"
+chmod 755 "$launcher"
+mv -f "$launcher" "$BIN_DIR/wondershot"
+
+# A native per-user desktop file would shadow Flatpak's exported launcher.
+desktop="$APP_DIR/$APPID.desktop"
+if [ -f "$desktop" ]; then
+    mv "$desktop" "$desktop.before-flatpak.$(date +%s)"
+fi
+command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$APP_DIR" || true
+case ":$PATH:" in
+    *":$BIN_DIR:"*) ;;
+    *) say "Add $BIN_DIR to PATH to use the wondershot command." ;;
+esac
+say 'Installed. Future releases arrive through your software manager or flatpak update.'

@@ -26,6 +26,7 @@
 app-id: io.github.jackmusick.wondershot
 runtime: org.gnome.Platform
 runtime-version: '49'
+branch: stable
 sdk: org.gnome.Sdk
 command: wondershot
 
@@ -214,6 +215,7 @@ modules:
       - mkdir -p deb-root
       - tar -xf data.tar.* -C deb-root
       - install -Dm755 deb-root/usr/bin/wondershot ${FLATPAK_DEST}/bin/wondershot
+      - install -Dm644 io.github.jackmusick.wondershot.metainfo.xml ${FLATPAK_DEST}/share/metainfo/io.github.jackmusick.wondershot.metainfo.xml
       # Desktop file, renamed to the app-id with Icon= pointed at the app-id.
       # Ensure Exec passes URLs (%U) and the wondershot:// scheme is handled —
       # the interactive OneDrive sign-in redirects to wondershot://auth and the
@@ -238,3 +240,5 @@ modules:
     sources:
       - type: file
         path: wondershot.deb
+      - type: file
+        path: io.github.jackmusick.wondershot.metainfo.xml

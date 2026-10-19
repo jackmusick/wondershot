@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.jackmusick.wondershot</id>
+  <name>Wondershot</name>
+  <summary>Capture, annotate, and record your screen</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>AGPL-3.0-or-later</project_license>
+  <developer id="io.github.jackmusick"><name>Jack Musick</name></developer>
+  <description>
+    <p>Capture screenshots and screen recordings, annotate images, redact sensitive information, and share your work.</p>
+  </description>
+  <launchable type="desktop-id">io.github.jackmusick.wondershot.desktop</launchable>
+  <url type="homepage">https://github.com/jackmusick/wondershot</url>
+  <url type="bugtracker">https://github.com/jackmusick/wondershot/issues</url>
+  <provides><binary>wondershot</binary></provides>
+  <categories><category>Graphics</category><category>Utility</category></categories>
+  <content_rating type="oars-1.1"/>
+  <releases><release version="0.2.1" date="2026-10-19"/></releases>
+</component>

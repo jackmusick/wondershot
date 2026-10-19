@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test('fresh capture shows all editor controls immediately', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByText('Select or take a capture')).toBeVisible();
+  await expect(page.getByText('Drop images or videos here, or choose Import')).toBeVisible();
   // Library loading confirms client hydration has attached the capture handler.
   await expect(page.getByRole('button', { name: /Screenshot 14:02/ })).toBeVisible();
   await page.getByRole('button', { name: 'Capture', exact: true }).click();
