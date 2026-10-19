@@ -171,6 +171,7 @@ jobs:
             test "$attempt" -lt 3 || exit 1
             sleep 5
           done
+          mkdir -p fp-site
           flatpak-builder --user --force-clean --repo=fp-site/repo \
             --gpg-sign="$FLATPAK_GPG_KEY" \
             fp-build packaging/flatpak/io.github.jackmusick.wondershot.yml
