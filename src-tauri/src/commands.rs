@@ -973,7 +973,10 @@ async fn platform_capture(
         return (Err(error.to_string()), "wondershot-selector");
     }
     let workspace_frame = session_dir.join("workspace.png");
-    let frozen = if is_kde_desktop() {
+    // KWin authorizes direct captures against the host executable's desktop
+    // entry. Sandboxed processes cannot satisfy that identity check; use the
+    // screenshot portal in Flatpak, then feed its frame to the same selector.
+    let frozen = if is_kde_desktop() && !in_flatpak() {
         match capture::kwin::capture_workspace(&workspace_frame, cursor).await {
             Ok(()) => freeze_linux_workspace(app, &workspace_frame, &session_dir),
             Err(error) => Err(error),
