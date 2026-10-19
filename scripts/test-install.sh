@@ -26,22 +26,31 @@ case "$1" in
     *) exit 1 ;;
 esac
 FLATPAK
+for helper in gtk-update-icon-cache kbuildsycoca6 update-desktop-database; do
+    printf '#!/bin/sh\nexit 0\n' > "$TMP/bin/$helper"
+done
 chmod +x "$TMP/bin/"*
 export HOME="$TMP/home" XDG_DATA_HOME="$TMP/home/.local/share"
 export PATH="$TMP/bin:$PATH" WONDERSHOT_TEST_LOG="$TMP/calls"
 printf '#!/bin/sh\necho old-native\n' > "$HOME/.local/bin/wondershot"
 printf '[Desktop Entry]\nExec=old-native\n' > "$XDG_DATA_HOME/applications/io.github.jackmusick.wondershot.desktop"
 cp "$HOME/.local/bin/wondershot" "$TMP/old-native"
+icons="$XDG_DATA_HOME/icons/hicolor/512x512/apps"
+mkdir -p "$icons"
+printf 'old icon\n' > "$icons/io.github.jackmusick.wondershot.png"
 if WONDERSHOT_TEST_BAD_APP=1 sh "$ROOT/install.sh"; then
     echo 'Broken app unexpectedly accepted' >&2; exit 1
 fi
 cmp "$TMP/old-native" "$HOME/.local/bin/wondershot"
 test -f "$XDG_DATA_HOME/applications/io.github.jackmusick.wondershot.desktop"
+test -f "$icons/io.github.jackmusick.wondershot.png"
 sh "$ROOT/install.sh"
 test -x "$HOME/.local/bin/wondershot"
 backup=$(find "$HOME/.local/bin" -name 'wondershot.before-flatpak.*' -print -quit)
 cmp "$TMP/old-native" "$backup"
 test ! -e "$XDG_DATA_HOME/applications/io.github.jackmusick.wondershot.desktop"
+test ! -e "$icons/io.github.jackmusick.wondershot.png"
+test "$(find "$icons" -name '*.before-flatpak.*' | wc -l)" -eq 1
 "$HOME/.local/bin/wondershot" --capture 'two words'
 grep -q '^run io.github.jackmusick.wondershot --capture two words$' "$TMP/calls"
 grep -q '^install --user -y --noninteractive --or-update --from ' "$TMP/calls"

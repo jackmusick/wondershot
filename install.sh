@@ -7,6 +7,7 @@ APPID="io.github.jackmusick.wondershot"
 REPOSITORY="https://jackmusick.github.io/wondershot"
 BIN_DIR="${WONDERSHOT_BIN:-$HOME/.local/bin}"
 APP_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+ICON_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/icons"
 say() { printf '[wondershot] %s\n' "$*"; }
 fail() { say "$*" >&2; exit 1; }
 
@@ -56,7 +57,20 @@ desktop="$APP_DIR/$APPID.desktop"
 if [ -f "$desktop" ]; then
     mv "$desktop" "$desktop.before-flatpak.$(date +%s)"
 fi
+# Native installs may also leave a higher-priority icon in the user's theme.
+# Preserve those files while letting Flatpak's exported icons supply the brand.
+if [ -d "$ICON_DIR" ]; then
+    find "$ICON_DIR" \( -type f -o -type l \) \
+        \( -name "$APPID.png" -o -name "$APPID.svg" -o -name "$APPID.xpm" \) \
+        -exec sh -c 'icon_stamp=$1; shift; for icon do mv "$icon" "$icon.before-flatpak.$icon_stamp"; done' sh "$(date +%s)" {} +
+    if [ -d "$ICON_DIR/hicolor" ] && command -v gtk-update-icon-cache >/dev/null 2>&1; then
+        gtk-update-icon-cache -f -t "$ICON_DIR/hicolor" >/dev/null 2>&1 || true
+    fi
+fi
 command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$APP_DIR" || true
+if command -v kbuildsycoca6 >/dev/null 2>&1; then
+    kbuildsycoca6 --noincremental >/dev/null 2>&1 || true
+fi
 case ":$PATH:" in
     *":$BIN_DIR:"*) ;;
     *) say "Add $BIN_DIR to PATH to use the wondershot command." ;;
