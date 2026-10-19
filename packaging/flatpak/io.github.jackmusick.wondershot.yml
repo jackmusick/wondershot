@@ -238,6 +238,9 @@ modules:
       # Icons: copy every size/format the deb shipped, renamed to the app-id.
       - |
         for icon in $(find deb-root/usr/share/icons -type f); do
+          # Flatpak exports reject raster icons larger than 512px. The deb's
+          # sole 1024px icon is replaced by the standard sizes installed above.
+          case "$icon" in */1024x1024/*) continue ;; esac
           dir=$(dirname "$icon" | sed 's|deb-root/usr/share/icons|share/icons|')
           ext="${icon##*.}"
           install -Dm644 "$icon" "${FLATPAK_DEST}/${dir}/${FLATPAK_ID}.${ext}"

@@ -111,6 +111,13 @@ jobs:
           echo "GNUPGHOME=$GNUPGHOME" >> "$GITHUB_ENV"
           echo "FLATPAK_GPG_KEY=$key" >> "$GITHUB_ENV"
 
+      - uses: actions/cache/restore@v4
+        id: flatpak-cache
+        with:
+          path: .flatpak-builder
+          key: flatpak-${{ runner.os }}-${{ hashFiles('packaging/flatpak/*.yml') }}-${{ inputs.tag || github.ref_name }}
+          restore-keys: flatpak-${{ runner.os }}-
+
       - name: Build and attach Flatpak
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -118,7 +125,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y flatpak flatpak-builder appstream-compose
+          sudo apt-get install -y flatpak flatpak-builder appstream-compose python3-yaml
           # Match Flatpak's own CI setup: Ubuntu 24.04's AppArmor default
           # prevents bubblewrap from creating the build sandbox on hosted VMs.
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
@@ -141,6 +148,20 @@ jobs:
           release.set('date', datetime.date.today().isoformat())
           tree.write(path, encoding='UTF-8', xml_declaration=True)
           PYMETA
+
+          # Validate the actual app module, metadata, icons, and signed export
+          # before spending time compiling FFmpeg and the other dependencies.
+          python3 - <<'PYCHECK'
+          import yaml
+          path = 'packaging/flatpak/io.github.jackmusick.wondershot.yml'
+          manifest = yaml.safe_load(open(path))
+          manifest['modules'] = [manifest['modules'][-1]]
+          with open('packaging/flatpak/metadata-check.yml', 'w') as out:
+              yaml.safe_dump(manifest, out)
+          PYCHECK
+          flatpak-builder --user --force-clean --repo=metadata-test-repo \
+            --gpg-sign="$FLATPAK_GPG_KEY" \
+            metadata-test-build packaging/flatpak/metadata-check.yml
 
           # Fetch separately so transient network failures can be retried without
           # discarding compiled modules or rerunning platform installer builds.
@@ -181,3 +202,9 @@ jobs:
           gh release upload "$TAG" wondershot.flatpak flatpak-repository.tar.gz \
             fp-site/wondershot.flatpakref fp-site/wondershot.flatpakrepo \
             --repo "$GITHUB_REPOSITORY" --clobber
+
+      - uses: actions/cache/save@v4
+        if: ${{ !cancelled() && steps.flatpak-cache.outputs.cache-hit != 'true' }}
+        with:
+          path: .flatpak-builder
+          key: ${{ steps.flatpak-cache.outputs.cache-primary-key }}
