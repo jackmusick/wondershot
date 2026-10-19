@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import type { CaptureOutcome } from '$lib/types';
   import { get } from 'svelte/store';
-  import { loadLibrary, takeCapture, openEditorByPath, importPaths, trashItems, selectedCapturePaths, chooseImport, importBusy, importError } from '$lib/stores';
+  import { loadLibrary, takeCapture, completeCapture, openEditorByPath, importPaths, trashItems, selectedCapturePaths, chooseImport, importBusy, importError } from '$lib/stores';
   import { ipcListen, ipcEmit, ipcInvoke } from '$lib/ipc';
   import { openCapturePicker } from '$lib/capture/openCapture';
   import { initRecordingEvents, startRecording, startRecordingRect } from '$lib/recorder/control';
@@ -28,11 +29,23 @@
       }).catch(e => importError.set(String(e)));
     }
     let unRecording: (() => void) | undefined;
-    loadLibrary().then(async () => {
+    void (async () => {
+      uns.push(await ipcListen<CaptureOutcome>('capture://completed', async (outcome) => {
+        await completeCapture(outcome);
+        try {
+          const s = await ipcInvoke<Record<string, unknown>>('get_settings');
+          if (s?.auto_share_after_capture === true) {
+            await ipcInvoke('share_capture', { path: outcome.capture.path });
+          }
+        } catch (e) { console.error('post-capture share failed', e); }
+      }));
       uns.push(await ipcListen<string>('capture://done', async (path) => {
         await loadLibrary();
         const justTaken = get(captures).find((c) => c.path === path);
-        if (justTaken) activeItem.set(justTaken);
+        if (justTaken) {
+          activeItem.set(justTaken);
+          selectedCapturePaths.set([justTaken.path]);
+        }
         // Copy-after-capture: honor the setting (also driven from the CapturePanel
         // toggle). The capture://done event fires for every capture path
         // (panel, CLI, global hotkey), so this is the single place to do it.
@@ -78,8 +91,9 @@
       ));
       // Signal the backend that cli:// listeners are attached; it then dispatches
       // any launch args it deferred.
+      await loadLibrary();
       await ipcEmit('app://ready');
-    });
+    })();
     initRecordingEvents().then((un) => {
       unRecording = un;
     });
@@ -174,7 +188,7 @@
   {/if}
   {#if $captureError}
     <div class="capture-error" role="alert">
-      <span>Capture failed: {$captureError}</span>
+      <span>{$captureError}</span>
       <button aria-label="Dismiss capture error" onclick={() => captureError.set('')}>Close</button>
     </div>
   {/if}
@@ -199,7 +213,7 @@
   .work { flex: 1; display: flex; min-height: 0; }
   .capture-error {
     display: flex; align-items: center; justify-content: space-between; gap: 16px;
-    padding: 8px 12px; color: #fff; background: color-mix(in srgb, var(--danger) 78%, #111);
+    padding: 8px 12px; color: var(--danger); background: var(--bf-danger-soft);
     border-bottom: 1px solid var(--danger); font-size: var(--text-small); flex-shrink: 0;
   }
   .capture-error button {

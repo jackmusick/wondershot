@@ -369,7 +369,12 @@ pub fn save_sidecar(path: String, doc: sidecar::SidecarDoc) -> bool {
 }
 
 #[tauri::command]
-pub fn copy_image(path: String) -> Result<bool, String> {
+pub async fn copy_image(path: String) -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(move || copy_image_blocking(&path))
+        .await.map_err(|e| e.to_string())?
+}
+
+fn copy_image_blocking(path: &str) -> Result<bool, String> {
     let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
     match clipboard::copy_png(&bytes) {
         Ok(true) => Ok(true),
@@ -601,6 +606,10 @@ async fn run_selector(
         .output()
         .await
         .map_err(|e| format!("could not start Wondershot selector: {e}"))?;
+    if !output.stderr.is_empty() {
+        logging::log(format!("selector {}: {}", session.operation_id,
+            String::from_utf8_lossy(&output.stderr).trim()));
+    }
     if !output.status.success() {
         return Err(format!(
             "Wondershot selector failed: {}",
@@ -651,7 +660,7 @@ fn region_action_geometry(
         .iter()
         .find(|display| display.id == display_id)
         .ok_or_else(|| "selected display is no longer available".to_string())?;
-    const BAR_WIDTH: i32 = 296;
+    const BAR_WIDTH: i32 = 284;
     const BAR_HEIGHT: i32 = 58;
     const BAR_GAP: i32 = 8;
     let (x, y, width, height) = rect;
@@ -869,6 +878,7 @@ async fn platform_capture(
         };
     }
 
+    let picker_started = Instant::now();
     let session_dir = selection_dir(library_dir, operation_id);
     let freeze_dir = session_dir.clone();
     let frozen =
@@ -876,6 +886,7 @@ async fn platform_capture(
             .await
             .map_err(|err| format!("macOS freeze task failed: {err}"))
             .and_then(|result| result);
+    logging::log(format!("capture {operation_id}: desktop freeze {}ms", picker_started.elapsed().as_millis()));
     let result = match frozen {
         Ok(displays) => {
             let mut session = selector_session(operation_id, mode, &displays);
@@ -2707,7 +2718,7 @@ pub async fn show_capture_window(
         )
         .await?
         {
-            app.emit("capture://done", outcome.capture.path.clone())
+            app.emit("capture://completed", &outcome)
                 .map_err(|error| error.to_string())?;
         }
         Ok(())

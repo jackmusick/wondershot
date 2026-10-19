@@ -9,6 +9,7 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "test": "vitest run",
     "test:ui": "playwright test",
+    "icons": "node scripts/generate-macos-icon.mjs --all-icons",
     "icons:macos": "node scripts/generate-macos-icon.mjs",
     "tauri": "tauri",
     "build:macos": "node scripts/build-macos.mjs",

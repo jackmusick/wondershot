@@ -118,7 +118,7 @@
   .more { flex-shrink:0; width:32px; height:50px; border:0; border-radius:var(--radius); background:transparent; color:var(--fg-secondary); cursor:pointer; }
   .more:hover { background:var(--bg-hover); color:var(--fg-primary); }
   .more svg { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:1.5; }
-  .popup { position:absolute; top:58px; right:0; z-index:100; padding:6px; min-width:150px; max-height:min(70vh,480px); overflow-y:auto; border:1px solid var(--border-strong); border-radius:var(--radius); background:var(--bg-content); box-shadow:0 8px 24px #0006; display:flex; flex-direction:column; gap:2px; }
+  .popup { position:absolute; top:58px; right:0; z-index:100; padding:6px; min-width:150px; max-height:min(70vh,480px); overflow-y:auto; border:1px solid var(--border-strong); border-radius:var(--bf-radius-surface); background:var(--bg-elevated); box-shadow:var(--bf-shadow-float); display:flex; flex-direction:column; gap:2px; }
   .popup[hidden] { display:none; }
   :global([data-toolbar-hidden]) { display:none !important; }
   .popup :global(.tools) { display:contents; }

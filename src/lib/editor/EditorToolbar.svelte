@@ -242,7 +242,7 @@
   /* Tool buttons: icon on top, small label beneath (Qt rail parity). Active =
      accent bottom border + selected bg. */
   .tool {
-    min-width: 46px;
+    min-width: 52px;
     height: 50px;
     display: inline-flex;
     flex-direction: column;
@@ -262,12 +262,12 @@
   .tool:disabled { opacity: 0.4; cursor: not-allowed; }
   .tool.active {
     background: var(--bg-selected);
-    color: var(--fg-primary);
+    color: var(--accent);
     border-bottom-color: var(--accent);
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
   }
-  .tlabel { font-size: 10px; line-height: 1; color: inherit; }
+  .tlabel { font-size: 12px; line-height: 1; color: inherit; }
   .tool.ai .ai-spark { color: var(--accent-strong); fill: var(--accent-strong); stroke: none; }
   .tool svg {
     width: 18px;

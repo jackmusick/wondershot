@@ -27,7 +27,7 @@
 
 <style>
   .zoombar {
-    height: 30px;
+    height: 40px;
     display: flex;
     align-items: center;
     gap: 6px;
@@ -36,12 +36,12 @@
     border-top: 1px solid var(--border);
     flex-shrink: 0;
   }
-  .dims { font-size: var(--text-small); color: var(--fg-secondary); font-variant-numeric: tabular-nums; }
+  .dims { font-family: var(--font-mono); font-size: var(--text-small); color: var(--fg-secondary); font-variant-numeric: tabular-nums; }
   .spacer { flex: 1; }
   .zoom { display: flex; align-items: center; gap: 2px; }
   .zbtn,
   .ztext {
-    height: 22px;
+    height: 28px;
     border: 1px solid var(--border);
     background: var(--bg-field);
     color: var(--fg-primary);
@@ -49,7 +49,7 @@
     cursor: pointer;
     font-size: var(--text-small);
   }
-  .zbtn { width: 24px; font-size: 14px; line-height: 1; }
+  .zbtn { width: 28px; font-size: 14px; line-height: 1; }
   .ztext { padding: 0 8px; }
   .pct { min-width: 46px; font-variant-numeric: tabular-nums; }
   .zbtn:hover,

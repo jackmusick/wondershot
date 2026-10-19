@@ -2,16 +2,19 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 
 const css = readFileSync('src/lib/styles/tokens.css', 'utf8');
+const bifrost = readFileSync('src/lib/styles/bifrost-tokens.css', 'utf8');
 
 describe('design tokens', () => {
-  it('defines the two-plane dark backgrounds', () => {
-    // Chrome (header/rail/properties) sits lighter over the darker canvas
-    // (--bg-app) for Qt-style contrast.
-    expect(css).toContain('--bg-app: #161618');
-    expect(css).toContain('--bg-content: #303034');
+  it('maps the app canvas and chrome to the Bifrost surface contract', () => {
+    expect(css).toContain('--bg-app: var(--bf-canvas)');
+    expect(css).toContain('--bg-content: var(--bf-paper)');
+    expect(bifrost).toContain('--bf-canvas: var(--background, #08090b)');
+    expect(bifrost).toContain('--bf-paper: var(--card, #0a0c0f)');
   });
-  it('defines the accent and radius', () => {
-    expect(css).toMatch(/--accent:\s*#3b82f6/);
-    expect(css).toContain('--radius: 6px');
+  it('uses Bifrost action and control geometry tokens', () => {
+    expect(css).toContain('--accent: var(--bf-primary)');
+    expect(css).toContain('--radius: var(--bf-radius-control)');
+    expect(bifrost).toContain('--bf-primary: #2fd4d4');
+    expect(bifrost).toContain('--bf-radius-control: 6px');
   });
 });

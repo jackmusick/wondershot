@@ -47,17 +47,17 @@
 
   .bar {
     height: 58px;
-    width: 296px;
+    width: 284px;
     box-sizing: border-box;
     display: inline-flex;
     align-items: center;
     gap: 8px;
     padding: 7px;
-    color: #f7f7f8;
-    background: #141417;
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: var(--bf-ink);
+    background: var(--bf-paper);
+    border: 1px solid var(--bf-line);
     border-radius: 8px;
-    box-shadow: 0 16px 38px rgba(0, 0, 0, 0.38), 0 2px 8px rgba(0, 0, 0, 0.35);
+    box-shadow: var(--bf-shadow-float);
   }
 
   .tool {
@@ -67,15 +67,15 @@
     align-items: center;
     justify-content: center;
     flex: 0 0 auto;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--bf-line);
     border-radius: 6px;
-    color: #f7f7f8;
-    background: rgba(255, 255, 255, 0.07);
+    color: var(--bf-ink);
+    background: var(--bf-cool);
     cursor: pointer;
   }
 
   .tool:hover {
-    background: rgba(255, 255, 255, 0.14);
+    background: var(--bf-surface-raised);
     border-color: rgba(255, 255, 255, 0.2);
   }
 
@@ -84,20 +84,21 @@
   }
 
   .tool.primary {
-    background: #2f7df6;
+    background: var(--bf-primary);
+    color: var(--bf-primary-foreground);
     border-color: rgba(255, 255, 255, 0.16);
   }
 
   .tool.primary:hover {
-    background: #438bff;
+    background: var(--bf-primary-hover);
   }
 
   .tool.record {
-    color: #ff4d5d;
+    color: var(--bf-danger);
   }
 
   .tool.quiet {
-    color: rgba(255, 255, 255, 0.74);
+    color: var(--bf-muted);
   }
 
   svg {
@@ -125,17 +126,18 @@
     align-items: center;
     justify-content: center;
     padding: 0 12px;
-    color: rgba(255, 255, 255, 0.82);
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: var(--bf-ink);
+    background: var(--bf-cool);
+    border: 1px solid var(--bf-line);
     border-radius: 6px;
     font-size: 13px;
     font-variant-numeric: tabular-nums;
+    font-family: var(--font-mono);
     white-space: nowrap;
   }
 
   .size span {
     padding: 0 7px;
-    color: rgba(255, 255, 255, 0.42);
+    color: var(--bf-muted);
   }
 </style>

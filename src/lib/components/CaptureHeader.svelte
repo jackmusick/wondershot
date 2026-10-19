@@ -75,7 +75,7 @@
 </script>
 
 <header class="header" aria-label="Main Toolbar">
-  <button class="hbtn" title="Capture a region or hover a window" onclick={openCapturePicker}>
+  <button class="hbtn capture-action" title="Capture a region or hover a window" onclick={openCapturePicker}>
     <svg viewBox="0 0 16 16"><path d="M2 5.5A1.5 1.5 0 0 1 3.5 4h1l1-1.5h3L9.5 4h3A1.5 1.5 0 0 1 14 5.5V12a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 12z"/><circle cx="8" cy="8.5" r="2.5"/></svg>
     <span>Capture</span>
   </button>
@@ -141,7 +141,7 @@
 <style>
   .record-error { padding: 8px 14px; color: var(--danger, #ff5555); background: var(--bg-content); }
   .header {
-    height: 60px; display: flex; align-items: center; gap: 4px; padding: 0 10px;
+    height: 60px; display: flex; align-items: center; gap: 4px; padding: 0 12px;
     border-bottom: 1px solid var(--border); background: var(--bg-content); flex-shrink: 0;
   }
   .hbtn {
@@ -149,13 +149,15 @@
     border: none; background: transparent; color: var(--fg-primary);
     border-radius: var(--radius); font-size: var(--text-base); cursor: pointer; white-space: nowrap;
   }
-  .hbtn > span { font-size:10px; line-height:1; }
+  .hbtn > span { font-size:12px; line-height:1; }
   .sep { width:1px; height:22px; background:var(--border-strong); margin:0 4px; flex-shrink:0; }
   .hbtn:hover:not(:disabled) { background: var(--bg-hover); }
+  .hbtn.capture-action { background: var(--bf-primary); color: var(--bf-primary-foreground); font-weight: 650; padding-inline: 12px; }
+  .hbtn.capture-action:hover:not(:disabled) { background: var(--bf-primary-hover); }
   .hbtn:disabled { opacity: 0.4; cursor: default; }
   .hbtn.active { background: var(--bg-selected); }
   .hbtn svg {
-    width: 17px; height: 17px; fill: none; stroke: currentColor;
+    width: 18px; height: 18px; fill: none; stroke: currentColor;
     stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0;
   }
   .spacer { flex: 1; }

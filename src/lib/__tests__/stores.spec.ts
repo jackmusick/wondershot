@@ -1,6 +1,6 @@
 import { beforeEach, describe, it, expect } from 'vitest';
 import { get } from 'svelte/store';
-import { loadLibrary, takeCapture, captures, activeItem, view } from '$lib/stores';
+import { loadLibrary, takeCapture, captures, activeItem, selectedCapturePaths, view } from '$lib/stores';
 import { getMockInvocationCount, resetMockInvocationCounts, setMockSettings } from '$lib/ipc.mock';
 
 describe('stores', () => {
@@ -20,6 +20,7 @@ describe('stores', () => {
     await loadLibrary();
     resetMockInvocationCounts();
 
+    selectedCapturePaths.set(['/previous.png']);
     await takeCapture('region');
 
     expect(getMockInvocationCount('capture_region')).toBe(1);
@@ -27,6 +28,7 @@ describe('stores', () => {
     expect(getMockInvocationCount('copy_image')).toBe(1);
     expect(get(captures)[0].path).toBe(get(activeItem)?.path);
     expect(get(view)).toBe('editor');
+    expect(get(selectedCapturePaths)).toEqual([get(activeItem)!.path]);
   });
 
   it('honors capture completion preferences without extra work', async () => {
@@ -40,5 +42,6 @@ describe('stores', () => {
     expect(getMockInvocationCount('list_library')).toBe(0);
     expect(getMockInvocationCount('copy_image')).toBe(0);
     expect(get(view)).toBe('gallery');
+    expect(get(selectedCapturePaths)).toEqual([get(activeItem)!.path]);
   });
 });

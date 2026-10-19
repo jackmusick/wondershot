@@ -9,3 +9,14 @@ resolver = "2"
 lto = "thin"
 codegen-units = 1
 strip = "symbols"
+
+# Native overlays process full Retina frames. Keep their pixel loops optimized
+# even in the debug app used for local macOS builds.
+[profile.dev.package.wondershot-selector]
+opt-level = 2
+
+[profile.dev.package.wondershot-core]
+opt-level = 2
+
+[profile.dev.package.image]
+opt-level = 2

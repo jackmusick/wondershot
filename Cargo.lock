@@ -7378,6 +7378,7 @@ name = "wondershot-selector"
 version = "0.2.0"
 dependencies = [
  "image",
+ "objc2-app-kit 0.3.2",
  "serde",
  "serde_json",
  "softbuffer",

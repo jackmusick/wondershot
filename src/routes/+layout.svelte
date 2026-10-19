@@ -5,6 +5,7 @@
 </script>
 
 <svelte:head>
+  <title>Wondershot</title>
   <script>
     document.documentElement.setAttribute('data-theme', 'dark');
   </script>

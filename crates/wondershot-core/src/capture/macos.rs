@@ -239,7 +239,10 @@ pub fn freeze_displays(
     cursor: bool,
 ) -> Result<Vec<FrozenDisplay>, String> {
     std::fs::create_dir_all(out_dir.as_ref()).map_err(|e| e.to_string())?;
-    let content = SCShareableContent::get()
+    let content = SCShareableContent::create()
+        .with_on_screen_windows_only(true)
+        .with_exclude_desktop_windows(true)
+        .get()
         .map_err(|e| format!("Screen Recording permission or content enumeration failed: {e}"))?;
     let windows = content.windows();
     let mut displays = Vec::new();
@@ -256,7 +259,7 @@ pub fn freeze_displays(
         let display_x = (frame.origin.x * scale_x).round() as i32;
         let display_y = (frame.origin.y * scale_y).round() as i32;
         let id = display.display_id().to_string();
-        let out = out_dir.as_ref().join(format!("display-{id}.png"));
+        let out = out_dir.as_ref().join(format!("display-{id}.bmp"));
         let filter = SCContentFilter::create()
             .with_display(&display)
             .with_excluding_windows(&[])
@@ -385,6 +388,15 @@ fn save_filter(
         .with_shows_cursor(cursor);
     let image = SCScreenshotManager::capture_image(filter, &config)
         .map_err(|e| format!("ScreenCaptureKit screenshot failed: {e}"))?;
+    // Session frames are temporary: avoid PNG compression before the selector
+    // can appear. The confirmed crop is still saved as PNG in the library.
+    if out.extension().is_some_and(|extension| extension == "bmp") {
+        use screencapturekit::screenshot_manager::CGImageExt;
+        let pixels = image.rgba_data().map_err(|e| e.to_string())?;
+        let frame = RgbaImage::from_raw(width, height, pixels)
+            .ok_or("ScreenCaptureKit returned an unexpected frame size")?;
+        return frame.save(out).map_err(|e| format!("could not save frozen display: {e}"));
+    }
     let path = out
         .to_str()
         .ok_or_else(|| "capture output path is not valid UTF-8".to_string())?;

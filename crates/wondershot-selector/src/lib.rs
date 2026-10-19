@@ -9,7 +9,9 @@ use winit::application::ApplicationHandler;
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{Key, NamedKey};
-use winit::window::{CursorIcon, Fullscreen, Window, WindowAttributes, WindowId, WindowLevel};
+use winit::window::{CursorIcon, Window, WindowAttributes, WindowId, WindowLevel};
+#[cfg(not(target_os = "macos"))]
+use winit::window::Fullscreen;
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -158,6 +160,7 @@ struct DisplayWindow {
     surface: Surface<Rc<Window>, Rc<Window>>,
     display: FrozenDisplay,
     base: Vec<u32>,
+    dimmed: Vec<u32>,
     width: u32,
     height: u32,
     cursor: (i32, i32),
@@ -174,7 +177,7 @@ enum ActionBarHit {
 }
 
 fn positioned_action_bar(selected: Rect, width: u32, height: u32) -> Rect {
-    const BAR_WIDTH: u32 = 296;
+    const BAR_WIDTH: u32 = 282;
     const BAR_HEIGHT: u32 = 58;
     const GAP: i32 = 8;
     let centered_x = selected
@@ -199,10 +202,34 @@ fn positioned_action_bar(selected: Rect, width: u32, height: u32) -> Rect {
     }
 }
 
+fn action_bar_hit_at(bar: Rect, point: (i32, i32), scale: f64) -> Option<ActionBarHit> {
+    if !bar.contains(point.0, point.1) { return None; }
+    let local_x = ((point.0 - bar.x) as f64 / scale).floor() as i32;
+    let local_y = ((point.1 - bar.y) as f64 / scale).floor() as i32;
+    if !(7..51).contains(&local_y) { return None; }
+    match local_x {
+        7..=50 => Some(ActionBarHit::Capture),
+        59..=102 => Some(ActionBarHit::Record),
+        231..=274 => Some(ActionBarHit::Cancel),
+        _ => None,
+    }
+}
+
 impl DisplayWindow {
     fn action_bar_rect(&self) -> Option<Rect> {
         let selected = self.locked_region?;
-        Some(positioned_action_bar(selected, self.width, self.height))
+        let scale = self.window.scale_factor();
+        let logical = |v: u32| (f64::from(v) / scale).round() as u32;
+        let bar = positioned_action_bar(
+            Rect { x: (selected.x as f64 / scale).round() as i32,
+                y: (selected.y as f64 / scale).round() as i32,
+                width: logical(selected.width), height: logical(selected.height) },
+            logical(self.width), logical(self.height),
+        );
+        Some(Rect { x: (bar.x as f64 * scale).round() as i32,
+            y: (bar.y as f64 * scale).round() as i32,
+            width: (bar.width as f64 * scale).round() as u32,
+            height: (bar.height as f64 * scale).round() as u32 })
     }
 
     fn action_bar_hit(&self) -> Option<ActionBarHit> {
@@ -211,13 +238,7 @@ impl DisplayWindow {
         if !bar.contains(x, y) {
             return None;
         }
-        let local_x = x - bar.x;
-        match local_x {
-            7..=50 => Some(ActionBarHit::Capture),
-            59..=102 => Some(ActionBarHit::Record),
-            231..=274 => Some(ActionBarHit::Cancel),
-            _ => None,
-        }
+        action_bar_hit_at(bar, (x, y), self.window.scale_factor())
     }
 
     fn view_to_source_point(&self, point: (i32, i32)) -> (i32, i32) {
@@ -289,7 +310,7 @@ impl DisplayWindow {
         let selection_rect = self.selection_rect(mode);
         let action_bar = self.action_bar_rect();
         let action_bar_hit = self.action_bar_hit();
-        let locked_region = self.locked_region;
+        let locked_region = self.locked_region.map(|r| self.view_to_source_rect(r));
         self.surface
             .resize(width, height)
             .map_err(|e| e.to_string())?;
@@ -298,24 +319,18 @@ impl DisplayWindow {
             return Err("selector surface size does not match frozen frame".into());
         }
 
-        for (out, source) in buffer.iter_mut().zip(&self.base) {
-            *out = dim(*source);
-        }
+        buffer.copy_from_slice(&self.dimmed);
 
         if let Some(rect) = selection_rect {
             let rect = clamp_rect(rect, self.width, self.height);
             restore_rect(&mut buffer, &self.base, self.width, rect);
-            draw_border(&mut buffer, self.width, self.height, rect, 3, 0x0028c7fa);
+            draw_border(&mut buffer, self.width, self.height, rect, 3, 0x002fd4d4);
         }
 
         if let Some(bar) = action_bar {
-            draw_action_bar(
-                &mut buffer,
-                self.width,
-                self.height,
-                bar,
-                action_bar_hit,
-                locked_region,
+            draw_scaled_action_bar(
+                &mut buffer, self.width, self.height, bar,
+                action_bar_hit, locked_region,
             );
         }
 
@@ -339,6 +354,8 @@ struct SelectorApp {
     result: Option<SelectionResult>,
     pending_result: Option<SelectionResult>,
     modifiers: winit::keyboard::ModifiersState,
+    started: std::time::Instant,
+    first_frame: bool,
 }
 
 impl SelectorApp {
@@ -350,6 +367,8 @@ impl SelectorApp {
             result: None,
             pending_result: None,
             modifiers: winit::keyboard::ModifiersState::empty(),
+            started: std::time::Instant::now(),
+            first_frame: false,
         }
     }
 
@@ -399,7 +418,7 @@ impl ApplicationHandler for SelectorApp {
             } else {
                 image
             };
-            let base = image
+            let base: Vec<u32> = image
                 .pixels()
                 .map(|pixel| {
                     let [r, g, b, _] = pixel.0;
@@ -411,11 +430,23 @@ impl ApplicationHandler for SelectorApp {
                 .with_title("Wondershot selector")
                 .with_decorations(false)
                 .with_resizable(false)
-                .with_window_level(WindowLevel::AlwaysOnTop)
-                .with_fullscreen(Some(Fullscreen::Borderless(Some(monitor))));
+                .with_window_level(WindowLevel::AlwaysOnTop);
+            // Native macOS fullscreen animates into a new Space. A capture
+            // overlay is an ordinary borderless window covering this display.
+            #[cfg(target_os = "macos")]
+            let attributes = {
+                use winit::platform::macos::WindowAttributesExtMacOS;
+                attributes.with_position(monitor.position()).with_inner_size(size)
+                    .with_visible(false).with_has_shadow(false)
+                    .with_accepts_first_mouse(true)
+            };
+            #[cfg(not(target_os = "macos"))]
+            let attributes = attributes.with_fullscreen(Some(Fullscreen::Borderless(Some(monitor))));
             let Ok(window) = event_loop.create_window(attributes) else {
                 continue;
             };
+            #[cfg(target_os = "macos")]
+            configure_macos_overlay(&window);
             window.set_cursor(CursorIcon::Crosshair);
             let window = Rc::new(window);
             if self.context.is_none() {
@@ -434,6 +465,7 @@ impl ApplicationHandler for SelectorApp {
                     window: window.clone(),
                     surface,
                     display,
+                    dimmed: base.iter().copied().map(dim).collect(),
                     base,
                     width: size.width,
                     height: size.height,
@@ -601,7 +633,14 @@ impl ApplicationHandler for SelectorApp {
             }
             WindowEvent::RedrawRequested => {
                 if let Some(state) = self.windows.get_mut(&window_id) {
-                    let _ = state.redraw(self.session.mode);
+                    if state.redraw(self.session.mode).is_ok() && !self.first_frame {
+                        eprintln!("first overlay frame {}ms after selector startup", self.started.elapsed().as_millis());
+                        self.first_frame = true;
+                    }
+                    if !state.window.is_visible().unwrap_or(true) {
+                        state.window.set_visible(true);
+                        state.window.focus_window();
+                    }
                 }
             }
             _ => {}
@@ -623,13 +662,39 @@ fn scale_u32(value: u32, from: u32, to: u32) -> u32 {
     (f64::from(value) * f64::from(to) / f64::from(from)).round() as u32
 }
 
+#[cfg(target_os = "macos")]
+fn configure_macos_overlay(window: &Window) {
+    use objc2_app_kit::{NSView, NSWindowCollectionBehavior};
+    use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    if let Ok(handle) = window.window_handle() {
+        if let RawWindowHandle::AppKit(handle) = handle.as_raw() {
+            // Winit owns this view for the lifetime of the window. This runs
+            // on the AppKit event-loop thread before the window is shown.
+            let view = unsafe { handle.ns_view.cast::<NSView>().as_ref() };
+            if let Some(native) = view.window() {
+                native.setLevel(25); // above menu bar, same as the native picker
+                native.setCollectionBehavior(NSWindowCollectionBehavior::CanJoinAllSpaces
+                    | NSWindowCollectionBehavior::FullScreenAuxiliary
+                    | NSWindowCollectionBehavior::Stationary);
+            }
+        }
+    }
+}
+
 pub fn run(session_path: impl AsRef<Path>) -> Result<SelectionResult, String> {
     let bytes = std::fs::read(session_path.as_ref()).map_err(|e| e.to_string())?;
     let session: SelectionSession = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
     if session.displays.is_empty() {
         return Err("selection session has no frozen displays".into());
     }
-    let event_loop = EventLoop::new().map_err(|e| e.to_string())?;
+    let mut builder = EventLoop::builder();
+    #[cfg(target_os = "macos")]
+    {
+        use winit::platform::macos::{ActivationPolicy, EventLoopBuilderExtMacOS};
+        builder.with_activation_policy(ActivationPolicy::Accessory)
+            .with_activate_ignoring_other_apps(false);
+    }
+    let event_loop = builder.build().map_err(|e| e.to_string())?;
     let mut app = SelectorApp::new(session);
     event_loop.run_app(&mut app).map_err(|e| e.to_string())?;
     Ok(app.result.unwrap_or(SelectionResult::Cancelled))
@@ -701,6 +766,20 @@ fn fill_rect(buffer: &mut [u32], stride: u32, height: u32, rect: Rect, color: u3
         let start = (y * stride + rect.x as u32) as usize;
         let end = start + rect.width as usize;
         buffer[start..end].fill(color);
+    }
+}
+
+fn fill_rounded_rect(buffer: &mut [u32], stride: u32, height: u32, rect: Rect, radius: u32, color: u32) {
+    let radius = radius.min(rect.width / 2).min(rect.height / 2) as i32;
+    let clipped = clamp_rect(rect, stride, height);
+    for y in clipped.y..clipped.y + clipped.height as i32 {
+        for x in clipped.x..clipped.x + clipped.width as i32 {
+            let cx = x.clamp(rect.x + radius, rect.x + rect.width as i32 - radius - 1);
+            let cy = y.clamp(rect.y + radius, rect.y + rect.height as i32 - radius - 1);
+            if (x - cx).pow(2) + (y - cy).pow(2) <= radius.pow(2) {
+                buffer[(y as u32 * stride + x as u32) as usize] = color;
+            }
+        }
     }
 }
 
@@ -821,6 +900,26 @@ fn draw_text(
     }
 }
 
+// Draw the complete control (including icons and text) in logical units,
+// then scale it to the display's backing pixels. Hit testing uses the same scale.
+fn draw_scaled_action_bar(buffer: &mut [u32], stride: u32, height: u32,
+    bar: Rect, hovered: Option<ActionBarHit>, selected: Option<Rect>) {
+    let mut pixels = vec![u32::MAX; 282 * 58];
+    draw_action_bar(&mut pixels, 282, 58,
+        Rect { x: 0, y: 0, width: 282, height: 58 }, hovered, selected);
+    let clipped = clamp_rect(bar, stride, height);
+    for y in clipped.y..clipped.y + clipped.height as i32 {
+        for x in clipped.x..clipped.x + clipped.width as i32 {
+            let sx = ((x - bar.x) as u32 * 282 / bar.width) as usize;
+            let sy = ((y - bar.y) as u32 * 58 / bar.height) as usize;
+            let color = pixels[sy * 282 + sx];
+            if color != u32::MAX {
+                buffer[(y as u32 * stride + x as u32) as usize] = color;
+            }
+        }
+    }
+}
+
 fn draw_action_bar(
     buffer: &mut [u32],
     stride: u32,
@@ -829,38 +928,38 @@ fn draw_action_bar(
     hovered: Option<ActionBarHit>,
     selected: Option<Rect>,
 ) {
-    fill_rect(buffer, stride, height, bar, 0x00141417);
-    outline_rect(buffer, stride, height, bar, 0x00404046);
+    // Bifrost dark overlay: surface radius 4, controls radius 6.
+    fill_rounded_rect(buffer, stride, height, bar, 4, 0x00252c34);
+    fill_rounded_rect(buffer, stride, height, Rect { x: bar.x + 1, y: bar.y + 1,
+        width: bar.width.saturating_sub(2), height: bar.height.saturating_sub(2) }, 3, 0x000a0c0f);
     let buttons = [
-        (ActionBarHit::Capture, 7, 0x002f7df6),
-        (ActionBarHit::Record, 59, 0x00222226),
-        (ActionBarHit::Cancel, 231, 0x00222226),
+        (ActionBarHit::Capture, 7, 0x002fd4d4),
+        (ActionBarHit::Record, 59, 0x0011151a),
+        (ActionBarHit::Cancel, 231, 0x0011151a),
     ];
     for (action, offset, base_color) in buttons {
         let color = if hovered == Some(action) {
-            if action == ActionBarHit::Capture { 0x00438bff } else { 0x0037373d }
+            if action == ActionBarHit::Capture { 0x0063e1e1 } else { 0x0015191e }
         } else {
             base_color
         };
-        fill_rect(
-            buffer,
-            stride,
-            height,
+        fill_rounded_rect(
+            buffer, stride, height,
             Rect { x: bar.x + offset, y: bar.y + 7, width: 44, height: 44 },
-            color,
+            6, color,
         );
     }
     let size_box = Rect { x: bar.x + 111, y: bar.y + 7, width: 112, height: 44 };
-    fill_rect(buffer, stride, height, size_box, 0x00222226);
+    fill_rounded_rect(buffer, stride, height, size_box, 6, 0x0011151a);
 
     let camera = Rect { x: bar.x + 20, y: bar.y + 21, width: 18, height: 14 };
-    outline_rect(buffer, stride, height, camera, 0x00ffffff);
-    fill_circle(buffer, stride, height, (bar.x + 29, bar.y + 28), 4, 0x00ffffff);
-    fill_circle(buffer, stride, height, (bar.x + 29, bar.y + 28), 2, 0x002f7df6);
-    fill_rect(buffer, stride, height, Rect { x: bar.x + 24, y: bar.y + 18, width: 10, height: 3 }, 0x00ffffff);
-    fill_circle(buffer, stride, height, (bar.x + 81, bar.y + 29), 6, 0x00ff4d5d);
-    draw_line(buffer, stride, height, (bar.x + 245, bar.y + 20), (bar.x + 261, bar.y + 36), 0x00d5d5d8);
-    draw_line(buffer, stride, height, (bar.x + 261, bar.y + 20), (bar.x + 245, bar.y + 36), 0x00d5d5d8);
+    outline_rect(buffer, stride, height, camera, 0x0006222a);
+    fill_circle(buffer, stride, height, (bar.x + 29, bar.y + 28), 4, 0x0006222a);
+    fill_circle(buffer, stride, height, (bar.x + 29, bar.y + 28), 2, 0x002fd4d4);
+    fill_rect(buffer, stride, height, Rect { x: bar.x + 24, y: bar.y + 18, width: 10, height: 3 }, 0x0006222a);
+    fill_circle(buffer, stride, height, (bar.x + 81, bar.y + 29), 6, 0x00ff727a);
+    draw_line(buffer, stride, height, (bar.x + 245, bar.y + 20), (bar.x + 261, bar.y + 36), 0x009caab5);
+    draw_line(buffer, stride, height, (bar.x + 261, bar.y + 20), (bar.x + 245, bar.y + 36), 0x009caab5);
 
     if let Some(selected) = selected {
         let label = format!("{} x {}", selected.width, selected.height);
@@ -871,7 +970,7 @@ fn draw_action_bar(
             height,
             (size_box.x + (size_box.width as i32 - text_width) / 2, size_box.y + 17),
             &label,
-            0x00d5d5d8,
+            0x009caab5,
         );
     }
 }
@@ -934,6 +1033,31 @@ mod tests {
     }
 
     #[test]
+    fn action_bar_has_equal_outer_gutters() {
+        let bar = positioned_action_bar(Rect { x: 300, y: 200, width: 400, height: 200 }, 1280, 800);
+        let camera_left = 7;
+        let cancel_right = 231 + 44;
+        assert_eq!(bar.width as i32 - cancel_right, camera_left);
+    }
+
+    #[test]
+    fn retina_toolbar_scales_icons_and_hit_targets_together() {
+        for scale in [1.0, 1.5, 2.0] {
+            let bar = Rect { x: 20, y: 20, width: (282.0 * scale) as u32, height: (58.0 * scale) as u32 };
+            let mut buffer = vec![0; 1000 * 200];
+            draw_scaled_action_bar(&mut buffer, 1000, 200, bar, None, None);
+            for (x, action, color) in [(10.0, ActionBarHit::Capture, 0x002fd4d4),
+                (62.0, ActionBarHit::Record, 0x0011151a),
+                (234.0, ActionBarHit::Cancel, 0x0011151a)] {
+                let point = (bar.x + (x * scale) as i32, bar.y + (10.0 * scale) as i32);
+                assert_eq!(action_bar_hit_at(bar, point, scale), Some(action));
+                assert_eq!(buffer[point.1 as usize * 1000 + point.0 as usize], color);
+            }
+            assert_eq!(action_bar_hit_at(bar, (bar.x, bar.y), scale), None);
+        }
+    }
+
+    #[test]
     fn reverse_drag_is_normalized_and_clamped() {
         assert_eq!(
             normalized_drag((2000, 1000), (-50, 100), 1920, 1080),
@@ -953,7 +1077,7 @@ mod tests {
             1920,
             1080,
         );
-        assert_eq!(centered.x, 552);
+        assert_eq!(centered.x, 559);
         assert_eq!(centered.y, 508);
 
         let left_edge = positioned_action_bar(

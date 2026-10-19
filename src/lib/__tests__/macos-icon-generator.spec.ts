@@ -11,7 +11,7 @@ describe('macOS icon generator', () => {
     execFileSync('node', [
       'scripts/generate-macos-icon.mjs',
       '--source',
-      'src-tauri/icons/icon.png',
+      'assets/branding/wondershot-icon-master.png',
       '--png',
       out,
       '--no-icns'
@@ -22,9 +22,19 @@ describe('macOS icon generator', () => {
     expect(measured.width).toBe(1024);
     expect(measured.height).toBe(1024);
     expect(measured.contentWidth).toBe(824);
-    expect(measured.contentHeight).toBe(824);
+    expect(measured.contentHeight).toBeLessThanOrEqual(824);
+    expect(measured.contentHeight).toBeGreaterThan(790);
     expect(measured.minX).toBe(100);
-    expect(measured.minY).toBe(100);
+    expect(Math.abs(measured.centerY - 512)).toBeLessThanOrEqual(1);
+  });
+
+  test('preserves the approved spectrum rim instead of extracting only the white symbol', () => {
+    const out = join(tmpdir(), `wondershot-spectrum-${Date.now()}.png`);
+    execFileSync('node', ['scripts/generate-macos-icon.mjs', '--png', out, '--no-icns']);
+    const red = measurePixelBounds(out, (r, g, b, a) => a > 128 && r > 180 && g < 120 && b < 120);
+    const green = measurePixelBounds(out, (r, g, b, a) => a > 128 && g > 180 && r < 120 && b < 120);
+    const blue = measurePixelBounds(out, (r, g, b, a) => a > 128 && b > 180 && r < 120 && g < 120);
+    for (const color of [red, green, blue]) expect(color.contentHeight).toBeGreaterThan(0);
   });
 
   test('centers the foreground artwork inside the macOS template', () => {
@@ -32,7 +42,7 @@ describe('macOS icon generator', () => {
     execFileSync('node', [
       'scripts/generate-macos-icon.mjs',
       '--source',
-      'src-tauri/icons/icon.png',
+      'assets/branding/wondershot-icon-master.png',
       '--png',
       out,
       '--no-icns'
@@ -48,7 +58,7 @@ describe('macOS icon generator', () => {
     execFileSync('node', [
       'scripts/generate-macos-icon.mjs',
       '--source',
-      'src-tauri/icons/icon.png',
+      'assets/branding/wondershot-icon-master.png',
       '--png',
       out,
       '--no-icns'

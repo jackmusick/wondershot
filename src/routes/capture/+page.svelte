@@ -113,7 +113,7 @@
   }
   .twin svg { fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; }
   .twin:hover { background: var(--bg-hover, #26262c); color: var(--fg-primary, #f0f0f3); }
-  .twin.close:hover { background: var(--danger, #e3242b); color: #fff; }
+  .twin.close:hover { background: var(--bf-primary); color: var(--bf-primary-foreground); }
 
   .body {
     box-sizing: border-box; height: calc(100vh - 30px);
@@ -126,11 +126,11 @@
   .check { display: flex; align-items: center; gap: 8px; }
   .check input { accent-color: var(--accent, #3b82f6); }
   .delay { display: flex; align-items: center; gap: 6px; color: var(--fg-secondary, #b6b6bd); font-size: var(--text-small, 11.5px); }
-  .delay input { width: 52px; height: 26px; background: var(--bg-field, #14141a); border: 1px solid var(--border, #2a2a2e); border-radius: var(--radius, 6px); color: var(--fg-primary, #f0f0f3); padding: 0 6px; }
+  .delay input { width: 52px; height: var(--bf-control-height); background: var(--bg-field, #14141a); border: 1px solid var(--border, #2a2a2e); border-radius: var(--radius, 6px); color: var(--fg-primary, #f0f0f3); padding: 0 6px; }
   .capture {
-    grid-row: span 1; width: 96px; height: 96px; border-radius: 50%;
-    border: none; background: var(--danger, #e3242b); color: #fff; font-size: 16px; font-weight: 700;
-    cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+    grid-row: span 1; width: 104px; height: 80px; border-radius: var(--bf-radius-control);
+    border: none; background: var(--bf-primary); color: var(--bf-primary-foreground); font-size: 16px; font-weight: 700;
+    cursor: pointer; box-shadow: none;
   }
   .capture:hover { filter: brightness(1.06); }
   .actions { grid-column: 1 / -1; display: flex; gap: 8px; justify-content: flex-start; }

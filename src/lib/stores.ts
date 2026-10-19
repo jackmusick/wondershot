@@ -22,10 +22,14 @@ export const pinned = writable<string[]>([]);
 export const autosaveState = writable<'saved' | 'saving' | 'error'>('saved');
 
 export async function loadLibrary(): Promise<void> {
+  const before = new Set(get(captures).map(c => c.path));
   const caps = await ipcInvoke<Capture[]>('list_library');
   const normalized = await normalizeCaptures(caps);
-  captures.set(normalized);
-  const available = new Set(normalized.map((c) => c.path));
+  // A capture may complete while a watcher scan is in flight. Preserve files
+  // inserted after this scan began so stale results cannot remove the new shot.
+  const inserted = get(captures).filter(c => !before.has(c.path) && !normalized.some(n => n.path === c.path));
+  captures.set([...inserted, ...normalized]);
+  const available = new Set(get(captures).map((c) => c.path));
   selectedCapturePaths.update((paths) => paths.filter((path) => available.has(path)));
   await loadPinned();
 }
@@ -124,28 +128,36 @@ export async function chooseImport(): Promise<void> {
   }
 }
 
+// All modern capture entry points share the same completion path. Selection
+// and the editor target must agree before clipboard work starts.
+let completionQueue: Promise<void> = Promise.resolve();
+export function completeCapture(outcome: CaptureOutcome): Promise<void> {
+  const complete = async () => {
+    const [justTaken] = await normalizeCaptures([outcome.capture]);
+    if (!justTaken) return;
+    captures.update((items) => [justTaken, ...items.filter((c) => c.path !== justTaken.path)]);
+    activeItem.set(justTaken);
+    selectedCapturePaths.set([justTaken.path]);
+    view.set(outcome.showPreview ? 'editor' : 'gallery');
+    if (outcome.copyAfterCapture) {
+      try {
+        const copied = await ipcInvoke<boolean>('copy_image', { path: justTaken.path });
+        if (!copied) throw new Error('clipboard did not accept the image');
+      } catch (e) {
+        captureError.set(`Screenshot saved, but copying to the clipboard failed: ${String(e)}`);
+      }
+    }
+  };
+  completionQueue = completionQueue.then(complete, complete);
+  return completionQueue;
+}
+
 export async function takeCapture(mode: 'region' | 'fullscreen' | 'window'): Promise<void> {
   const cmd = `capture_${mode}`;
   captureError.set('');
   try {
     const outcome = await ipcInvoke<CaptureOutcome>(cmd);
-    const [justTaken] = await normalizeCaptures([outcome.capture]);
-    if (!justTaken) return;
-
-    // Capture completion is incremental: inserting one known file avoids two
-    // immediate full directory scans (and the watcher provides reconciliation
-    // for genuinely external changes).
-    captures.update((items) => [justTaken, ...items.filter((c) => c.path !== justTaken.path)]);
-    activeItem.set(justTaken);
-    view.set(outcome.showPreview ? 'editor' : 'gallery');
-
-    // Clipboard encoding can be comparatively expensive. It must not hold up
-    // the first usable preview frame.
-    if (outcome.copyAfterCapture) {
-      void ipcInvoke('copy_image', { path: justTaken.path }).catch((e) => {
-        console.error('copy-after-capture failed', e);
-      });
-    }
+    await completeCapture(outcome);
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     if (/cancel(?:led|ed)?/i.test(message)) return;

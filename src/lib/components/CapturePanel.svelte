@@ -162,7 +162,7 @@
     position: relative; margin-top: 64px;
     display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 14px;
     background: var(--bg-elevated); border: 1px solid var(--border-strong);
-    border-radius: 10px; box-shadow: 0 16px 44px rgba(0,0,0,0.45); padding: 16px 18px;
+    border-radius: var(--bf-radius-feature); box-shadow: var(--bf-shadow-modal); padding: 16px 18px;
     color: var(--fg-primary); font-size: var(--text-base);
   }
   .opts { display: flex; flex-direction: column; gap: 7px; }
@@ -173,7 +173,7 @@
   .permission .perm-err { color: var(--danger); }
   .perm-actions { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 3px; }
   .perm-actions button {
-    height: 28px; border: 1px solid var(--border); border-radius: var(--radius);
+    height: var(--bf-control-height); border: 1px solid var(--border); border-radius: var(--radius);
     background: var(--bg-field); color: var(--fg-primary); padding: 0 10px; cursor: pointer;
     font-size: var(--text-small);
   }
@@ -181,11 +181,11 @@
   .check { display: flex; align-items: center; gap: 8px; }
   .check input { accent-color: var(--accent); }
   .delay { display: flex; align-items: center; gap: 6px; color: var(--fg-secondary); font-size: var(--text-small); }
-  .delay input { width: 52px; height: 26px; background: var(--bg-field); border: 1px solid var(--border); border-radius: var(--radius); color: var(--fg-primary); padding: 0 6px; }
+  .delay input { width: 52px; height: var(--bf-control-height); background: var(--bg-field); border: 1px solid var(--border); border-radius: var(--radius); color: var(--fg-primary); padding: 0 6px; }
   .capture {
-    grid-row: span 1; width: 96px; height: 96px; border-radius: 50%;
-    border: none; background: var(--danger); color: #fff; font-size: 16px; font-weight: 700;
-    cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+    grid-row: span 1; width: 104px; height: 80px; border-radius: var(--bf-radius-control);
+    border: none; background: var(--bf-primary); color: var(--bf-primary-foreground); font-size: 16px; font-weight: 700;
+    cursor: pointer; box-shadow: none;
   }
   .capture:hover { filter: brightness(1.06); }
   .capture:disabled { opacity: 0.45; cursor: default; filter: none; }

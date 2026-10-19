@@ -90,8 +90,8 @@
     flex-shrink: 0;
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    padding: 14px 14px;
+    gap: 12px;
+    padding: var(--bf-surface-pad);
     background: var(--bg-content);
     border-left: 1px solid var(--border);
     overflow-y: auto;
@@ -101,23 +101,23 @@
   .label { flex: 1; font-size: var(--text-base); color: var(--fg-secondary); }
   .section { font-weight: 700; color: var(--fg-primary); margin-top: 6px; font-size: var(--text-base); }
   .num {
-    width: 64px; height: 26px; background: var(--bg-field); color: var(--fg-primary);
+    width: 64px; height: var(--bf-control-height); background: var(--bg-field); color: var(--fg-primary);
     border: 1px solid var(--border); border-radius: var(--radius); font-size: var(--text-small); padding: 0 6px;
   }
   .num:disabled { opacity: 0.4; }
   .swatch {
-    width: 64px; height: 24px; border: 1px solid var(--border-strong);
+    width: 64px; height: var(--bf-control-height); border: 1px solid var(--border-strong);
     border-radius: var(--radius); background: var(--swatch); cursor: pointer; padding: 0;
   }
   .color-input { position: absolute; width: 0; height: 0; opacity: 0; pointer-events: none; }
   .align { display: inline-flex; gap: 2px; }
   .align.disabled { opacity: 0.4; }
   .align button {
-    width: 28px; height: 26px; display: inline-flex; align-items: center; justify-content: center;
+    width: 32px; height: var(--bf-control-height); display: inline-flex; align-items: center; justify-content: center;
     border: 1px solid var(--border); background: var(--bg-field); color: var(--fg-secondary);
     border-radius: var(--radius); cursor: pointer; padding: 0;
   }
-  .align button.active { background: var(--bg-selected); color: var(--fg-primary); border-color: var(--accent); }
+  .align button.active { background: var(--bg-selected); color: var(--accent); border-color: var(--accent); }
   .align button svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; }
   .check { display: flex; align-items: center; gap: 6px; font-size: var(--text-base); color: var(--fg-primary); cursor: pointer; }
   .check input { accent-color: var(--accent); }

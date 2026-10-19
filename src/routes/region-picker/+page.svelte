@@ -411,13 +411,13 @@
   .sel {
     position: fixed;
     box-sizing: border-box;
-    border: 2px solid #26a69a;
-    background: rgba(38, 166, 154, 0.16);
+    border: 2px solid var(--bf-primary);
+    background: color-mix(in srgb, var(--bf-primary) 16%, transparent);
     box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.42);
     pointer-events: none;
   }
   .sel.final {
-    border-color: #7dd3fc;
+    border-color: var(--bf-primary);
     background: rgba(125, 211, 252, 0.12);
     box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.48), 0 0 0 1px rgba(255, 255, 255, 0.35);
   }
@@ -427,8 +427,8 @@
     box-sizing: border-box;
     display: grid;
     place-items: center;
-    border: 2px solid #26a69a;
-    background: rgba(38, 166, 154, 0.12);
+    border: 2px solid var(--bf-primary);
+    background: color-mix(in srgb, var(--bf-primary) 12%, transparent);
     color: #f5f5f7;
     font: 700 18px system-ui, sans-serif;
     text-shadow: 0 1px 6px rgba(0, 0, 0, 0.75);
@@ -436,7 +436,7 @@
   }
   .target:hover,
   .monitor:hover {
-    background: rgba(38, 166, 154, 0.24);
+    background: color-mix(in srgb, var(--bf-primary) 24%, transparent);
     box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.32);
   }
   .window {
@@ -456,7 +456,7 @@
     overflow: hidden;
     padding: 6px;
     font-size: 13px;
-    background: rgba(38, 166, 154, 0.24);
+    background: color-mix(in srgb, var(--bf-primary) 24%, transparent);
     box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.32), 0 0 0 9999px rgba(0, 0, 0, 0.22);
   }
   .actions {
@@ -468,9 +468,9 @@
     max-width: calc(100vw - 32px);
     padding: 7px;
     border-radius: 8px;
-    background: #141417;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    box-shadow: 0 16px 38px rgba(0, 0, 0, 0.38), 0 2px 8px rgba(0, 0, 0, 0.35);
+    background: var(--bf-paper);
+    border: 1px solid var(--bf-line);
+    box-shadow: var(--bf-shadow-float);
     backdrop-filter: blur(10px);
   }
   .tool {
@@ -480,31 +480,32 @@
     align-items: center;
     justify-content: center;
     flex: 0 0 auto;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--bf-line);
     border-radius: 6px;
-    color: #f7f7f8;
-    background: rgba(255, 255, 255, 0.07);
+    color: var(--bf-ink);
+    background: var(--bf-cool);
     cursor: pointer;
   }
   .tool:hover {
-    background: rgba(255, 255, 255, 0.14);
+    background: var(--bf-surface-raised);
     border-color: rgba(255, 255, 255, 0.2);
   }
   .tool:active {
     transform: translateY(1px);
   }
   .tool.primary {
-    background: #2f7df6;
+    background: var(--bf-primary);
+    color: var(--bf-primary-foreground);
     border-color: rgba(255, 255, 255, 0.16);
   }
   .tool.primary:hover {
-    background: #438bff;
+    background: var(--bf-primary-hover);
   }
   .tool.record {
-    color: #ff4d5d;
+    color: var(--bf-danger);
   }
   .tool.quiet {
-    color: rgba(255, 255, 255, 0.74);
+    color: var(--bf-muted);
   }
   .tool svg {
     width: 23px;

@@ -213,12 +213,12 @@
   .filmstrip {
     display: flex;
     flex-direction: row;
-    gap: 10px;
+    gap: 12px;
     align-items: center;
     height: 150px;
     flex-shrink: 0;
     padding: 10px 12px;
-    background: var(--bg-app, #0d0d0f);
+    background: var(--bg-sidebar);
     border-top: 1px solid var(--border, #2a2a2e);
     overflow-x: auto;
     overflow-y: hidden;
@@ -230,14 +230,14 @@
     height: 116px;
     padding: 0;
     border: 1px solid var(--border, #2a2a2e);
-    border-radius: var(--radius, 6px);
+    border-radius: var(--bf-radius-surface);
     background: var(--bg-field, #1c1c20);
     overflow: hidden;
     cursor: default;
   }
   .card:hover { border-color: var(--fg-secondary, #6b6b72); }
   .card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-  .card.active { box-shadow: 0 0 0 1px var(--accent), inset 0 0 0 2px rgba(255,255,255,0.45); }
+  .card.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
   .card.pinned { border-color: var(--accent); }
   .thumb { width: 100%; height: 100%; object-fit: cover; display: block; }
   .thumb.fallback { background: var(--bg-sidebar, #222); }
@@ -252,7 +252,7 @@
   }
   .pin svg { fill: currentColor; stroke: currentColor; stroke-width: 0.5; }
   .card:hover .pin { display: flex; }
-  .pin.on { display: flex; background: var(--accent); color: #fff; }
+  .pin.on { display: flex; background: var(--accent); color: var(--bf-primary-foreground); }
   .pin:hover { background: var(--accent-strong, var(--accent)); }
   .del {
     position: absolute; top: 4px; right: 4px; width: 20px; height: 20px;
@@ -274,15 +274,15 @@
   .menu {
     position: fixed; z-index: 200; min-width: 168px;
     background: var(--bg-elevated); border: 1px solid var(--border-strong);
-    border-radius: 8px; box-shadow: 0 12px 32px rgba(0,0,0,0.45); padding: 4px;
+    border-radius: var(--bf-radius-surface); box-shadow: var(--bf-shadow-float); padding: 4px;
     display: flex; flex-direction: column;
   }
   .menu button {
     text-align: left; border: none; background: transparent; color: var(--fg-primary);
-    padding: 7px 10px; border-radius: var(--radius); cursor: default; font-size: var(--text-base);
+    padding: 8px 10px; min-height: 34px; border-radius: var(--radius); cursor: default; font-size: var(--text-base);
     font-family: var(--font-ui);
   }
   .menu button:hover { background: var(--bg-hover); }
-  .menu button.danger:hover { background: var(--danger); color: #fff; }
+  .menu button.danger:hover { background: var(--bf-danger-soft); color: var(--danger); }
   .msep { height: 1px; background: var(--border); margin: 4px 6px; }
 </style>
