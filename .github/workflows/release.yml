@@ -4,16 +4,28 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Draft release tag to package
+        required: true
+        type: string
+      installers_run_id:
+        description: Successful installer build run to reuse
+        required: true
+        type: string
 
 permissions:
   contents: write
 
 jobs:
   build_installers:
+    if: github.event_name == 'push'
     uses: ./.github/workflows/ci.yml
     secrets: inherit
 
   publish_installers:
+    if: github.event_name == 'push'
     needs: build_installers
     runs-on: ubuntu-22.04
     steps:
@@ -45,15 +57,35 @@ jobs:
           fi
 
   flatpak:
+    if: always() && (github.event_name == 'workflow_dispatch' || needs.publish_installers.result == 'success')
     needs: publish_installers
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+
+      - name: Verify installer provenance for packaging retry
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+          SOURCE_RUN_ID: ${{ inputs.installers_run_id }}
+        run: |
+          set -euo pipefail
+          test "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = true
+          source_sha=$(gh run view "$SOURCE_RUN_ID" --repo "$GITHUB_REPOSITORY" --json headSha --jq .headSha)
+          test "$source_sha" = "$(git rev-parse HEAD)"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/jobs?per_page=100" \
+            --jq '[.jobs[] | select(.name | startswith("build_installers / tauri")) | .conclusion] | length == 3 and all(. == "success")' \
+            | grep -qx true
 
       - uses: actions/download-artifact@v4
         with:
           name: wondershot-linux-installers
           path: dist/linux
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.installers_run_id || github.run_id }}
 
       - name: Import Flatpak signing key
         env:
@@ -72,11 +104,11 @@ jobs:
       - name: Build and attach Flatpak
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y flatpak flatpak-builder
+          sudo apt-get install -y flatpak flatpak-builder appstream-compose
           flatpak remote-add --user --if-not-exists flathub \
             https://flathub.org/repo/flathub.flatpakrepo
           flatpak install --user -y flathub org.gnome.Platform//49 org.gnome.Sdk//49
@@ -96,6 +128,14 @@ jobs:
           tree.write(path, encoding='UTF-8', xml_declaration=True)
           PYMETA
 
+          # Fetch separately so transient network failures can be retried without
+          # discarding compiled modules or rerunning platform installer builds.
+          for attempt in 1 2 3; do
+            flatpak-builder --user --download-only fp-build \
+              packaging/flatpak/io.github.jackmusick.wondershot.yml && break
+            test "$attempt" -lt 3 || exit 1
+            sleep 5
+          done
           flatpak-builder --user --force-clean --repo=fp-site/repo \
             --gpg-sign="$FLATPAK_GPG_KEY" \
             fp-build packaging/flatpak/io.github.jackmusick.wondershot.yml

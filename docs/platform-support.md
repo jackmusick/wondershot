@@ -170,3 +170,10 @@ The repository uses the `stable` branch and currently supports x86_64. Install
 through `install.sh` for CLI/capture-shortcut migration, or open the hosted
 `wondershot.flatpakref`. Updates then follow Discover/Flatpak policy. Raw RPM,
 deb, and AppImage downloads do not subscribe to an update repository.
+
+If Flatpak packaging fails after the platform installers pass, dispatch the
+`Release` workflow from `main` with the draft release tag and original installer
+run ID. It verifies that the installers passed and match the tagged source,
+then repackages them using the current packaging runner without rebuilding the
+applications. Flatpak metadata generation needs builder 1.4 or newer; the job
+uses Ubuntu 24.04 so its AppStream composer supports the GNOME 49 runtime.
