@@ -9,7 +9,7 @@ use winit::application::ApplicationHandler;
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{Key, NamedKey};
-use winit::window::{CursorIcon, Window, WindowAttributes, WindowId, WindowLevel};
+use winit::window::{CursorIcon, Icon, Window, WindowAttributes, WindowId, WindowLevel};
 #[cfg(not(target_os = "macos"))]
 use winit::window::Fullscreen;
 
@@ -349,6 +349,7 @@ impl DisplayWindow {
 
 struct SelectorApp {
     session: SelectionSession,
+    icon: Icon,
     context: Option<Context<Rc<Window>>>,
     windows: HashMap<WindowId, DisplayWindow>,
     result: Option<SelectionResult>,
@@ -359,9 +360,10 @@ struct SelectorApp {
 }
 
 impl SelectorApp {
-    fn new(session: SelectionSession) -> Self {
+    fn new(session: SelectionSession, icon: Icon) -> Self {
         Self {
             session,
+            icon,
             context: None,
             windows: HashMap::new(),
             result: None,
@@ -428,9 +430,25 @@ impl ApplicationHandler for SelectorApp {
 
             let attributes = WindowAttributes::default()
                 .with_title("Wondershot selector")
+                .with_window_icon(Some(self.icon.clone()))
                 .with_decorations(false)
                 .with_resizable(false)
                 .with_window_level(WindowLevel::AlwaysOnTop);
+            #[cfg(target_os = "linux")]
+            let attributes = {
+                // Winit is separate from the Tauri/GTK main window. Give both
+                // Wayland and X11 the same identity as the installed launcher.
+                let attributes = winit::platform::wayland::WindowAttributesExtWayland::with_name(
+                    attributes,
+                    "io.github.jackmusick.wondershot",
+                    "wondershot",
+                );
+                winit::platform::x11::WindowAttributesExtX11::with_name(
+                    attributes,
+                    "io.github.jackmusick.wondershot",
+                    "wondershot",
+                )
+            };
             // Native macOS fullscreen animates into a new Space. A capture
             // overlay is an ordinary borderless window covering this display.
             #[cfg(target_os = "macos")]
@@ -687,6 +705,11 @@ pub fn run(session_path: impl AsRef<Path>) -> Result<SelectionResult, String> {
     if session.displays.is_empty() {
         return Err("selection session has no frozen displays".into());
     }
+    let icon = image::load_from_memory(include_bytes!("../../../src-tauri/icons/128x128.png"))
+        .map_err(|error| format!("Wondershot selector icon: {error}"))?
+        .to_rgba8();
+    let icon = Icon::from_rgba(icon.as_raw().clone(), icon.width(), icon.height())
+        .map_err(|error| format!("Wondershot selector icon: {error}"))?;
     let mut builder = EventLoop::builder();
     #[cfg(target_os = "macos")]
     {
@@ -695,7 +718,7 @@ pub fn run(session_path: impl AsRef<Path>) -> Result<SelectionResult, String> {
             .with_activate_ignoring_other_apps(false);
     }
     let event_loop = builder.build().map_err(|e| e.to_string())?;
-    let mut app = SelectorApp::new(session);
+    let mut app = SelectorApp::new(session, icon);
     event_loop.run_app(&mut app).map_err(|e| e.to_string())?;
     Ok(app.result.unwrap_or(SelectionResult::Cancelled))
 }

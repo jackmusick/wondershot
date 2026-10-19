@@ -46,6 +46,7 @@ tiny_http = "0.12"
 bgremove = ["wondershot-core/bgremove-onnx"]
 
 [target.'cfg(target_os = "linux")'.dependencies]
+glib = "0.18"
 rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "tokio"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]

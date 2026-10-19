@@ -421,6 +421,13 @@ pub fn run() {
         _ => {}
     }
 
+    let context = tauri::generate_context!();
+    // GTK3's Wayland windows use GLib's program name for xdg_toplevel.app_id,
+    // independently of the GtkApplication ID. Match the installed desktop file
+    // so Plasma resolves the Wondershot artwork instead of a legacy theme icon.
+    #[cfg(target_os = "linux")]
+    glib::set_prgname(Some(context.config().identifier.as_str()));
+
     tauri::Builder::default()
         .on_menu_event(|app, event| {
             if event.id().as_ref() == "open-settings" {
@@ -699,7 +706,7 @@ pub fn run() {
             commands::graph_sites_search,
             commands::graph_site_drives,
         ])
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error while building wondershot")
         .run(|app, event| {
             #[cfg(target_os = "macos")]
