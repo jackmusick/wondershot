@@ -115,6 +115,9 @@
   .overflow-toolbar { position:relative; display:flex; align-items:center; gap:2px; min-width:0; width:100%; flex:0 0 60px; height:60px; }
   .embedded { flex:1; width:auto; }
   .inline { display:flex; align-items:center; gap:2px; min-width:0; overflow:hidden; }
+  /* Keep keyboard focus inside each button so the overflow clip cannot leave
+     just one edge of the outline visible on the first or last tool. */
+  .inline :global(.tool:focus-visible) { outline-offset:-2px; }
   .more { flex-shrink:0; width:32px; height:50px; border:0; border-radius:var(--radius); background:transparent; color:var(--toolbar-fg); cursor:pointer; }
   .more:hover { color:var(--toolbar-fg-hover); }
   .more[aria-expanded="true"] { color:var(--toolbar-fg-active); }

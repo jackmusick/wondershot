@@ -47,6 +47,17 @@ let mockList: Capture[] = [...MOCK_CAPTURES];
 let mockPinned: string[] = [];
 let counter = 0;
 const invocationCounts = new Map<string, number>();
+let mockGraphAccount = '';
+function mockShareProvider(): string {
+  const complete = (keys: string[]) => keys.every(key => String(mockSettings[key] ?? '').trim());
+  const providers = [
+    ...(complete(['s3_endpoint', 's3_bucket', 's3_access_key', 's3_secret_key']) ? ['s3'] : []),
+    ...(complete(['azure_account', 'azure_container', 'azure_key']) ? ['azure'] : []),
+    ...(mockGraphAccount ? ['onedrive'] : [])
+  ];
+  const preferred = String(mockSettings.share_provider ?? '');
+  return providers.includes(preferred) ? preferred : providers[0] ?? '';
+}
 let mockSettings: Record<string, unknown> = {
   library_dir: '/mock/Screenshots',
   backend: 'auto',
@@ -131,6 +142,13 @@ export async function mockInvoke(cmd: string, _args?: unknown): Promise<unknown>
       return mockList;
     case 'get_settings':
       return mockSettings;
+    case 'share_status':
+      return { configured: !!mockShareProvider() };
+    case 'share_capture': {
+      const provider = mockShareProvider();
+      if (!provider) throw new Error('No share provider configured');
+      return { url: 'https://example.test/capture.png', provider, copied: true };
+    }
     case 'set_settings':
       // No persistence in browser dev; accept and resolve.
       mockSettings = { ...mockSettings, ...((_args as { values?: Record<string, unknown> } | undefined)?.values ?? {}) };
@@ -168,12 +186,15 @@ export async function mockInvoke(cmd: string, _args?: unknown): Promise<unknown>
     case 'open_url':
       return null;
     case 'graph_status':
-      return { account: '', default_client_id: 'cf7aef3a-2dc5-4b58-b247-2e61fe6a98cc' };
+      return { account: mockGraphAccount, default_client_id: 'cf7aef3a-2dc5-4b58-b247-2e61fe6a98cc' };
+    case 'graph_connect_interactive':
+      return mockGraphAccount = 'mock@example.com';
     case 'graph_connect_start':
       return { client_id: 'mock', device_code: 'mock', user_code: 'ABCD-EFGH', verification_uri: 'https://microsoft.com/devicelogin', interval: 5 };
     case 'graph_connect_poll':
-      return { status: 'connected', account: 'mock@example.com' };
+      return { status: 'connected', account: mockGraphAccount = 'mock@example.com' };
     case 'graph_disconnect':
+      mockGraphAccount = '';
       return null;
     case 'graph_sites_search':
       return [{ id: 'site1', name: 'Contoso Team', url: '' }];

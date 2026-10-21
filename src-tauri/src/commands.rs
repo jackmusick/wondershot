@@ -2970,6 +2970,13 @@ pub fn trash_item(path: String) -> Result<(), String> {
     trash::delete(p).map_err(|e| format!("could not trash {}: {e}", path))
 }
 
+/// Report sharing readiness using the same provider selection as an upload.
+#[tauri::command]
+pub fn share_status() -> serde_json::Value {
+    let provider = crate::share::default_provider(&Settings::load());
+    serde_json::json!({ "configured": !provider.is_empty() })
+}
+
 /// Share the capture at `path` via the configured default provider: upload,
 /// copy the time-limited link to the clipboard, return {url, provider}.
 /// Errors with guidance when no provider is configured/connected.

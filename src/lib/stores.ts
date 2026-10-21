@@ -10,6 +10,8 @@ export const view = writable<View>('gallery');
 export const recording = writable<RecordingState>({ status: 'idle' });
 export const recordingError = writable('');
 export const settingsOpen = writable<boolean>(false);
+/** A Share click can open setup and resume the original capture after Save. */
+export const shareSetup = writable<{ resume: () => Promise<void> } | null>(null);
 export const capturePanelOpen = writable<boolean>(false);
 export const captureError = writable<string>('');
 /** Paths selected in the filmstrip. Kept separate from activeItem so a group

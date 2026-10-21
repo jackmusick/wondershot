@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { recording, recordingError, activeItem, settingsOpen, chooseImport, importBusy } from '$lib/stores';
+  import { recording, recordingError, activeItem, settingsOpen, shareSetup, chooseImport, importBusy } from '$lib/stores';
   import { ipcInvoke } from '$lib/ipc';
   import { openCapturePicker } from '$lib/capture/openCapture';
   import {
@@ -47,16 +47,22 @@
   let shareBusy = $state(false);
   let shareMsg = $state('');
   let shareErr = $state(false);
-  async function shareActive() {
-    const item = $activeItem;
-    if (!item || shareBusy) return;
+  async function shareActive(path = $activeItem?.path) {
+    if (!path || shareBusy) return;
     shareBusy = true;
     shareErr = false;
-    shareMsg = 'Uploading…';
+    shareMsg = '';
     try {
+      const status = await ipcInvoke<{ configured: boolean }>('share_status');
+      if (!status.configured) {
+        shareSetup.set({ resume: () => shareActive(path) });
+        settingsOpen.set(true);
+        return;
+      }
+      shareMsg = 'Uploading…';
       const res = await ipcInvoke<{ url: string; provider: string; copied: boolean }>(
         'share_capture',
-        { path: item.path }
+        { path }
       );
       shareMsg = res.copied
         ? `Link copied (${res.provider})`
@@ -128,7 +134,7 @@
     class="hbtn"
     disabled={!$activeItem || shareBusy}
     title="Upload via the default provider (Settings → Sharing) and copy the link"
-    onclick={shareActive}
+    onclick={() => shareActive()}
   >
     <svg viewBox="0 0 16 16"><path d="M3 9v4h10V9M8 11V2M5 5l3-3 3 3"/></svg>
     <span>{shareBusy ? 'Sharing…' : 'Share'}</span>

@@ -253,7 +253,7 @@
     border: none;
     background: transparent;
     color: var(--toolbar-fg);
-    border-radius: var(--radius);
+    border-radius: 0;
     cursor: pointer;
     padding: 0 6px;
     flex-shrink: 0;

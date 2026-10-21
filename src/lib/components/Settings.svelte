@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { ipcInvoke, ipcEmit } from '$lib/ipc';
-  import { settingsOpen } from '$lib/stores';
+  import { settingsOpen, shareSetup } from '$lib/stores';
   import { listMediaDevices } from '$lib/media/devices';
   import { currentPlatform } from '$lib/platform';
 
@@ -54,6 +54,8 @@
   type SettingsData = Record<string, any>;
   let s = $state<SettingsData>({});
   let loaded = $state(false);
+  let shareSetupError = $state('');
+  let saving = $state(false);
   let platform = $state('unknown');
   let isLinux = $derived(platform === 'linux');
   let isWindows = $derived(platform === 'windows');
@@ -65,6 +67,7 @@
   let hotkeyRecorderMsg = $state('');
 
   async function loadSettings() {
+    loaded = false;
     const data = (await ipcInvoke<SettingsData>('get_settings')) ?? {};
     // extra_dirs is an array on the wire; edit it as a semicolon-joined string.
     const dirs = Array.isArray(data.extra_dirs) ? (data.extra_dirs as string[]) : [];
@@ -82,7 +85,11 @@
   // When opened via the store (gear), (re)load the form.
   let wasOpen = false;
   $effect(() => {
-    if (visible && !wasOpen) loadSettings();
+    if (visible && !wasOpen) {
+      if ($shareSetup) tab = 'sharing';
+      shareSetupError = '';
+      void loadSettings();
+    }
     wasOpen = visible;
   });
 
@@ -92,6 +99,7 @@
   });
 
   function close() {
+    shareSetup.set(null);
     settingsOpen.set(false);
   }
 
@@ -241,18 +249,38 @@
   }
 
   async function save() {
-    const snap = { ...$state.snapshot(s) } as SettingsData;
-    // Map the edited semicolon string back to an extra_dirs array.
-    const text = String(snap.extra_dirs_text ?? '');
-    snap.extra_dirs = text
-      .split(';')
-      .map((x) => x.trim())
-      .filter((x) => x.length > 0);
-    delete snap.extra_dirs_text;
-    await ipcInvoke('set_settings', { values: snap });
-    // Tell the live camera bubble to re-init with the (possibly new) device.
-    void ipcEmit('camera://changed', String(snap.camera_device ?? ''));
-    close();
+    if (saving || !loaded) return;
+    saving = true;
+    shareSetupError = '';
+    try {
+      const snap = { ...$state.snapshot(s) } as SettingsData;
+      // Map the edited semicolon string back to an extra_dirs array.
+      const text = String(snap.extra_dirs_text ?? '');
+      snap.extra_dirs = text
+        .split(';')
+        .map((x) => x.trim())
+        .filter((x) => x.length > 0);
+      delete snap.extra_dirs_text;
+      await ipcInvoke('set_settings', { values: snap });
+      const pendingShare = $shareSetup;
+      if (pendingShare) {
+        const status = await ipcInvoke<{ configured: boolean }>('share_status');
+        if (!status.configured) {
+          tab = 'sharing';
+          shareSetupError = 'Connect OneDrive or complete your S3 or Azure settings to share this capture.';
+          return;
+        }
+      }
+      // Tell the live camera bubble to re-init with the (possibly new) device.
+      void ipcEmit('camera://changed', String(snap.camera_device ?? ''));
+      const resume = pendingShare && $shareSetup === pendingShare ? pendingShare.resume : null;
+      close();
+      await resume?.();
+    } catch (e) {
+      shareSetupError = e instanceof Error ? e.message : String(e);
+    } finally {
+      saving = false;
+    }
   }
 
   function startHotkeyRecording() {
@@ -513,6 +541,9 @@
             <input type="color" bind:value={s.tool_color} />
           </label>
         {:else if tab === 'sharing'}
+          {#if $shareSetup}
+            <p class="note" role="status">Set up sharing to create a link. Save to share your capture automatically.</p>
+          {/if}
           <p class="note">
             Upload a capture to a cloud target and copy a share link. Credentials are
             shared with the previous Wondershot, so an existing sign-in carries over.
@@ -632,9 +663,10 @@
         {/if}
       </div>
 
+      {#if shareSetupError}<p class="note" role="alert">{shareSetupError}</p>{/if}
       <div class="foot">
-        <button class="btn ghost" onclick={close}>Cancel</button>
-        <button class="btn primary" onclick={save}>Save</button>
+        <button class="btn ghost" onclick={close} disabled={saving}>Cancel</button>
+        <button class="btn primary" onclick={save} disabled={saving || !loaded}>{saving ? 'Saving…' : 'Save'}</button>
       </div>
     </div>
   </div>

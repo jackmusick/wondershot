@@ -686,6 +686,7 @@ pub fn run() {
             commands::authorize_media_capture,
             commands::capture_command,
             commands::share_capture,
+            commands::share_status,
             media_server::media_server_port,
             commands::grab_frame,
             commands::apply_blur,
