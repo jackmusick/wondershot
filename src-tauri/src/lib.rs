@@ -511,12 +511,20 @@ pub fn run() {
                     .item(&show_item)
                     .item(&quit_item)
                     .build()?;
-                let mut builder = TrayIconBuilder::new().tooltip("Wondershot").menu(&menu);
                 // An explicit icon is required — without one the item registers
-                // but renders blank ("the icon is there but invisible").
-                if let Some(icon) = tray_handle.default_window_icon().cloned() {
-                    builder = builder.icon(icon);
-                }
+                // but renders blank ("the icon is there but invisible"). The
+                // app icon's safe-area margin makes it tiny in a tray, so trays
+                // get tightly cropped art: a monochrome template on macOS (AppKit
+                // tints it like other menu-bar items), the color tile elsewhere.
+                #[cfg(target_os = "macos")]
+                let tray_icon = tauri::include_image!("icons/tray-template.png");
+                #[cfg(not(target_os = "macos"))]
+                let tray_icon = tauri::include_image!("icons/tray.png");
+                let mut builder = TrayIconBuilder::new()
+                    .tooltip("Wondershot")
+                    .menu(&menu)
+                    .icon(tray_icon)
+                    .icon_as_template(cfg!(target_os = "macos"));
                 // Flatpak: tray-icon writes the icon PNG to a temp dir and tells
                 // the SNI host (plasmashell) to load it from that path. The
                 // default $TEMP is inside the sandbox, which the host can't read
@@ -709,6 +717,19 @@ pub fn run() {
         .build(context)
         .expect("error while building wondershot")
         .run(|app, event| {
+            // Closing the main window hides it (close-to-tray), so a Dock click
+            // must explicitly bring it back; AppKit only re-shows windows it
+            // considers merely minimized.
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = event {
+                use tauri::Manager;
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.show();
+                    let _ = w.unminimize();
+                    let _ = w.set_focus();
+                }
+                return;
+            }
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::ExitRequested { api, .. } = event {
                 use tauri::Manager;

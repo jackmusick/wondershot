@@ -41,6 +41,16 @@
   --danger: var(--bf-danger);
   --success: var(--bf-success);
   --radius: var(--bf-radius-control);
+  /* Native toolbar buttons (Snagit/macOS style): never paint a background.
+     State is carried by the icon/label colour; the brand shows through the
+     accent on the selected tool and the Capture action. */
+  --toolbar-fg: var(--fg-secondary);
+  --toolbar-fg-hover: var(--fg-primary);
+  --toolbar-fg-active: var(--accent);
+  --toolbar-fg-emphasis: var(--accent);
+  --toolbar-fg-emphasis-hover: var(--accent-strong);
+  --toolbar-pressed-opacity: 0.6;
+  --toolbar-pressed-scale: 0.96;
 }
 :root[data-theme="dark"], :root:not([data-theme="light"]) {
   --bf-line: #252c34;

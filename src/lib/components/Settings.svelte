@@ -697,7 +697,6 @@
     font-size: var(--text-base);
   }
   .tab:hover {
-    background: var(--bg-hover);
     color: var(--fg-primary);
   }
   .tab.active {

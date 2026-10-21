@@ -9,7 +9,9 @@ button, input, select, textarea { font-family: inherit; }
 button, input, select, textarea, a {
   transition: background-color var(--bf-motion-feedback) var(--bf-ease-standard),
     border-color var(--bf-motion-feedback) var(--bf-ease-standard),
-    color var(--bf-motion-feedback) var(--bf-ease-standard);
+    color var(--bf-motion-feedback) var(--bf-ease-standard),
+    opacity var(--bf-motion-feedback) var(--bf-ease-standard),
+    transform var(--bf-motion-feedback) var(--bf-ease-standard);
 }
 button:disabled { cursor: not-allowed; }
 input[type='checkbox'], input[type='radio'], input[type='range'] { accent-color: var(--bf-primary); }

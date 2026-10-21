@@ -146,16 +146,19 @@
   }
   .hbtn {
     display: inline-flex; flex-direction:column; justify-content:center; align-items: center; gap: 3px; min-width:46px; height:50px; padding:0 6px; flex-shrink:0;
-    border: none; background: transparent; color: var(--fg-primary);
+    border: none; background: transparent; color: var(--toolbar-fg);
     border-radius: var(--radius); font-size: var(--text-base); cursor: pointer; white-space: nowrap;
   }
   .hbtn > span { font-size:12px; line-height:1; }
   .sep { width:1px; height:22px; background:var(--border-strong); margin:0 4px; flex-shrink:0; }
-  .hbtn:hover:not(:disabled) { background: var(--bg-hover); }
-  .hbtn.capture-action { background: var(--bf-primary); color: var(--bf-primary-foreground); font-weight: 650; padding-inline: 12px; }
-  .hbtn.capture-action:hover:not(:disabled) { background: var(--bf-primary-hover); }
+  /* Native toolbar: no background fill in any state — hover, selection and the
+     Capture emphasis are carried by the icon/label colour only. */
+  .hbtn:hover:not(:disabled) { color: var(--toolbar-fg-hover); }
+  .hbtn:active:not(:disabled) { opacity: var(--toolbar-pressed-opacity); transform: scale(var(--toolbar-pressed-scale)); }
+  .hbtn.capture-action { color: var(--toolbar-fg-emphasis); font-weight: 650; }
+  .hbtn.capture-action:hover:not(:disabled) { color: var(--toolbar-fg-emphasis-hover); }
   .hbtn:disabled { opacity: 0.4; cursor: default; }
-  .hbtn.active { background: var(--bg-selected); }
+  .hbtn.active, .hbtn.active:hover:not(:disabled) { color: var(--toolbar-fg-active); }
   .hbtn svg {
     width: 18px; height: 18px; fill: none; stroke: currentColor;
     stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0;

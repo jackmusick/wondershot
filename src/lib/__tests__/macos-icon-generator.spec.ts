@@ -28,13 +28,44 @@ describe('macOS icon generator', () => {
     expect(Math.abs(measured.centerY - 512)).toBeLessThanOrEqual(1);
   });
 
-  test('preserves the approved spectrum rim instead of extracting only the white symbol', () => {
-    const out = join(tmpdir(), `wondershot-spectrum-${Date.now()}.png`);
+  test('preserves the teal brackets on the dark tile without a spectrum rim', () => {
+    const out = join(tmpdir(), `wondershot-plain-rim-${Date.now()}.png`);
     execFileSync('node', ['scripts/generate-macos-icon.mjs', '--png', out, '--no-icns']);
+    const teal = measurePixelBounds(out, (r, g, b, a) => a > 128 && r < 120 && g > 180 && b > 180);
     const red = measurePixelBounds(out, (r, g, b, a) => a > 128 && r > 180 && g < 120 && b < 120);
     const green = measurePixelBounds(out, (r, g, b, a) => a > 128 && g > 180 && r < 120 && b < 120);
-    const blue = measurePixelBounds(out, (r, g, b, a) => a > 128 && b > 180 && r < 120 && g < 120);
-    for (const color of [red, green, blue]) expect(color.contentHeight).toBeGreaterThan(0);
+    const magenta = measurePixelBounds(out, (r, g, b, a) => a > 128 && r > 180 && b > 180 && g < 120);
+    expect(teal.contentHeight).toBeGreaterThan(400);
+    for (const color of [red, green, magenta]) expect(color.contentHeight).toBeLessThanOrEqual(0);
+  });
+
+  test('builds tightly cropped tray icons: a monochrome macOS template and a color tile', () => {
+    const dir = join(tmpdir(), `wondershot-tray-${Date.now()}`);
+    execFileSync('node', [
+      'scripts/generate-macos-icon.mjs',
+      '--png',
+      join(dir, 'icon.png'),
+      '--no-icns',
+      '--tray-dir',
+      dir
+    ]);
+
+    const template = join(dir, 'tray-template.png');
+    const glyph = measureAlphaBounds(template);
+    expect(glyph.width).toBe(64);
+    expect(glyph.contentWidth).toBeGreaterThanOrEqual(62);
+    expect(glyph.contentHeight).toBeGreaterThanOrEqual(62);
+    const colored = measurePixelBounds(template, (r, g, b, a) => a > 8 && (r > 0 || g > 0 || b > 0));
+    expect(colored.contentWidth).toBeLessThanOrEqual(0);
+    // The spark sits in an empty middle ring, not on a filled tile.
+    const ring = measurePixelBounds(template, (_r, _g, _b, a) => a > 64);
+    expect(ring.contentWidth).toBeGreaterThan(0);
+    expect(readPng(template).rgba[(32 * 64 + 12) * 4 + 3]).toBe(0);
+
+    const tile = measureAlphaBounds(join(dir, 'tray.png'));
+    expect(tile.width).toBe(64);
+    expect(tile.contentWidth).toBeGreaterThanOrEqual(62);
+    expect(measurePixelBounds(join(dir, 'tray.png'), (r, g, b, a) => a > 128 && r < 120 && g > 180 && b > 180).contentWidth).toBeGreaterThan(30);
   });
 
   test('centers the foreground artwork inside the macOS template', () => {

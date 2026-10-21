@@ -17,4 +17,11 @@ describe('design tokens', () => {
     expect(bifrost).toContain('--bf-primary: #2fd4d4');
     expect(bifrost).toContain('--bf-radius-control: 6px');
   });
+  it('defines native toolbar colour states on top of the Bifrost palette', () => {
+    expect(css).toContain('--toolbar-fg: var(--fg-secondary)');
+    expect(css).toContain('--toolbar-fg-hover: var(--fg-primary)');
+    expect(css).toContain('--toolbar-fg-active: var(--accent)');
+    expect(css).toContain('--toolbar-fg-emphasis: var(--accent)');
+    expect(css).toContain('--toolbar-fg-emphasis-hover: var(--accent-strong)');
+  });
 });

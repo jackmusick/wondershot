@@ -53,7 +53,9 @@
   .ztext { padding: 0 8px; }
   .pct { min-width: 46px; font-variant-numeric: tabular-nums; }
   .zbtn:hover,
-  .ztext:hover { background: var(--bg-hover); }
+  .ztext:hover { color: var(--accent); border-color: var(--border-strong); }
+  .zbtn:active,
+  .ztext:active { opacity: var(--toolbar-pressed-opacity); }
   .shots {
     margin-left: 8px;
     font-size: var(--text-small);

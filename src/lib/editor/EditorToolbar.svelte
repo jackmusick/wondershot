@@ -239,8 +239,9 @@
     flex-shrink: 0;
   }
 
-  /* Tool buttons: icon on top, small label beneath (Qt rail parity). Active =
-     accent bottom border + selected bg. */
+  /* Tool buttons: icon on top, small label beneath (Qt rail parity). Native
+     toolbar treatment: never a background fill; hover brightens the glyph and
+     label, the selected tool turns the glyph and label to the brand accent. */
   .tool {
     min-width: 52px;
     height: 50px;
@@ -251,22 +252,17 @@
     gap: 3px;
     border: none;
     background: transparent;
-    color: var(--fg-secondary);
+    color: var(--toolbar-fg);
     border-radius: var(--radius);
     cursor: pointer;
     padding: 0 6px;
-    border-bottom: 2px solid transparent;
     flex-shrink: 0;
   }
-  .tool:hover:not(:disabled) { background: var(--bg-hover); color: var(--fg-primary); }
+  .tool:hover:not(:disabled) { color: var(--toolbar-fg-hover); }
+  .tool:active:not(:disabled) { opacity: var(--toolbar-pressed-opacity); transform: scale(var(--toolbar-pressed-scale)); }
   .tool:disabled { opacity: 0.4; cursor: not-allowed; }
-  .tool.active {
-    background: var(--bg-selected);
-    color: var(--accent);
-    border-bottom-color: var(--accent);
-    border-bottom-left-radius: 0;
-    border-bottom-right-radius: 0;
-  }
+  .tool.active,
+  .tool.active:hover:not(:disabled) { color: var(--toolbar-fg-active); }
   .tlabel { font-size: 12px; line-height: 1; color: inherit; }
   .tool.ai .ai-spark { color: var(--accent-strong); fill: var(--accent-strong); stroke: none; }
   .tool svg {

@@ -7,6 +7,7 @@ import { deflateSync, inflateSync } from 'node:zlib';
 
 const CANVAS = 1024;
 const PLATE = 824;
+const TRAY = 64;
 const args = parseArgs(process.argv.slice(2));
 const sourcePath = resolve(args.source ?? 'assets/branding/wondershot-icon-master.png');
 const pngPath = resolve(args.png ?? 'src-tauri/icons/icon.png');
@@ -37,6 +38,16 @@ if (icnsPath) {
 // Tauri also writes a 512px icon.png; retain our full-resolution 1024px source.
 if (args.allIcons) writePng(pngPath, CANVAS, CANVAS, output);
 
+if (args.allIcons || args.trayDir) {
+  const trayDir = resolve(args.trayDir ?? dirname(pngPath));
+  mkdirSync(trayDir, { recursive: true });
+  const template = renderTrayTemplate(source);
+  writePng(join(trayDir, 'tray-template.png'), TRAY, TRAY, template.rgba);
+  const color = renderTrayColor(source);
+  writePng(join(trayDir, 'tray.png'), TRAY, TRAY, color.rgba);
+  console.log(`tray icons: ${trayDir}`);
+}
+
 console.log(`macOS icon source: ${pngPath}`);
 if (icnsPath) console.log(`macOS ICNS: ${icnsPath}`);
 
@@ -56,6 +67,101 @@ function renderMacosIcon(source) {
   const canvas = Buffer.alloc(CANVAS * CANVAS * 4);
   blit(fitted, canvas, Math.floor((CANVAS - fitted.width) / 2), Math.floor((CANVAS - fitted.height) / 2), CANVAS);
   return canvas;
+}
+
+// macOS menu-bar icons are template images: only alpha matters and AppKit
+// tints them to match the bar. Keep the bright brackets and spark, drop the
+// dark tile, and crop tightly so the glyph fills the status-item height.
+function renderTrayTemplate(source) {
+  // The tile's bevel catches a light highlight along its edge; only the inner
+  // area holds the emblem.
+  const tile = alphaBounds(source);
+  const inset = Math.round(Math.max(tile.maxX - tile.minX, tile.maxY - tile.minY) * 0.08);
+  const mask = { width: source.width, height: source.height, rgba: Buffer.alloc(source.rgba.length) };
+  for (let y = tile.minY + inset; y <= tile.maxY - inset; y += 1) {
+    for (let x = tile.minX + inset; x <= tile.maxX - inset; x += 1) {
+      const i = (y * source.width + x) * 4;
+      const brightness = Math.max(source.rgba[i], source.rgba[i + 1], source.rgba[i + 2]);
+      const coverage = Math.min(1, Math.max(0, (brightness - 90) / 80));
+      mask.rgba[i + 3] = Math.round(coverage * source.rgba[i + 3]);
+    }
+  }
+  return fitSquare(mask, boundsWhere(mask, (offset) => mask.rgba[offset + 3] > 128), 0);
+}
+
+// Linux and Windows trays show full-color icons; cropping away the app icon's
+// safe-area margin makes the tile fill the tray slot like neighboring icons.
+function renderTrayColor(source) {
+  return fitSquare(source, alphaBounds(source), 0);
+}
+
+function fitSquare(image, bounds, padding) {
+  const side = Math.max(bounds.maxX - bounds.minX + 1, bounds.maxY - bounds.minY + 1);
+  const minX = Math.round((bounds.minX + bounds.maxX - side + 1) / 2);
+  const minY = Math.round((bounds.minY + bounds.maxY - side + 1) / 2);
+  const cropped = { width: side, height: side, rgba: Buffer.alloc(side * side * 4) };
+  for (let y = 0; y < side; y += 1) {
+    for (let x = 0; x < side; x += 1) {
+      const sx = minX + x, sy = minY + y;
+      if (sx < bounds.minX || sy < bounds.minY || sx > bounds.maxX || sy > bounds.maxY) continue;
+      image.rgba.copy(cropped.rgba, (y * side + x) * 4, (sy * image.width + sx) * 4, (sy * image.width + sx) * 4 + 4);
+    }
+  }
+  const inner = TRAY - padding * 2;
+  const fitted = resizeArea(cropped, inner, inner);
+  const canvas = Buffer.alloc(TRAY * TRAY * 4);
+  blit(fitted, canvas, padding, padding, TRAY);
+  return { width: TRAY, height: TRAY, rgba: canvas };
+}
+
+// Large downscales need area averaging; bilinear sampling skips most source
+// pixels and leaves jagged edges at tray sizes. Color is alpha-weighted so
+// transparent pixels do not darken antialiased edges.
+function resizeArea(image, width, height) {
+  const rgba = Buffer.alloc(width * height * 4);
+  const scaleX = image.width / width;
+  const scaleY = image.height / height;
+  for (let y = 0; y < height; y += 1) {
+    const y0 = Math.floor(y * scaleY);
+    const y1 = Math.max(y0 + 1, Math.floor((y + 1) * scaleY));
+    for (let x = 0; x < width; x += 1) {
+      const x0 = Math.floor(x * scaleX);
+      const x1 = Math.max(x0 + 1, Math.floor((x + 1) * scaleX));
+      let r = 0, g = 0, b = 0, a = 0, count = 0;
+      for (let sy = y0; sy < y1; sy += 1) {
+        for (let sx = x0; sx < x1; sx += 1) {
+          const offset = (sy * image.width + sx) * 4;
+          const alpha = image.rgba[offset + 3];
+          r += image.rgba[offset] * alpha;
+          g += image.rgba[offset + 1] * alpha;
+          b += image.rgba[offset + 2] * alpha;
+          a += alpha;
+          count += 1;
+        }
+      }
+      const target = (y * width + x) * 4;
+      if (a > 0) {
+        rgba[target] = Math.round(r / a);
+        rgba[target + 1] = Math.round(g / a);
+        rgba[target + 2] = Math.round(b / a);
+      }
+      rgba[target + 3] = Math.round(a / count);
+    }
+  }
+  return { width, height, rgba };
+}
+
+function boundsWhere(image, matches) {
+  let minX = image.width, minY = image.height, maxX = -1, maxY = -1;
+  for (let y = 0; y < image.height; y += 1) {
+    for (let x = 0; x < image.width; x += 1) {
+      if (!matches((y * image.width + x) * 4)) continue;
+      minX = Math.min(minX, x); minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
+    }
+  }
+  if (maxX < minX) fail('no matching pixels in source icon');
+  return { minX, minY, maxX, maxY };
 }
 
 function alphaBounds(source) {
@@ -249,8 +355,9 @@ function parseArgs(argv) {
     else if (arg === '--source') parsed.source = argv[++i];
     else if (arg === '--png') parsed.png = argv[++i];
     else if (arg === '--icns') parsed.icns = argv[++i];
+    else if (arg === '--tray-dir') parsed.trayDir = argv[++i];
     else if (arg === '--help' || arg === '-h') {
-      console.log(`Usage: node ${basename(process.argv[1])} [--source icon.png] [--png out.png] [--icns out.icns] [--no-icns] [--all-icons]`);
+      console.log(`Usage: node ${basename(process.argv[1])} [--source icon.png] [--png out.png] [--icns out.icns] [--no-icns] [--all-icons] [--tray-dir dir]`);
       process.exit(0);
     } else {
       fail(`unknown argument: ${arg}`);

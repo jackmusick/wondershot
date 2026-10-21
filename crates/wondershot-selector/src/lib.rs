@@ -1,8 +1,11 @@
+mod action_bar;
+
 use std::collections::HashMap;
 use std::num::NonZeroU32;
 use std::path::Path;
 use std::rc::Rc;
 
+use action_bar::{ActionBarCache, ActionBarView, ButtonStates, BUTTON_SIZE, BUTTON_TOP, CANCEL_LEFT, CAPTURE_LEFT, RECORD_LEFT};
 use serde::{Deserialize, Serialize};
 use softbuffer::{Context, Surface};
 use winit::application::ApplicationHandler;
@@ -167,18 +170,24 @@ struct DisplayWindow {
     drag_start: Option<(i32, i32)>,
     locked_region: Option<Rect>,
     selected_window_id: Option<String>,
+    action_bar_cache: ActionBarCache,
+    /// Action-bar button the mouse went down on; the action runs on release.
+    pressed_action: Option<ActionBarHit>,
+    cursor_icon: CursorIcon,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ActionBarHit {
+pub(crate) enum ActionBarHit {
     Capture,
     Record,
     Cancel,
 }
 
+/// Logical size of the floating action bar.
+const BAR_WIDTH: u32 = 282;
+const BAR_HEIGHT: u32 = 58;
+
 fn positioned_action_bar(selected: Rect, width: u32, height: u32) -> Rect {
-    const BAR_WIDTH: u32 = 282;
-    const BAR_HEIGHT: u32 = 58;
     const GAP: i32 = 8;
     let centered_x = selected
         .x
@@ -202,17 +211,28 @@ fn positioned_action_bar(selected: Rect, width: u32, height: u32) -> Rect {
     }
 }
 
+/// Pointer over an action-bar button, crosshair everywhere else, so the
+/// overlay reads the same on macOS, Windows and Linux.
+fn overlay_cursor(hit: Option<ActionBarHit>) -> CursorIcon {
+    if hit.is_some() { CursorIcon::Pointer } else { CursorIcon::Crosshair }
+}
+
+/// A button click completes only when released over the button it was pressed on.
+fn clicked_action(pressed: Option<ActionBarHit>, released_over: Option<ActionBarHit>) -> Option<ActionBarHit> {
+    pressed.filter(|pressed| released_over == Some(*pressed))
+}
+
 fn action_bar_hit_at(bar: Rect, point: (i32, i32), scale: f64) -> Option<ActionBarHit> {
     if !bar.contains(point.0, point.1) { return None; }
     let local_x = ((point.0 - bar.x) as f64 / scale).floor() as i32;
     let local_y = ((point.1 - bar.y) as f64 / scale).floor() as i32;
-    if !(7..51).contains(&local_y) { return None; }
-    match local_x {
-        7..=50 => Some(ActionBarHit::Capture),
-        59..=102 => Some(ActionBarHit::Record),
-        231..=274 => Some(ActionBarHit::Cancel),
-        _ => None,
-    }
+    let within = |start: i32, value: i32| (start..start + BUTTON_SIZE).contains(&value);
+    if !within(BUTTON_TOP, local_y) { return None; }
+    [(CAPTURE_LEFT, ActionBarHit::Capture), (RECORD_LEFT, ActionBarHit::Record),
+        (CANCEL_LEFT, ActionBarHit::Cancel)]
+        .into_iter()
+        .find(|(left, _)| within(*left, local_x))
+        .map(|(_, hit)| hit)
 }
 
 impl DisplayWindow {
@@ -239,6 +259,15 @@ impl DisplayWindow {
             return None;
         }
         action_bar_hit_at(bar, (x, y), self.window.scale_factor())
+    }
+
+    /// Applies the cursor for the current pointer position, only when it changes.
+    fn sync_cursor(&mut self) {
+        let icon = overlay_cursor(self.action_bar_hit());
+        if icon != self.cursor_icon {
+            self.cursor_icon = icon;
+            self.window.set_cursor(icon);
+        }
     }
 
     fn view_to_source_point(&self, point: (i32, i32)) -> (i32, i32) {
@@ -328,10 +357,13 @@ impl DisplayWindow {
         }
 
         if let Some(bar) = action_bar {
-            draw_scaled_action_bar(
-                &mut buffer, self.width, self.height, bar,
-                action_bar_hit, locked_region,
-            );
+            self.action_bar_cache.draw(&mut buffer, self.width, self.height, ActionBarView {
+                origin: (bar.x, bar.y),
+                size: (bar.width, bar.height),
+                scale: self.window.scale_factor() as f32,
+                buttons: ButtonStates { hovered: action_bar_hit, pressed: self.pressed_action },
+                label: locked_region.map(|r| (r.width, r.height)),
+            });
         }
 
         if mode == SelectionMode::Region && self.locked_region.is_none() {
@@ -491,6 +523,9 @@ impl ApplicationHandler for SelectorApp {
                     drag_start: None,
                     locked_region: None,
                     selected_window_id: None,
+                    action_bar_cache: ActionBarCache::default(),
+                    pressed_action: None,
+                    cursor_icon: CursorIcon::Crosshair,
                 },
             );
             window.request_redraw();
@@ -536,13 +571,8 @@ impl ApplicationHandler for SelectorApp {
             WindowEvent::CursorMoved { position, .. } => {
                 if let Some(state) = self.windows.get_mut(&window_id) {
                     state.cursor = (position.x.round() as i32, position.y.round() as i32);
-                    if self.pending_result.is_some() {
-                        state.window.set_cursor(if state.action_bar_hit().is_some() {
-                            CursorIcon::Pointer
-                        } else {
-                            CursorIcon::Default
-                        });
-                    } else if self.session.mode == SelectionMode::Window {
+                    state.sync_cursor();
+                    if self.pending_result.is_none() && self.session.mode == SelectionMode::Window {
                         state.update_hover();
                     }
                     state.window.request_redraw();
@@ -565,29 +595,10 @@ impl ApplicationHandler for SelectorApp {
                 ..
             } => {
                 if self.session.mode == SelectionMode::Region && self.pending_result.is_some() {
-                    let hit = self
-                        .windows
-                        .get(&window_id)
-                        .and_then(DisplayWindow::action_bar_hit);
-                    match hit {
-                        Some(ActionBarHit::Capture) | Some(ActionBarHit::Record) => {
-                            if let Some(SelectionResult::Region { action, .. }) =
-                                self.pending_result.as_mut()
-                            {
-                                *action = if hit == Some(ActionBarHit::Record) {
-                                    SelectionAction::Record
-                                } else {
-                                    SelectionAction::Capture
-                                };
-                            }
-                            if let Some(result) = self.pending_result.take() {
-                                self.finish(event_loop, result);
-                            }
-                        }
-                        Some(ActionBarHit::Cancel) => {
-                            self.finish(event_loop, SelectionResult::Cancelled);
-                        }
-                        None => {}
+                    // Like a toolbar button, show the pressed glyph now and act on release.
+                    if let Some(state) = self.windows.get_mut(&window_id) {
+                        state.pressed_action = state.action_bar_hit();
+                        state.window.request_redraw();
                     }
                     return;
                 }
@@ -613,6 +624,37 @@ impl ApplicationHandler for SelectorApp {
                 state: ElementState::Released,
                 button: MouseButton::Left,
                 ..
+            } if self.session.mode == SelectionMode::Region && self.pending_result.is_some() => {
+                let Some(state) = self.windows.get_mut(&window_id) else { return };
+                let pressed = state.pressed_action.take();
+                state.window.request_redraw();
+                // Releasing off the pressed button cancels the click, as in the webview.
+                let hit = clicked_action(pressed, state.action_bar_hit());
+                match hit {
+                    Some(ActionBarHit::Capture) | Some(ActionBarHit::Record) => {
+                        if let Some(SelectionResult::Region { action, .. }) =
+                            self.pending_result.as_mut()
+                        {
+                            *action = if hit == Some(ActionBarHit::Record) {
+                                SelectionAction::Record
+                            } else {
+                                SelectionAction::Capture
+                            };
+                        }
+                        if let Some(result) = self.pending_result.take() {
+                            self.finish(event_loop, result);
+                        }
+                    }
+                    Some(ActionBarHit::Cancel) => {
+                        self.finish(event_loop, SelectionResult::Cancelled);
+                    }
+                    None => {}
+                }
+            }
+            WindowEvent::MouseInput {
+                state: ElementState::Released,
+                button: MouseButton::Left,
+                ..
             } if self.session.mode == SelectionMode::Region => {
                 let result = if let Some(state) = self.windows.get_mut(&window_id) {
                     let rect = state.drag_start.map(|start| {
@@ -621,7 +663,7 @@ impl ApplicationHandler for SelectorApp {
                     if let Some(rect) = rect.filter(|rect| rect.width >= 2 && rect.height >= 2) {
                         state.locked_region = Some(rect);
                         state.drag_start = None;
-                        state.window.set_cursor(CursorIcon::Default);
+                        state.sync_cursor();
                         let rect = state.view_to_source_rect(rect);
                         Some(SelectionResult::Region {
                             display_id: state.display.id.clone(),
@@ -783,221 +825,6 @@ fn draw_border(
     }
 }
 
-fn fill_rect(buffer: &mut [u32], stride: u32, height: u32, rect: Rect, color: u32) {
-    let rect = clamp_rect(rect, stride, height);
-    for y in rect.y as u32..rect.y as u32 + rect.height {
-        let start = (y * stride + rect.x as u32) as usize;
-        let end = start + rect.width as usize;
-        buffer[start..end].fill(color);
-    }
-}
-
-fn fill_rounded_rect(buffer: &mut [u32], stride: u32, height: u32, rect: Rect, radius: u32, color: u32) {
-    let radius = radius.min(rect.width / 2).min(rect.height / 2) as i32;
-    let clipped = clamp_rect(rect, stride, height);
-    for y in clipped.y..clipped.y + clipped.height as i32 {
-        for x in clipped.x..clipped.x + clipped.width as i32 {
-            let cx = x.clamp(rect.x + radius, rect.x + rect.width as i32 - radius - 1);
-            let cy = y.clamp(rect.y + radius, rect.y + rect.height as i32 - radius - 1);
-            if (x - cx).pow(2) + (y - cy).pow(2) <= radius.pow(2) {
-                buffer[(y as u32 * stride + x as u32) as usize] = color;
-            }
-        }
-    }
-}
-
-fn outline_rect(buffer: &mut [u32], stride: u32, height: u32, rect: Rect, color: u32) {
-    fill_rect(buffer, stride, height, Rect { height: 1, ..rect }, color);
-    fill_rect(
-        buffer,
-        stride,
-        height,
-        Rect { y: rect.y.saturating_add_unsigned(rect.height.saturating_sub(1)), height: 1, ..rect },
-        color,
-    );
-    fill_rect(buffer, stride, height, Rect { width: 1, ..rect }, color);
-    fill_rect(
-        buffer,
-        stride,
-        height,
-        Rect { x: rect.x.saturating_add_unsigned(rect.width.saturating_sub(1)), width: 1, ..rect },
-        color,
-    );
-}
-
-fn draw_line(
-    buffer: &mut [u32],
-    stride: u32,
-    height: u32,
-    from: (i32, i32),
-    to: (i32, i32),
-    color: u32,
-) {
-    let (mut x, mut y) = from;
-    let dx = (to.0 - x).abs();
-    let sx = if x < to.0 { 1 } else { -1 };
-    let dy = -(to.1 - y).abs();
-    let sy = if y < to.1 { 1 } else { -1 };
-    let mut error = dx + dy;
-    loop {
-        if x >= 0 && y >= 0 && x < stride as i32 && y < height as i32 {
-            buffer[(y as u32 * stride + x as u32) as usize] = color;
-        }
-        if x == to.0 && y == to.1 {
-            break;
-        }
-        let twice = error * 2;
-        if twice >= dy {
-            error += dy;
-            x += sx;
-        }
-        if twice <= dx {
-            error += dx;
-            y += sy;
-        }
-    }
-}
-
-fn fill_circle(
-    buffer: &mut [u32],
-    stride: u32,
-    height: u32,
-    center: (i32, i32),
-    radius: i32,
-    color: u32,
-) {
-    for y in -radius..=radius {
-        for x in -radius..=radius {
-            if x * x + y * y <= radius * radius {
-                let px = center.0 + x;
-                let py = center.1 + y;
-                if px >= 0 && py >= 0 && px < stride as i32 && py < height as i32 {
-                    buffer[(py as u32 * stride + px as u32) as usize] = color;
-                }
-            }
-        }
-    }
-}
-
-fn glyph(character: char) -> [u8; 5] {
-    match character {
-        '0' => [0b111, 0b101, 0b101, 0b101, 0b111],
-        '1' => [0b010, 0b110, 0b010, 0b010, 0b111],
-        '2' => [0b111, 0b001, 0b111, 0b100, 0b111],
-        '3' => [0b111, 0b001, 0b111, 0b001, 0b111],
-        '4' => [0b101, 0b101, 0b111, 0b001, 0b001],
-        '5' => [0b111, 0b100, 0b111, 0b001, 0b111],
-        '6' => [0b111, 0b100, 0b111, 0b101, 0b111],
-        '7' => [0b111, 0b001, 0b010, 0b010, 0b010],
-        '8' => [0b111, 0b101, 0b111, 0b101, 0b111],
-        '9' => [0b111, 0b101, 0b111, 0b001, 0b111],
-        'x' => [0b000, 0b101, 0b010, 0b101, 0b000],
-        _ => [0; 5],
-    }
-}
-
-fn draw_text(
-    buffer: &mut [u32],
-    stride: u32,
-    height: u32,
-    origin: (i32, i32),
-    text: &str,
-    color: u32,
-) {
-    let mut x = origin.0;
-    for character in text.chars() {
-        for (row, bits) in glyph(character).into_iter().enumerate() {
-            for column in 0..3 {
-                if bits & (1 << (2 - column)) != 0 {
-                    fill_rect(
-                        buffer,
-                        stride,
-                        height,
-                        Rect { x: x + column * 2, y: origin.1 + row as i32 * 2, width: 2, height: 2 },
-                        color,
-                    );
-                }
-            }
-        }
-        x += if character == ' ' { 6 } else { 8 };
-    }
-}
-
-// Draw the complete control (including icons and text) in logical units,
-// then scale it to the display's backing pixels. Hit testing uses the same scale.
-fn draw_scaled_action_bar(buffer: &mut [u32], stride: u32, height: u32,
-    bar: Rect, hovered: Option<ActionBarHit>, selected: Option<Rect>) {
-    let mut pixels = vec![u32::MAX; 282 * 58];
-    draw_action_bar(&mut pixels, 282, 58,
-        Rect { x: 0, y: 0, width: 282, height: 58 }, hovered, selected);
-    let clipped = clamp_rect(bar, stride, height);
-    for y in clipped.y..clipped.y + clipped.height as i32 {
-        for x in clipped.x..clipped.x + clipped.width as i32 {
-            let sx = ((x - bar.x) as u32 * 282 / bar.width) as usize;
-            let sy = ((y - bar.y) as u32 * 58 / bar.height) as usize;
-            let color = pixels[sy * 282 + sx];
-            if color != u32::MAX {
-                buffer[(y as u32 * stride + x as u32) as usize] = color;
-            }
-        }
-    }
-}
-
-fn draw_action_bar(
-    buffer: &mut [u32],
-    stride: u32,
-    height: u32,
-    bar: Rect,
-    hovered: Option<ActionBarHit>,
-    selected: Option<Rect>,
-) {
-    // Bifrost dark overlay: surface radius 4, controls radius 6.
-    fill_rounded_rect(buffer, stride, height, bar, 4, 0x00252c34);
-    fill_rounded_rect(buffer, stride, height, Rect { x: bar.x + 1, y: bar.y + 1,
-        width: bar.width.saturating_sub(2), height: bar.height.saturating_sub(2) }, 3, 0x000a0c0f);
-    let buttons = [
-        (ActionBarHit::Capture, 7, 0x002fd4d4),
-        (ActionBarHit::Record, 59, 0x0011151a),
-        (ActionBarHit::Cancel, 231, 0x0011151a),
-    ];
-    for (action, offset, base_color) in buttons {
-        let color = if hovered == Some(action) {
-            if action == ActionBarHit::Capture { 0x0063e1e1 } else { 0x0015191e }
-        } else {
-            base_color
-        };
-        fill_rounded_rect(
-            buffer, stride, height,
-            Rect { x: bar.x + offset, y: bar.y + 7, width: 44, height: 44 },
-            6, color,
-        );
-    }
-    let size_box = Rect { x: bar.x + 111, y: bar.y + 7, width: 112, height: 44 };
-    fill_rounded_rect(buffer, stride, height, size_box, 6, 0x0011151a);
-
-    let camera = Rect { x: bar.x + 20, y: bar.y + 21, width: 18, height: 14 };
-    outline_rect(buffer, stride, height, camera, 0x0006222a);
-    fill_circle(buffer, stride, height, (bar.x + 29, bar.y + 28), 4, 0x0006222a);
-    fill_circle(buffer, stride, height, (bar.x + 29, bar.y + 28), 2, 0x002fd4d4);
-    fill_rect(buffer, stride, height, Rect { x: bar.x + 24, y: bar.y + 18, width: 10, height: 3 }, 0x0006222a);
-    fill_circle(buffer, stride, height, (bar.x + 81, bar.y + 29), 6, 0x00ff727a);
-    draw_line(buffer, stride, height, (bar.x + 245, bar.y + 20), (bar.x + 261, bar.y + 36), 0x009caab5);
-    draw_line(buffer, stride, height, (bar.x + 261, bar.y + 20), (bar.x + 245, bar.y + 36), 0x009caab5);
-
-    if let Some(selected) = selected {
-        let label = format!("{} x {}", selected.width, selected.height);
-        let text_width = label.chars().map(|character| if character == ' ' { 6 } else { 8 }).sum::<i32>();
-        draw_text(
-            buffer,
-            stride,
-            height,
-            (size_box.x + (size_box.width as i32 - text_width) / 2, size_box.y + 17),
-            &label,
-            0x009caab5,
-        );
-    }
-}
-
 fn draw_crosshair(buffer: &mut [u32], width: u32, height: u32, x: i32, y: i32) {
     const COLOR: u32 = 0x00ffffff;
     if y >= 0 && y < height as i32 {
@@ -1068,16 +895,42 @@ mod tests {
         for scale in [1.0, 1.5, 2.0] {
             let bar = Rect { x: 20, y: 20, width: (282.0 * scale) as u32, height: (58.0 * scale) as u32 };
             let mut buffer = vec![0; 1000 * 200];
-            draw_scaled_action_bar(&mut buffer, 1000, 200, bar, None, None);
-            for (x, action, color) in [(10.0, ActionBarHit::Capture, 0x002fd4d4),
-                (62.0, ActionBarHit::Record, 0x0011151a),
-                (234.0, ActionBarHit::Cancel, 0x0011151a)] {
+            let pixmap = action_bar::render_action_bar(bar.width, bar.height, scale as f32, ButtonStates::default(), None).unwrap();
+            action_bar::composite(&mut buffer, 1000, 200, (bar.x, bar.y), &pixmap);
+            // Buttons have no fill: the hit target's corner shows the bar surface.
+            for (x, action) in [(10.0, ActionBarHit::Capture), (62.0, ActionBarHit::Record),
+                (234.0, ActionBarHit::Cancel)] {
                 let point = (bar.x + (x * scale) as i32, bar.y + (10.0 * scale) as i32);
                 assert_eq!(action_bar_hit_at(bar, point, scale), Some(action));
-                assert_eq!(buffer[point.1 as usize * 1000 + point.0 as usize], color);
+                assert_eq!(buffer[point.1 as usize * 1000 + point.0 as usize], 0x000a0c0f);
             }
+            // The record glyph is centred inside its hit target at every scale.
+            let record_center = (bar.x + (81.0 * scale) as i32, bar.y + (29.0 * scale) as i32);
+            assert_eq!(action_bar_hit_at(bar, record_center, scale), Some(ActionBarHit::Record));
+            assert_eq!(buffer[record_center.1 as usize * 1000 + record_center.0 as usize], 0x00ff727a);
             assert_eq!(action_bar_hit_at(bar, (bar.x, bar.y), scale), None);
         }
+    }
+
+    #[test]
+    fn cursor_is_pointer_over_buttons_and_crosshair_elsewhere() {
+        assert_eq!(overlay_cursor(None), CursorIcon::Crosshair);
+        for hit in [ActionBarHit::Capture, ActionBarHit::Record, ActionBarHit::Cancel] {
+            assert_eq!(overlay_cursor(Some(hit)), CursorIcon::Pointer);
+        }
+        // Between buttons (size read-out) the bar is not clickable.
+        let bar = Rect { x: 0, y: 0, width: 564, height: 116 };
+        assert_eq!(overlay_cursor(action_bar_hit_at(bar, (2 * 160, 2 * 29), 2.0)), CursorIcon::Crosshair);
+        assert_eq!(overlay_cursor(action_bar_hit_at(bar, (2 * 29, 2 * 29), 2.0)), CursorIcon::Pointer);
+    }
+
+    #[test]
+    fn button_click_requires_release_over_pressed_button() {
+        let capture = Some(ActionBarHit::Capture);
+        assert_eq!(clicked_action(capture, capture), capture);
+        assert_eq!(clicked_action(capture, None), None);
+        assert_eq!(clicked_action(capture, Some(ActionBarHit::Cancel)), None);
+        assert_eq!(clicked_action(None, capture), None);
     }
 
     #[test]

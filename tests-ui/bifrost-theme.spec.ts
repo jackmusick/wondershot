@@ -18,7 +18,8 @@ for (const theme of ['dark', 'light'] as const) {
       const canvas = theme === 'dark' ? 'rgb(8, 9, 11)' : 'rgb(247, 249, 250)';
       const header = page.getByRole('banner', { name: 'Main Toolbar' });
       const capture = header.getByRole('button', { name: 'Capture', exact: true });
-      await expect(capture).toHaveCSS('background-color', primary);
+      await expect(capture).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect(capture).toHaveCSS('color', primary);
       await expect(page.locator('body')).toHaveCSS('background-color', canvas);
       expect(await header.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
       await page.keyboard.press('Tab');

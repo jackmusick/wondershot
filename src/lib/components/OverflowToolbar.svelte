@@ -115,13 +115,18 @@
   .overflow-toolbar { position:relative; display:flex; align-items:center; gap:2px; min-width:0; width:100%; flex:0 0 60px; height:60px; }
   .embedded { flex:1; width:auto; }
   .inline { display:flex; align-items:center; gap:2px; min-width:0; overflow:hidden; }
-  .more { flex-shrink:0; width:32px; height:50px; border:0; border-radius:var(--radius); background:transparent; color:var(--fg-secondary); cursor:pointer; }
-  .more:hover { background:var(--bg-hover); color:var(--fg-primary); }
+  .more { flex-shrink:0; width:32px; height:50px; border:0; border-radius:var(--radius); background:transparent; color:var(--toolbar-fg); cursor:pointer; }
+  .more:hover { color:var(--toolbar-fg-hover); }
+  .more[aria-expanded="true"] { color:var(--toolbar-fg-active); }
+  .more:active { opacity:var(--toolbar-pressed-opacity); transform:scale(var(--toolbar-pressed-scale)); }
   .more svg { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:1.5; }
   .popup { position:absolute; top:58px; right:0; z-index:100; padding:6px; min-width:150px; max-height:min(70vh,480px); overflow-y:auto; border:1px solid var(--border-strong); border-radius:var(--bf-radius-surface); background:var(--bg-elevated); box-shadow:var(--bf-shadow-float); display:flex; flex-direction:column; gap:2px; }
   .popup[hidden] { display:none; }
   :global([data-toolbar-hidden]) { display:none !important; }
   .popup :global(.tools) { display:contents; }
-  .popup :global(.tool) { width:100%; height:34px; min-height:34px; flex-direction:row; justify-content:flex-start; gap:10px; border-bottom:0; text-align:left; }
+  .popup :global(.tool) { width:100%; height:34px; min-height:34px; flex-direction:row; justify-content:flex-start; gap:10px; text-align:left; }
+  /* Overflowed tools render as menu rows, which keep the native menu hover row. */
+  .popup :global(.tool:hover:not(:disabled)) { background:var(--bg-hover); }
+  .popup :global(.tool:active:not(:disabled)) { transform:none; }
   .popup :global(.tool span) { font-size:12px; }
 </style>

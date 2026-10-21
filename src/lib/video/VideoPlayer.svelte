@@ -750,11 +750,12 @@
 <style>
   .player { flex:1; display:flex; flex-direction:column; min-width:0; min-height:0; background:var(--bg-content); position:relative; }
   .video-body { flex:1; display:flex; min-width:0; min-height:0; }
-  .tool { min-width:46px; height:50px; display:inline-flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; border:0; border-bottom:2px solid transparent; background:transparent; color:var(--fg-secondary); border-radius:var(--radius); cursor:pointer; padding:0 6px; flex-shrink:0; }
+  .tool { min-width:46px; height:50px; display:inline-flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; border:0; background:transparent; color:var(--toolbar-fg); border-radius:var(--radius); cursor:pointer; padding:0 6px; flex-shrink:0; }
   .tool span { font-size:12px; line-height:1; white-space:nowrap; }
-  .tool:hover:not(:disabled) { background:var(--bg-hover); color:var(--fg-primary); }
+  .tool:hover:not(:disabled) { color:var(--toolbar-fg-hover); }
+  .tool:active:not(:disabled) { opacity:var(--toolbar-pressed-opacity); transform:scale(var(--toolbar-pressed-scale)); }
   .tool:disabled { opacity:.4; cursor:not-allowed; }
-  .tool.active { background:var(--bg-selected); color:var(--fg-primary); border-bottom-color:var(--accent); border-bottom-left-radius:0; border-bottom-right-radius:0; }
+  .tool.active, .tool.active:hover:not(:disabled) { color:var(--toolbar-fg-active); }
   .sep { width:1px; height:22px; background:var(--border-strong); margin:0 4px; flex-shrink:0; }
   .trim-fields { display:flex; align-items:center; gap:4px; }
   .video-main { flex:1; display:flex; flex-direction:column; min-width:0; min-height:0; }
@@ -768,8 +769,9 @@
   .rednum { position:absolute; top:2px; left:4px; font-size:12px; font-weight:700; line-height:1; color:white; text-shadow:0 1px 2px rgba(0,0,0,.8); pointer-events:none; }
   .resize-handle { position:absolute; right:-5px; bottom:-5px; width:10px; height:10px; border:1px solid white; background:var(--c); cursor:nwse-resize; padding:0; }
   .controls { height:44px; flex-shrink:0; display:flex; align-items:center; gap:6px; padding:0 8px; border-top:1px solid var(--border); }
-  .iconbtn { width:28px; height:28px; display:inline-flex; align-items:center; justify-content:center; border:0; background:transparent; color:var(--fg-primary); border-radius:var(--radius); cursor:pointer; padding:0; flex-shrink:0; }
-  .iconbtn:hover { background:var(--bg-hover); }
+  .iconbtn { width:28px; height:28px; display:inline-flex; align-items:center; justify-content:center; border:0; background:transparent; color:var(--toolbar-fg-hover); border-radius:var(--radius); cursor:pointer; padding:0; flex-shrink:0; }
+  .iconbtn:hover { color:var(--toolbar-fg-emphasis); }
+  .iconbtn:active { opacity:var(--toolbar-pressed-opacity); transform:scale(var(--toolbar-pressed-scale)); }
   .iconbtn svg { width:16px; height:16px; fill:currentColor; }
   .tstack { flex:1; min-width:60px; }
   .timeline-track { height:28px; position:relative; }
@@ -803,7 +805,7 @@
   .layer-select span { color:var(--fg-secondary); font-size:12px; }
   .blur-layer.chosen .layer-select { color:var(--accent); }
   .del { display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; border:0; background:transparent; color:var(--fg-secondary); cursor:pointer; border-radius:var(--radius); }
-  .del:hover { color:var(--danger); background:var(--bg-hover); }
+  .del:hover { color:var(--danger); }
   details { font-size:var(--text-small); color:var(--fg-secondary); }
   summary { cursor:pointer; }
   .geometry-fields { padding-top:8px; }

@@ -67,38 +67,38 @@
     align-items: center;
     justify-content: center;
     flex: 0 0 auto;
-    border: 1px solid var(--bf-line);
+    border: 0;
     border-radius: 6px;
-    color: var(--bf-ink);
-    background: var(--bf-cool);
+    color: var(--toolbar-fg-hover);
+    background: transparent;
     cursor: pointer;
   }
-
+  /* Native floating toolbar: glyphs only, no button fills. Capture keeps the
+     brand accent on its glyph; hover and press change the glyph, not a pill. */
   .tool:hover {
-    background: var(--bf-surface-raised);
-    border-color: rgba(255, 255, 255, 0.2);
+    color: var(--toolbar-fg-emphasis);
   }
-
   .tool:active {
-    transform: translateY(1px);
+    opacity: var(--toolbar-pressed-opacity);
+    transform: scale(var(--toolbar-pressed-scale));
   }
-
   .tool.primary {
-    background: var(--bf-primary);
-    color: var(--bf-primary-foreground);
-    border-color: rgba(255, 255, 255, 0.16);
+    color: var(--toolbar-fg-emphasis);
   }
-
   .tool.primary:hover {
-    background: var(--bf-primary-hover);
+    color: var(--toolbar-fg-emphasis-hover);
   }
-
   .tool.record {
     color: var(--bf-danger);
   }
-
+  .tool.record:hover {
+    color: color-mix(in srgb, var(--bf-danger) 80%, var(--bf-ink));
+  }
   .tool.quiet {
     color: var(--bf-muted);
+  }
+  .tool.quiet:hover {
+    color: var(--bf-ink);
   }
 
   svg {
