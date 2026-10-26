@@ -1,11 +1,50 @@
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { inflateSync } from 'node:zlib';
 import { describe, expect, test } from 'vitest';
 
 describe('macOS icon generator', () => {
+  test('gives Windows taskbar and DPI frames their own tight safe area', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'wondershot-windows-icon-'));
+    try {
+      const icoPath = join(dir, 'icon.ico');
+      const pngPath = join(dir, 'icon.png');
+      execFileSync('node', [
+        'scripts/generate-macos-icon.mjs', '--png', pngPath,
+        '--no-icns', '--windows-ico', icoPath
+      ]);
+      const ico = readFileSync(icoPath);
+      const sizes = [256, 128, 96, 64, 48, 40, 32, 24, 20, 16];
+      expect(ico.readUInt16LE(2)).toBe(1);
+      expect(ico.readUInt16LE(4)).toBe(sizes.length);
+      // Tauri uses the first directory entry for the running window icon.
+      expect(readPng(ico.subarray(ico.readUInt32LE(18), ico.readUInt32LE(18) + ico.readUInt32LE(14)))).toMatchObject({ width: 256, height: 256 });
+      for (const [index, size] of sizes.entries()) {
+        const entry = 6 + index * 16;
+        expect(ico[entry] || 256).toBe(size);
+        expect(ico[entry + 1] || 256).toBe(size);
+        const length = ico.readUInt32LE(entry + 8);
+        const offset = ico.readUInt32LE(entry + 12);
+        const frame = ico.subarray(offset, offset + length);
+        const bounds = measureAlphaBounds(frame);
+        expect(bounds.width).toBe(size);
+        expect(bounds.height).toBe(size);
+        expect(bounds.contentWidth).toBeGreaterThanOrEqual(size - 2 * Math.max(1, Math.round(size / 64)));
+        expect(bounds.contentHeight).toBeGreaterThanOrEqual(size * 0.8);
+        expect(bounds.minX).toBeGreaterThanOrEqual(1);
+        expect(bounds.minY).toBeGreaterThanOrEqual(1);
+        expect(Math.abs(bounds.centerX - (size - 1) / 2)).toBeLessThanOrEqual(0.5);
+        expect(Math.abs(bounds.centerY - (size - 1) / 2)).toBeLessThanOrEqual(0.5);
+      }
+      // macOS/Linux keep their existing source even when generating the ICO.
+      expect(measureAlphaBounds(pngPath).contentWidth).toBe(824);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test('builds a 1024 template source with deterministic safe-area bounds', () => {
     const out = join(tmpdir(), `wondershot-macos-icon-${Date.now()}.png`);
     execFileSync('node', [
@@ -101,12 +140,12 @@ describe('macOS icon generator', () => {
   });
 });
 
-function measureAlphaBounds(path: string) {
+function measureAlphaBounds(path: string | Buffer) {
   return measurePixelBounds(path, (_r, _g, _b, a) => a > 8);
 }
 
 function measurePixelBounds(
-  path: string,
+  path: string | Buffer,
   matches: (r: number, g: number, b: number, a: number) => boolean
 ) {
   const png = readPng(path);
@@ -146,8 +185,8 @@ function measurePixelBounds(
   };
 }
 
-function readPng(path: string) {
-  const file = readFileSync(path);
+function readPng(path: string | Buffer) {
+  const file = Buffer.isBuffer(path) ? path : readFileSync(path);
   const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
   if (!file.subarray(0, 8).equals(signature)) throw new Error(`Not a PNG: ${path}`);
 

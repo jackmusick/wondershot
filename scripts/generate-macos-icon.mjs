@@ -25,7 +25,7 @@ writePng(pngPath, CANVAS, CANVAS, output);
 if (icnsPath) {
   const outDir = mkdtempSync(join(tmpdir(), 'wondershot-tauri-icons-'));
   try {
-    execFileSync('node_modules/.bin/tauri', ['icon', pngPath, '-o', outDir, '--ios-color', '#08090b'], { stdio: 'inherit' });
+    execFileSync(process.execPath, ['node_modules/@tauri-apps/cli/tauri.js', 'icon', pngPath, '-o', outDir, '--ios-color', '#08090b'], { stdio: 'inherit' });
     const generated = join(outDir, 'icon.icns');
     if (!existsSync(generated)) fail(`Tauri icon generation did not create ${generated}`);
     if (args.allIcons) cpSync(outDir, dirname(icnsPath), { recursive: true });
@@ -37,6 +37,15 @@ if (icnsPath) {
 
 // Tauri also writes a 512px icon.png; retain our full-resolution 1024px source.
 if (args.allIcons) writePng(pngPath, CANVAS, CANVAS, output);
+
+// Windows displays the full ICO canvas in small taskbar slots. Generate from
+// the original artwork, rather than inheriting the macOS Dock safe area.
+if (args.allIcons || args.windowsIco) {
+  const path = resolve(args.windowsIco ?? join(dirname(pngPath), 'icon.ico'));
+  mkdirSync(dirname(path), { recursive: true });
+  writeWindowsIco(path, source);
+  console.log(`Windows ICO: ${path}`);
+}
 
 if (args.allIcons || args.trayDir) {
   const trayDir = resolve(args.trayDir ?? dirname(pngPath));
@@ -95,7 +104,7 @@ function renderTrayColor(source) {
   return fitSquare(source, alphaBounds(source), 0);
 }
 
-function fitSquare(image, bounds, padding) {
+function fitSquare(image, bounds, padding, size = TRAY) {
   const side = Math.max(bounds.maxX - bounds.minX + 1, bounds.maxY - bounds.minY + 1);
   const minX = Math.round((bounds.minX + bounds.maxX - side + 1) / 2);
   const minY = Math.round((bounds.minY + bounds.maxY - side + 1) / 2);
@@ -107,11 +116,37 @@ function fitSquare(image, bounds, padding) {
       image.rgba.copy(cropped.rgba, (y * side + x) * 4, (sy * image.width + sx) * 4, (sy * image.width + sx) * 4 + 4);
     }
   }
-  const inner = TRAY - padding * 2;
+  const inner = size - padding * 2;
   const fitted = resizeArea(cropped, inner, inner);
-  const canvas = Buffer.alloc(TRAY * TRAY * 4);
-  blit(fitted, canvas, padding, padding, TRAY);
-  return { width: TRAY, height: TRAY, rgba: canvas };
+  const canvas = Buffer.alloc(size * size * 4);
+  blit(fitted, canvas, padding, padding, size);
+  return { width: size, height: size, rgba: canvas };
+}
+
+function writeWindowsIco(path, source) {
+  // Include intermediate DPI sizes so Windows need not enlarge a smaller frame.
+  // Tauri embeds entries()[0] as the running window icon, rather than picking
+  // a size. Lead with the largest frame to avoid a tiny native HICON.
+  const sizes = [256, 128, 96, 64, 48, 40, 32, 24, 20, 16];
+  const bounds = alphaBounds(source);
+  const frames = sizes.map((size) => {
+    const image = fitSquare(source, bounds, Math.max(1, Math.round(size / 64)), size);
+    return encodePng(size, size, image.rgba);
+  });
+  const directory = Buffer.alloc(6 + sizes.length * 16);
+  directory.writeUInt16LE(1, 2); // ICO, rather than cursor
+  directory.writeUInt16LE(sizes.length, 4);
+  let offset = directory.length;
+  sizes.forEach((size, index) => {
+    const entry = 6 + index * 16;
+    directory[entry] = directory[entry + 1] = size === 256 ? 0 : size;
+    directory.writeUInt16LE(1, entry + 4);
+    directory.writeUInt16LE(32, entry + 6);
+    directory.writeUInt32LE(frames[index].length, entry + 8);
+    directory.writeUInt32LE(offset, entry + 12);
+    offset += frames[index].length;
+  });
+  writeFileSync(path, Buffer.concat([directory, ...frames]));
 }
 
 // Large downscales need area averaging; bilinear sampling skips most source
@@ -301,6 +336,10 @@ function readPng(path) {
 }
 
 function writePng(path, width, height, rgba) {
+  writeFileSync(path, encodePng(width, height, rgba));
+}
+
+function encodePng(width, height, rgba) {
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(width, 0);
   ihdr.writeUInt32BE(height, 4);
@@ -317,12 +356,12 @@ function writePng(path, width, height, rgba) {
   }
 
   const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
-  writeFileSync(path, Buffer.concat([
+  return Buffer.concat([
     signature,
     pngChunk('IHDR', ihdr),
     pngChunk('IDAT', deflateSync(rows, { level: 9 })),
     pngChunk('IEND', Buffer.alloc(0))
-  ]));
+  ]);
 }
 
 function pngChunk(type, data) {
@@ -356,8 +395,9 @@ function parseArgs(argv) {
     else if (arg === '--png') parsed.png = argv[++i];
     else if (arg === '--icns') parsed.icns = argv[++i];
     else if (arg === '--tray-dir') parsed.trayDir = argv[++i];
+    else if (arg === '--windows-ico') parsed.windowsIco = argv[++i];
     else if (arg === '--help' || arg === '-h') {
-      console.log(`Usage: node ${basename(process.argv[1])} [--source icon.png] [--png out.png] [--icns out.icns] [--no-icns] [--all-icons] [--tray-dir dir]`);
+      console.log(`Usage: node ${basename(process.argv[1])} [--source icon.png] [--png out.png] [--icns out.icns] [--no-icns] [--all-icons] [--tray-dir dir] [--windows-ico out.ico]`);
       process.exit(0);
     } else {
       fail(`unknown argument: ${arg}`);
