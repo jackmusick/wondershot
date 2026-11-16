@@ -1,6 +1,7 @@
 <script lang="ts">
   import { tick } from 'svelte';
   import { captures, activeItem, view, trashItem, trashItems, pinned, togglePin, selectedCapturePaths } from '$lib/stores';
+  import { prepareMediaOutput } from '$lib/mediaEdits';
   import { ipcInvoke } from '$lib/ipc';
   import { placeContextMenu, selectGalleryItem } from '$lib/gallerySelection';
   import type { Capture } from '$lib/types';
@@ -16,7 +17,8 @@
     if (USE_MOCK) return;
     try {
       const { startDrag } = await import('@crabnebula/tauri-plugin-drag');
-      await startDrag({ item: [c.path], icon: c.path, mode: 'copy' });
+      const path = await prepareMediaOutput(c.path, ipcInvoke);
+      await startDrag({ item: [path], icon: path, mode: 'copy' });
     } catch (err) {
       console.error('drag-out failed', err);
     }

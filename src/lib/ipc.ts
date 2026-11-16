@@ -1,5 +1,6 @@
 import { mockInvoke } from '$lib/ipc.mock';
 import type { Capture } from '$lib/types';
+import { prepareMediaOutput } from '$lib/mediaEdits';
 
 const USE_MOCK =
   import.meta.env.VITE_MOCK_IPC === '1' ||
@@ -58,6 +59,11 @@ export async function normalizeCaptures(caps: Capture[]): Promise<Capture[]> {
 }
 
 export async function ipcInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  if (['copy_image', 'save_image_as', 'share_capture', 'show_in_folder'].includes(cmd) && typeof args?.path === 'string') {
+    args = { ...args, path: await prepareMediaOutput(args.path, ipcInvoke) };
+  } else if (cmd === 'copy_files' && Array.isArray(args?.paths)) {
+    args = { ...args, paths: await Promise.all((args.paths as string[]).map(path => prepareMediaOutput(path, ipcInvoke))) };
+  }
   if (USE_MOCK) return mockInvoke(cmd, args) as Promise<T>;
   const { invoke } = await import('@tauri-apps/api/core');
   return invoke<T>(cmd, args);

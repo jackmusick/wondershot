@@ -46,11 +46,17 @@
   import type { TextItem } from './model';
   import { serializeItem, deserializeItem } from './model';
   import { effects, type Effects } from './effects';
+  import { registerMediaEditor, trackMediaSave, waitForMediaSave } from '$lib/mediaEdits';
   import { autosaveState } from '$lib/stores';
   import { get } from 'svelte/store';
 
   let { path }: { path: string } = $props();
 
+  let previousSave: Promise<unknown> = Promise.resolve();
+  let resolveLoaded!: () => void;
+  let rejectLoaded!: (error: Error) => void;
+  const loaded = new Promise<void>((resolve, reject) => { resolveLoaded = resolve; rejectLoaded = reject; });
+  void loaded.catch(() => {});
   let ready = $state(false);
   let container: HTMLDivElement;
   let stage: Konva.Stage | null = null;
@@ -153,15 +159,14 @@
   }
 
   // Autosave: the Qt editor had no Save button — edits persist automatically.
-  // Debounced so a burst of edits writes once. Autosave persists the compact
-  // editable document only; full-resolution canvas export is reserved for an
-  // explicit save or editor teardown and never runs in an input handler.
+  // Debounced so a burst of edits renders once, outside the input handler.
+  // Persist both the editable document and the actual PNG consumed elsewhere.
   let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
   function scheduleAutosave() {
     if (autosaveTimer) clearTimeout(autosaveTimer);
     autosaveTimer = setTimeout(() => {
       autosaveTimer = null;
-      if (!destroyed) void saveDocument();
+      if (!destroyed) void save().catch(() => {});
     }, 600);
   }
 
@@ -486,63 +491,49 @@
    * For M3 `bases:1` and only `base.0` is written — the multi-base re-edit stack
    * (getBasePushes) is DEFERRED. Marks history clean so the dirty indicator clears.
    */
-  async function saveDocument(): Promise<void> {
-    try {
-      autosaveState.set('saving');
-      const doc = {
-        version: 1,
-        bases: 1,
-        items: items.map(serializeItem),
-        effects: get(effects),
-      };
-      // Seed base.0 once with a filesystem copy. Normal annotation autosaves
-      // then transfer only the sidecar JSON. Destructive edits replace the
-      // editable base, so persist that data URL before the sidecar references it.
-      if (currentBaseSrc.startsWith('data:image/png;base64,')) {
-        await ipcInvoke('write_base', { path, n: 0, pngB64: bareBase64(currentBaseSrc) });
-      } else {
-        await ipcInvoke('ensure_base', { path, n: 0 });
-      }
-      await ipcInvoke('save_sidecar', { path, doc });
-      history.markClean();
-      autosaveState.set('saved');
-    } catch (e) {
-      console.error('autosave failed', e);
-      autosaveState.set('error');
-    }
+  // Serialize writes so an older autosave cannot overwrite a newer export.
+  let saveQueue: Promise<unknown> = previousSave;
+  export function save(): Promise<void> {
+    if (autosaveTimer) { clearTimeout(autosaveTimer); autosaveTimer = null; }
+    const result = saveQueue.catch(() => {}).then(persistImage);
+    saveQueue = result;
+    trackMediaSave(path, result);
+    return result;
   }
 
-  export async function save(): Promise<void> {
+  async function persistImage(): Promise<void> {
     try {
+      if (!ready || !stage) throw new Error('Image editor is still loading');
       autosaveState.set('saving');
-      // Wait out any in-flight redact-patch fills — flattening now would bake
-      // their gray placeholders into the library PNG.
-      while (pendingFills.size > 0) {
-        await Promise.all([...pendingFills]);
-      }
-      // Flatten first so a failed export aborts the whole save before anything
-      // touches disk; then persist the recoverable artifacts (sidecar + base.0)
-      // BEFORE overwriting the library PNG — if the overwrite fails midway the
-      // original is still reconstructable from base.0 + items.
+      while (pendingFills.size > 0) await Promise.all([...pendingFills]);
       const flat = flattenStage();
+      const base = currentBaseSrc;
+      const savedSnapshot = history.current();
+      const savedEffects = currentEffects;
       const doc = {
         version: 1,
         bases: 1,
         items: items.map(serializeItem),
-        effects: get(effects),
+        effects: { ...currentEffects },
       };
-      await ipcInvoke('save_sidecar', { path, doc });
-      if (currentBaseSrc.startsWith('data:image/png;base64,')) {
-        await ipcInvoke('write_base', { path, n: 0, pngB64: bareBase64(currentBaseSrc) });
+      // Preserve the editable source before replacing the rendered library file.
+      if (base.startsWith('data:image/png;base64,')) {
+        await ipcInvoke('write_base', { path, n: 0, pngB64: bareBase64(base) });
       } else {
         await ipcInvoke('ensure_base', { path, n: 0 });
       }
+      if (!await ipcInvoke<boolean>('save_sidecar', { path, doc })) {
+        throw new Error('Could not save the editable image document');
+      }
       await ipcInvoke('flatten_save', { path, pngB64: bareBase64(flat) });
-      history.markClean();
-      autosaveState.set('saved');
+      if (history.current() === savedSnapshot && currentEffects === savedEffects) {
+        history.markClean();
+        autosaveState.set('saved');
+      }
     } catch (e) {
       console.error('save failed', e);
       autosaveState.set('error');
+      throw e; // Output actions must stop if the edited PNG could not be saved.
     }
   }
 
@@ -591,7 +582,8 @@
       syncHistoryApi();
     };
     if (basePath) {
-      setBaseImage(await imageDataSrc(basePath), apply);
+      const src = await imageDataSrc(basePath);
+      await new Promise<void>(resolve => setBaseImage(src, () => { apply(); resolve(); }));
     } else {
       apply();
     }
@@ -1193,7 +1185,7 @@
     }
     if (e.ctrlKey || e.metaKey) {
       const k = e.key.toLowerCase();
-      if (k === 's') { e.preventDefault(); void save(); return; }
+      if (k === 's') { e.preventDefault(); void save().catch(() => {}); return; }
       if (k === 'z' && e.shiftKey) { redo(); e.preventDefault(); return; }
       if (k === 'z') { undo(); e.preventDefault(); return; }
       if (k === 'y') { redo(); e.preventDefault(); return; }
@@ -1226,6 +1218,8 @@
   });
 
   function build(Konva: typeof import('konva').default): () => void {
+    previousSave = waitForMediaSave(path);
+    saveQueue = previousSave;
     KonvaMod = Konva;
     stage = new Konva.Stage({
       container,
@@ -1359,6 +1353,7 @@
       zoomFit: fitToView,
     });
     saveApi.set(save);
+    const unregisterOutput = registerMediaEditor(path, async () => { await loaded; await save(); return path; });
     syncHistoryApi();
 
     // Background-removal bridge: the button is always usable (the model
@@ -1390,6 +1385,8 @@
     // --- Load the base image ---
     let cancelled = false;
     (async () => {
+      await previousSave.catch(() => {});
+      if (cancelled) return;
       const src = await imageDataSrc(path);
       const imageObj = new Image();
       imageObj.crossOrigin = 'anonymous';
@@ -1410,14 +1407,15 @@
         fitToView();
         applyEffects();
 
-        if (!destroyed && !cancelled) ready = true;
-
         // Restore any saved sidecar (items + effects + editable base.0) on top
         // of the freshly-loaded library PNG. No sidecar → this is a no-op.
-        void loadSidecar();
+        void loadSidecar().then(() => {
+          if (!destroyed && !cancelled) { ready = true; resolveLoaded(); }
+        }).catch(e => rejectLoaded(new Error(String(e))));
       };
+      imageObj.onerror = () => rejectLoaded(new Error('Could not load image'));
       imageObj.src = src;
-    })();
+    })().catch(e => rejectLoaded(new Error(String(e))));
 
     // --- Keep the stage sized to the container AND re-center the image ---
     // Resizing only the stage canvas left the image pinned at its old offset
@@ -1481,15 +1479,16 @@
 
     return () => {
       cancelled = true;
-      // Flush a pending autosave before the stage is destroyed (flattenStage is
-      // synchronous, so the bake captures the live stage; the write completes
-      // after unmount). Prevents losing an edit made just before switching.
-      if (autosaveTimer) {
-        clearTimeout(autosaveTimer);
-        autosaveTimer = null;
-        void save();
-      }
+      rejectLoaded(new Error('Image editor was closed'));
       editTeardown?.();
+      unregisterOutput();
+      // Retain the detached stage until asynchronous blur fills and queued
+      // writes finish. Output actions for this path also await this final save.
+      const finalSave = ready ? save() : saveQueue;
+      void finalSave.catch(() => {}).finally(() => {
+        stage?.destroy();
+        stage = null;
+      });
       ro.disconnect();
       container.removeEventListener('wheel', onWheel);
       window.removeEventListener('keydown', onKeyDown);
@@ -1503,8 +1502,6 @@
       unsubStyle();
       unsubTextStyle();
       unsubEffects();
-      stage?.destroy();
-      stage = null;
     };
   }
 </script>

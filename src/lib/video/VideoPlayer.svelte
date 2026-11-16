@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { registerMediaEditor, renderVideoDraft } from '$lib/mediaEdits';
   import { mediaSrc, ipcInvoke } from '$lib/ipc';
   import { loadLibrary, captures, activeItem } from '$lib/stores';
   import { get } from 'svelte/store';
@@ -442,11 +443,20 @@
     if (found) activeItem.set(found);
   }
 
+  $effect(() => registerMediaEditor(path, async () => {
+    try {
+      return await renderVideoDraft(path, redactions, blur, ipcInvoke);
+    } catch (e) {
+      flash(`Blur failed: ${e}`, true);
+      throw e;
+    }
+  }));
+
   async function applyBlur() {
     if (!redactions.length || busy) return;
     busy = true;
     try {
-      const out = await ipcInvoke<string>('apply_blur', { path, redactions, blur });
+      const out = await renderVideoDraft(path, redactions, blur, ipcInvoke);
       await selectByPath(out);
       flash('Blur applied');
     } catch (e) {

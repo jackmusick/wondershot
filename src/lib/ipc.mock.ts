@@ -6,7 +6,7 @@ const PIXEL =
 /** A 1×1 solid gray PNG, base64 body only (no `data:` prefix). The redact tool
  *  stretches it to fill the region, giving dev/browser a visible placeholder. */
 const GRAY_PNG_B64 =
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNgaGD4DwABBQEAwj2hKQAAAABJRU5ErkJggg==';
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNoaGj4DwAFhAKAjM1mJgAAAABJRU5ErkJggg==';
 
 export const MOCK_CAPTURES: Capture[] = [
   {
