@@ -6,6 +6,18 @@ const USE_MOCK =
   import.meta.env.VITE_MOCK_IPC === '1' ||
   typeof (globalThis as any).__TAURI_INTERNALS__ === 'undefined';
 
+/** Keep file-backed previews tied to the on-disk revision. Data URLs already
+ * contain their content and must not have a query string appended. */
+function previewRevision(src: string, revision: number | string): string {
+  if (/^(data|blob):/i.test(src)) return src;
+  const hashIndex = src.indexOf('#');
+  const url = hashIndex < 0 ? src : src.slice(0, hashIndex);
+  const hash = hashIndex < 0 ? '' : src.slice(hashIndex);
+  return `${url}${url.includes('?') ? '&' : '?'}revision=${encodeURIComponent(revision)}${hash}`;
+}
+
+let imageLoadRevision = 0;
+
 /** A webview-loadable src for a file path. Real mode → tauri asset URL; mock → the path as-is. */
 export async function assetSrc(path: string): Promise<string> {
   if (USE_MOCK) return path.startsWith("/mock/") || path.startsWith("/lib/") ? "/fixtures/editor-base.png" : path;
@@ -19,10 +31,16 @@ export async function assetSrc(path: string): Promise<string> {
  * base64. Callers must set `Image.crossOrigin = 'anonymous'` before `src`.
  */
 export async function imageDataSrc(path: string): Promise<string> {
-  if (USE_MOCK) return path.startsWith("/mock/") || path.startsWith("/lib/") ? "/fixtures/editor-base.png" : path;
+  // Editable bases are overwritten at the same path. Reopening an editor must
+  // fetch those pixels again even if WebKit still holds the previous image.
+  const revision = `${Date.now()}-${++imageLoadRevision}`;
+  if (USE_MOCK) {
+    const src = path.startsWith('/mock/') || path.startsWith('/lib/') ? '/fixtures/editor-base.png' : path;
+    return previewRevision(src, revision);
+  }
   const port = await ipcInvoke<number>('media_server_port');
   if (!port) throw new Error('image server unavailable');
-  return `http://127.0.0.1:${port}/media?path=${encodeURIComponent(path)}`;
+  return previewRevision(`http://127.0.0.1:${port}/media?path=${encodeURIComponent(path)}`, revision);
 }
 
 /**
@@ -44,7 +62,7 @@ export async function mediaSrc(path: string): Promise<string> {
 export async function normalizeCaptures(caps: Capture[]): Promise<Capture[]> {
   return Promise.all(
     caps.map(async (c) => {
-      if (c.thumbnail) return c;
+      if (c.thumbnail) return { ...c, thumbnail: previewRevision(c.thumbnail, c.createdAt) };
       if (c.kind === 'video' && !USE_MOCK) {
         try {
           const b64 = await ipcInvoke<string>('video_thumb', { path: c.path });
@@ -53,7 +71,7 @@ export async function normalizeCaptures(caps: Capture[]): Promise<Capture[]> {
           return { ...c, thumbnail: '' }; // filmstrip falls back to a dark card
         }
       }
-      return { ...c, thumbnail: await assetSrc(c.path) };
+      return { ...c, thumbnail: previewRevision(await assetSrc(c.path), c.createdAt) };
     })
   );
 }
