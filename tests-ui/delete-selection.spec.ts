@@ -59,18 +59,30 @@ test('Delete still trashes files when focus is explicitly in the gallery', async
   expect(await trashCalls(page)).toHaveLength(1);
 });
 
-test('Delete removes a video blur without trashing the video', async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: /Recording 11:20/ }).click();
-  await page.waitForFunction(() => (document.querySelector('video')?.duration ?? 0) > 0);
-  const box = await page.locator('.overlay').boundingBox();
-  if (!box) throw new Error('missing video overlay');
-  await page.mouse.move(box.x + box.width * .4, box.y + box.height * .4); await page.mouse.down();
-  await page.mouse.move(box.x + box.width * .6, box.y + box.height * .6, { steps: 5 }); await page.mouse.up();
-  await expect(page.getByRole('button', { name: 'Blur 1', exact: true })).toBeVisible();
-  await page.keyboard.press('Delete');
-  await expect(page.getByRole('button', { name: 'Blur 1', exact: true })).toHaveCount(0);
-  await page.keyboard.press('Delete');
-  await expect(page.locator('.filmstrip .card')).toHaveCount(4);
-  expect(await trashCalls(page)).toHaveLength(0);
-});
+for (const interaction of ['layer', 'resize']) {
+  test(`Delete removes a video blur after ${interaction} selection without trashing the video`, async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: /Recording 11:20/ }).click();
+    await page.waitForFunction(() => (document.querySelector('video')?.duration ?? 0) > 0);
+    const box = await page.locator('.overlay').boundingBox();
+    if (!box) throw new Error('missing video overlay');
+    await page.mouse.move(box.x + box.width * .4, box.y + box.height * .4); await page.mouse.down();
+    await page.mouse.move(box.x + box.width * .6, box.y + box.height * .6, { steps: 5 }); await page.mouse.up();
+    await expect(page.getByRole('button', { name: 'Blur 1', exact: true })).toBeVisible();
+    // Return focus to the gallery, then select or resize an existing blur.
+    await page.getByRole('button', { name: /Recording 11:20/ }).click();
+    if (interaction === 'layer') {
+      await page.getByRole('button', { name: 'Blur 1', exact: true }).click();
+    } else {
+      const handle = await page.getByRole('button', { name: 'Resize Blur Region 1', exact: true }).boundingBox();
+      if (!handle) throw new Error('missing blur resize handle');
+      await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+      await page.mouse.down(); await page.mouse.move(handle.x + 25, handle.y + 25, { steps: 5 }); await page.mouse.up();
+    }
+    await page.keyboard.press('Delete');
+    await expect(page.getByRole('button', { name: 'Blur 1', exact: true })).toHaveCount(0);
+    await page.keyboard.press('Delete');
+    await expect(page.locator('.filmstrip .card')).toHaveCount(4);
+    expect(await trashCalls(page)).toHaveLength(0);
+  });
+}

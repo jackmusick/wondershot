@@ -112,6 +112,7 @@
   });
   let transformDrag: { index: number; mode: 'move' | 'resize'; x: number; y: number; original: Redaction; recorded: boolean } | null = null;
   function selectRegion(i: number) {
+    playerEl.focus({ preventScroll: true });
     selected = i; blur = redactions[i]?.blur ?? blur; videoEl?.pause(); playing = false;
     const r = redactions[i]; if (r && (current < r.start || current >= r.end)) scrub(r.start);
   }
