@@ -207,6 +207,7 @@ export async function mockInvoke(cmd: string, _args?: unknown): Promise<unknown>
     }
     case 'install_desktop':
     case 'trash_item':
+      mockList = mockList.filter(c => c.path !== (_args as { path: string }).path);
       return null;
     case 'pick_import_files':
       return ['/mock/OBS recording.mp4'];

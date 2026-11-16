@@ -19,6 +19,7 @@
   });
 
   // --- media element + playback state ---------------------------------------
+  let playerEl: HTMLDivElement;
   let videoEl = $state<HTMLVideoElement | null>(null);
   let src = $state('');
   let playing = $state(false);
@@ -200,6 +201,7 @@
   function onPointerDown(e: PointerEvent) {
     if (playing || busy || rangeMode || gifOpen) return; // only draw while paused
     if (e.button !== 0) return;
+    playerEl.focus({ preventScroll: true });
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
     const p = localPoint(e);
     drag = { x0: p.x, y0: p.y, x1: p.x, y1: p.y };
@@ -408,6 +410,7 @@
   /** Delete/Backspace removes the selected blur region. */
   function onKeyDown(e: KeyboardEvent) {
     const el = e.target as HTMLElement | null;
+    if (e.defaultPrevented || el?.closest('.filmstrip')) return;
     if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
     if (busy || rangeMode) return;
@@ -589,7 +592,7 @@
     {/if}
 {/snippet}
 
-<div class="player">
+<div class="player" bind:this={playerEl} tabindex="-1" role="region" aria-label="Video editor">
   {#if standalone}<OverflowToolbar label="Video Editing Tools">{@render actions()}</OverflowToolbar>{/if}
   <div class="video-body">
   <div class="video-main">

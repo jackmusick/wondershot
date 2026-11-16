@@ -156,6 +156,9 @@
       return;
     }
     if (e.key === 'Delete') {
+      // Editor and gallery listeners share window. Do not rely on listener
+      // order: deleting a capture requires explicit focus in the filmstrip.
+      if (!(e.target instanceof Element) || !e.target.closest('.filmstrip')) return;
       const paths = get(selectedCapturePaths);
       const selected = get(captures).filter((item) => paths.includes(item.path));
       if (selected.length > 0) {

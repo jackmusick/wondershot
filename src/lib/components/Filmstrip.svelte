@@ -52,6 +52,9 @@
   }
 
   function select(e: MouseEvent, c: Capture) {
+    // macOS WebKit does not focus buttons on click by default. Make gallery
+    // keyboard actions follow an explicit gallery click on every platform.
+    (e.currentTarget as HTMLElement).focus({ preventScroll: true });
     const result = selectGalleryItem(
       $selectedCapturePaths,
       ordered.map((item) => item.path),

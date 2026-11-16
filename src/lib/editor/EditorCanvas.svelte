@@ -1177,7 +1177,8 @@
   }
 
   function onKeyDown(e: KeyboardEvent) {
-    if (isEditableTarget(e.target)) return;
+    if (e.defaultPrevented || isEditableTarget(e.target)) return;
+    if (e.target instanceof Element && e.target.closest('.filmstrip')) return;
     if (e.key === 'Delete' || e.key === 'Backspace') {
       deleteSelected();
       e.preventDefault();
@@ -1241,6 +1242,7 @@
 
     // --- Pointer handling: select tool vs. drawing tools ---
     stage.on('pointerdown', (e) => {
+      container.focus({ preventScroll: true });
       // Transformer anchors + endpoint grips live on the overlay layer and
       // handle their own dragging — never treat them as a draw/select click.
       if (e.target.getLayer() === overlayLayer) return;
@@ -1506,7 +1508,7 @@
   }
 </script>
 
-<div class="editor-canvas" bind:this={container} data-editor-ready={ready ? 'true' : 'false'}></div>
+<div class="editor-canvas" tabindex="-1" role="region" aria-label="Image editor" bind:this={container} data-editor-ready={ready ? 'true' : 'false'}></div>
 
 <style>
   .editor-canvas {
